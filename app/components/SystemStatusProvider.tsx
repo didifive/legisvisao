@@ -26,6 +26,9 @@ const defaultStatus: SystemStatusContextType = {
 
 const SystemStatusContext = createContext<SystemStatusContextType>(defaultStatus);
 
+// Intervalo de verificação no frontend: 3 minutos (180.000 ms)
+const FRONTEND_CHECK_INTERVAL_MS = 3 * 60 * 1000;
+
 export function SystemStatusProvider({ children }: { children: React.ReactNode }) {
   const [isReady, setIsReady] = useState<boolean>(true);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -61,6 +64,13 @@ export function SystemStatusProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     fetchStatus();
+
+    // Revalidação a cada 3 minutos
+    const interval = setInterval(() => {
+      fetchStatus();
+    }, FRONTEND_CHECK_INTERVAL_MS);
+
+    return () => clearInterval(interval);
   }, [fetchStatus]);
 
   return (

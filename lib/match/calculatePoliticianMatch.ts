@@ -1,45 +1,41 @@
 // ====================================================================
-// LegisVisão - Cálculo de Afinidade de Parlamentar Individual
+// LegisVisão - Cálculo de Afinidade de Deputado Federal Individual
 // ====================================================================
 import { normalizeVote } from "./normalizeVotes";
-import type { UserVotes, VoteDetailWithProject, PoliticianMatch } from "./types";
-import type { PoliticianSearchResult } from "@/types/db";
+import type { UserVotes, VoteDetailWithProposition, DeputyMatch } from "./types";
+import type { DeputySearchResult } from "@/types/db";
 
 /**
- * Calcula a afinidade individual de um parlamentar com base nos posicionamentos do usuário.
+ * Calcula a afinidade individual de um Deputado Federal com base nos posicionamentos do visitante.
  * 
  * Regra Oficial:
- * - Cada sessão de deliberação nominal em que o parlamentar votou gera uma comparação independente.
+ * - Cada votação nominal em que o deputado votou gera uma comparação independente.
  * - São comparáveis apenas votos que normalizem para "SIM" ou "NÃO".
  * - Abstenções, obstruções e ausências não entram no cálculo.
- * - Fórmula: Índice = Concordâncias / Total de Comparações Válidas.
- *
- * @param userVotes - Mapa { [projectId]: "CONCORDO" | "DISCORDO" }
- * @param votesOfPolitician - Lista de votos do parlamentar contendo project_id
- * @param politician - Dados cadastrais do parlamentar
+ * - Fórmula: Índice = Concordâncias / Total de Comparações Válidas * 100.
  */
 export function calculatePoliticianMatch(
   userVotes: UserVotes,
-  votesOfPolitician: VoteDetailWithProject[],
-  politician: PoliticianSearchResult
-): PoliticianMatch {
+  votesOfDeputy: VoteDetailWithProposition[],
+  deputy: DeputySearchResult
+): DeputyMatch {
   let matches = 0;
   let comparable = 0;
 
-  for (const pv of votesOfPolitician) {
-    const projectId = pv.project_id;
-    if (typeof projectId !== "number") continue;
+  for (const pv of votesOfDeputy) {
+    const propId = pv.proposicao_id;
+    if (typeof propId !== "number") continue;
 
-    const userRaw = userVotes[projectId];
+    const userRaw = userVotes[propId];
     const userVote = normalizeVote(userRaw);
-    const polRaw = pv.vote_original;
-    const politicianVote = normalizeVote(polRaw);
+    const polRaw = pv.voto_original;
+    const deputyVote = normalizeVote(polRaw);
 
-    if (!userVote || !politicianVote) continue;
+    if (!userVote || !deputyVote) continue;
 
-    if (politicianVote === "SIM" || politicianVote === "NÃO") {
+    if (deputyVote === "SIM" || deputyVote === "NÃO") {
       comparable++;
-      if (politicianVote === userVote) {
+      if (deputyVote === userVote) {
         matches++;
       }
     }
@@ -48,7 +44,7 @@ export function calculatePoliticianMatch(
   const adherence = comparable > 0 ? Number(((matches / comparable) * 100).toFixed(2)) : null;
 
   return {
-    ...politician,
+    ...deputy,
     matches_count: matches,
     comparable_count: comparable,
     adherence,

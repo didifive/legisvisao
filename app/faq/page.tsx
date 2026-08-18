@@ -13,10 +13,9 @@ import {
   FaShieldAlt,
   FaSyncAlt,
   FaCalendarAlt,
-  FaExchangeAlt,
   FaCodeBranch,
   FaHistory,
-  FaQuoteLeft,
+  FaClock,
 } from "react-icons/fa";
 import { Button } from "@/app/components/ui/Button";
 import { useSystemStatus } from "@/app/components/SystemStatusProvider";
@@ -26,9 +25,12 @@ interface SyncSource {
   source: string;
   name: string;
   official_url: string;
-  last_sync: string;
-  status: "SUCCESS" | "FAILED" | "RUNNING";
-  records_count: number;
+  last_sync: string | null;
+  status: "SUCCESS" | "FAILED" | "RUNNING" | "PENDING";
+  total_deputies?: number;
+  total_propositions?: number;
+  total_vote_sessions?: number;
+  total_votes?: number;
   last_error: string | null;
 }
 
@@ -37,23 +39,17 @@ export default function FAQPage() {
   const [sources, setSources] = useState<SyncSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
-  const [userTimeZone, setUserTimeZone] = useState<string>("");
 
   useEffect(() => {
     setIsClient(true);
-    try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      setUserTimeZone(tz || "Local");
-    } catch {
-      setUserTimeZone("Local");
-    }
 
     async function loadStatus() {
       try {
         const res = await fetch("/api/sync-status");
         if (res.ok) {
           const data = await res.json();
-          setSources(data.sources || []);
+          const list = data.sources || (data.source ? [data.source] : []);
+          setSources(list);
         }
       } catch (err) {
         console.error("Erro ao buscar status das fontes:", err);
@@ -65,8 +61,8 @@ export default function FAQPage() {
     loadStatus();
   }, []);
 
-  function formatLocalDate(isoString: string): string {
-    if (!isoString) return "Aguardando";
+  function formatLocalDate(isoString: string | null): string {
+    if (!isoString) return "Aguardando primeira execução";
     try {
       const date = new Date(isoString);
       return new Intl.DateTimeFormat(undefined, {
@@ -78,7 +74,7 @@ export default function FAQPage() {
         second: "2-digit",
       }).format(date);
     } catch {
-      return isoString;
+      return String(isoString);
     }
   }
 
@@ -100,10 +96,10 @@ export default function FAQPage() {
         <div className="p-5 sm:p-6 rounded-2xl bg-amber-500/10 dark:bg-amber-950/30 border border-amber-500/30 text-foreground space-y-3 shadow-soft animate-fade-in">
           <div className="flex items-center gap-2.5 font-bold text-amber-900 dark:text-amber-300 text-base">
             <FaExclamationTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span>Aviso: Dados Governamentais em Processo de Atualização</span>
+            <span>Aviso: Dados da Câmara em Processo de Ingestão</span>
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-            As proposições legislativas e votações nominais estão temporariamente em processo de sincronização com as bases da Câmara dos Deputados e do Senado Federal. Caso o conteúdo não apareça ou você encontre alguma instabilidade, entre em contato diretamente com o desenvolvedor:
+            As proposições legislativas e votações nominais estão sendo carregadas através da API de Dados Abertos da Câmara dos Deputados. Caso o conteúdo ainda não apareça no simulador, execute a sincronização ou consulte o status no painel abaixo:
           </p>
           <div className="pt-1 flex flex-wrap items-center gap-3">
             <a
@@ -117,7 +113,7 @@ export default function FAQPage() {
             </a>
             <a
               href={`mailto:${urls.email}`}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-card border border-border text-foreground hover:bg-muted text-xs font-medium transition-smooth"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-card border border-border text-foreground hover:bg-muted text-xs font-medium transition-smooth"
             >
               <span>{urls.email}</span>
             </a>
@@ -127,20 +123,11 @@ export default function FAQPage() {
 
       {/* 2. PAINEL DE FONTES OFICIAIS */}
       <section className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <FaDatabase className="text-primary w-4 h-4" />
-            <h2 className="text-xl font-bold text-foreground">
-              Status das Fontes de Dados Oficiais
-            </h2>
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {isClient && userTimeZone && (
-              <span className="bg-muted px-2.5 py-1 rounded-md text-[11px] font-medium text-foreground border border-border">
-                Horário local ({userTimeZone})
-              </span>
-            )}
-          </div>
+        <div className="flex items-center gap-2">
+          <FaDatabase className="text-primary w-4 h-4" />
+          <h2 className="text-xl font-bold text-foreground">
+            Status das Fontes de Dados Oficiais
+          </h2>
         </div>
 
         {loading ? (
@@ -152,14 +139,16 @@ export default function FAQPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {sources.map((src) => {
               const isSuccess = src.status === "SUCCESS";
-              const formattedDate = isClient && src.last_sync
+              const isRunning = src.status === "RUNNING";
+              const isPending = src.status === "PENDING";
+              const formattedDate = isClient
                 ? formatLocalDate(src.last_sync)
                 : "Carregando horário local...";
 
               return (
                 <div
                   key={src.source}
-                  className="p-5 rounded-xl bg-card border border-border shadow-soft flex flex-col justify-between space-y-4 hover:shadow-medium transition-smooth"
+                  className="p-5 sm:p-6 rounded-xl bg-card border border-border shadow-soft flex flex-col justify-between space-y-4 hover:shadow-medium transition-smooth"
                 >
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
@@ -167,17 +156,35 @@ export default function FAQPage() {
                         {src.source}
                       </span>
                       <span
-                        className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${isSuccess
-                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                          : "bg-rose-500/10 text-rose-600"
-                          }`}
+                        className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full ${
+                          isSuccess
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                            : isRunning
+                            ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 animate-pulse"
+                            : isPending
+                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                            : "bg-rose-500/10 text-rose-600 border border-rose-500/20"
+                        }`}
                       >
-                        {isSuccess ? (
+                        {isSuccess && (
                           <>
                             <FaCheckCircle className="w-3 h-3" />
-                            <span>Ativo</span>
+                            <span>Sincronizado</span>
                           </>
-                        ) : (
+                        )}
+                        {isRunning && (
+                          <>
+                            <FaSyncAlt className="w-3 h-3 animate-spin" />
+                            <span>Sincronizando Dados...</span>
+                          </>
+                        )}
+                        {isPending && (
+                          <>
+                            <FaClock className="w-3 h-3" />
+                            <span>Aguardando Ingestão</span>
+                          </>
+                        )}
+                        {!isSuccess && !isRunning && !isPending && (
                           <>
                             <FaExclamationTriangle className="w-3 h-3" />
                             <span>Atenção</span>
@@ -191,18 +198,37 @@ export default function FAQPage() {
                     </h3>
                   </div>
 
-                  <div className="space-y-2 pt-2 border-t border-border/60 text-xs">
+                  <div className="space-y-2.5 pt-2 border-t border-border/60 text-xs">
                     <div className="flex justify-between text-muted-foreground">
                       <span>Última sincronização:</span>
                       <span className="font-semibold text-foreground">
                         {formattedDate}
                       </span>
                     </div>
-                    {src.records_count > 0 && (
+
+                    {typeof src.total_deputies === "number" && src.total_deputies > 0 && (
                       <div className="flex justify-between text-muted-foreground">
-                        <span>Registros processados:</span>
+                        <span>Deputados Federais cadastrados:</span>
                         <span className="font-semibold text-foreground">
-                          {src.records_count.toLocaleString("pt-BR")}
+                          {src.total_deputies.toLocaleString("pt-BR")}
+                        </span>
+                      </div>
+                    )}
+
+                    {typeof src.total_propositions === "number" && src.total_propositions > 0 && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Proposições com votação:</span>
+                        <span className="font-semibold text-foreground">
+                          {src.total_propositions.toLocaleString("pt-BR")}
+                        </span>
+                      </div>
+                    )}
+
+                    {typeof src.total_votes === "number" && src.total_votes > 0 && (
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Votos nominais processados:</span>
+                        <span className="font-semibold text-foreground">
+                          {src.total_votes.toLocaleString("pt-BR")}
                         </span>
                       </div>
                     )}
@@ -235,35 +261,35 @@ export default function FAQPage() {
               Princípio da Fonte de Verdade
             </h2>
             <span className="text-xs text-muted-foreground">
-              As APIs oficiais são a fonte primária dos dados
+              A API oficial da Câmara dos Deputados é a fonte primária dos dados
             </span>
           </div>
         </div>
 
         <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
           <p>
-            O banco de dados local do <strong>LegisVisão</strong> não é a fonte primária das proposições nem dos votos. Ele atua estritamente como um <strong>cache persistente e camada de agregação rápida</strong> para reduzir requisições às APIs públicas e permitir consultas instantâneas.
+            O banco de dados do <strong>LegisVisão</strong> não é a fonte primária das proposições nem dos votos. Ele atua estritamente como um <strong>cache persistente e camada de indexação de alta velocidade</strong> para evitar sobrecarga nas APIs públicas e permitir consultas instantâneas no navegador.
           </p>
           <p>
-            Em qualquer hipótese de divergência entre o banco local e as APIs oficiais da Câmara ou do Senado, <strong>prevalece sempre a informação oficial governamental</strong>. Não criamos nem inferimos informações que não constem nos registros originais.
+            Em qualquer hipótese de divergência entre o banco local e a API oficial da Câmara dos Deputados, <strong>prevalece sempre a informação oficial governamental</strong>. Não criamos nem inferimos informações que não constem nos registros originais.
           </p>
         </div>
       </section>
 
-      {/* 4. GUIA CÍVICO: BICAMERALISMO */}
+      {/* 4. GUIA CÍVICO: A CÂMARA DOS DEPUTADOS */}
       <section className="space-y-6">
         <div className="border-b border-border pb-3">
           <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <FaLandmark className="text-secondary w-5 h-5" />
-            Como Funciona o Poder Legislativo no Brasil? (Bicameralismo)
+            O Papel dos Deputados Federais na Câmara dos Deputados
           </h2>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            O Congresso Nacional é composto por duas casas legislativas que se complementam e se fiscalizam mutuamente.
+            Entenda como a Câmara dos Deputados representa os cidadãos brasileiros na elaboração e votação das leis.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Card Câmara dos Deputados */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Card 1: Representação Popular */}
           <div className="p-6 sm:p-7 rounded-2xl bg-card border border-border shadow-soft flex flex-col justify-between space-y-6">
             <div className="space-y-4">
               <div className="flex items-center gap-3.5">
@@ -272,61 +298,61 @@ export default function FAQPage() {
                 </div>
                 <div>
                   <h3 className="font-bold text-foreground text-xl">
-                    Câmara dos Deputados
+                    Representação do Povo Brasileiro
                   </h3>
                   <span className="text-xs font-semibold text-primary">
-                    Representação do Povo • 513 Deputados Federais
+                    513 Deputados Federais • Proporcional à População
                   </span>
                 </div>
               </div>
 
               <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
                 <p>
-                  Os <strong>Deputados Federais</strong> são os representantes da população. A quantidade de cadeiras de cada estado é proporcional à população, variando de <strong>8 deputados</strong> a <strong>70 deputados</strong> (SP).
+                  Os <strong>Deputados Federais</strong> são os representantes diretos da população brasileira. O número de deputados de cada estado e do Distrito Federal é proporcional ao tamanho da sua população, variando de <strong>8 deputados</strong> (estados menores) a <strong>70 deputados</strong> (São Paulo).
                 </p>
 
                 <div className="p-3.5 rounded-xl bg-muted/60 border border-border/50 text-xs space-y-2 text-foreground">
                   <div className="flex items-center gap-2 font-bold text-primary">
                     <FaCalendarAlt className="w-3.5 h-3.5" />
-                    <span>Duração do Mandato: 4 Anos</span>
+                    <span>57ª Legislatura (2023–2027)</span>
                   </div>
                   <p className="text-muted-foreground leading-relaxed">
-                    A cada 4 anos, a Câmara é integralmente renovada através de eleições gerais.
+                    Mandato de 4 anos eleito pelo sistema proporcional de votação em cada estado.
                   </p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Card Senado Federal */}
+          {/* Card 2: Deliberação no Plenário */}
           <div className="p-6 sm:p-7 rounded-2xl bg-card border border-border shadow-soft flex flex-col justify-between space-y-6">
             <div className="space-y-4">
               <div className="flex items-center gap-3.5">
                 <div className="w-12 h-12 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center font-bold shrink-0">
-                  <FaBalanceScale className="w-6 h-6" />
+                  <FaVoteYea className="w-6 h-6" />
                 </div>
                 <div>
                   <h3 className="font-bold text-foreground text-xl">
-                    Senado Federal
+                    Votações Nominais no Plenário
                   </h3>
                   <span className="text-xs font-semibold text-secondary">
-                    Representação dos Estados e DF • 81 Senadores
+                    Votos Auditáveis e Públicos
                   </span>
                 </div>
               </div>
 
               <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
                 <p>
-                  O <strong>Senado Federal</strong> representa o Pacto Federativo com igualdade entre os 26 estados e o DF. Cada unidade da federação possui exatamente <strong>3 senadores</strong>.
+                  Nas votações nominais, o voto individual de cada parlamentar (<strong>SIM</strong>, <strong>NÃO</strong> ou <strong>ABSTENÇÃO</strong>) é registrado eletronicamente no painel e publicado no portal oficial de Dados Abertos da Câmara.
                 </p>
 
                 <div className="p-3.5 rounded-xl bg-muted/60 border border-border/50 text-xs space-y-2 text-foreground">
                   <div className="flex items-center gap-2 font-bold text-secondary">
-                    <FaExchangeAlt className="w-3.5 h-3.5" />
-                    <span>Mandato de 8 Anos</span>
+                    <FaBalanceScale className="w-3.5 h-3.5" />
+                    <span>Transparência Total</span>
                   </div>
                   <p className="text-muted-foreground leading-relaxed">
-                    Renovação alternada: 1/3 (1 senador) em uma eleição e 2/3 (2 senadores) na seguinte.
+                    O LegisVisão utiliza exclusivamente essas votações nominais oficiais para aferir sua concordância real com cada deputado.
                   </p>
                 </div>
               </div>
@@ -343,7 +369,7 @@ export default function FAQPage() {
           </div>
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-foreground">
-              Metodologia de Cálculo de Afinidade e Fidelidade Partidária
+              Metodologia de Cálculo de Afinidade
             </h2>
             <span className="text-xs text-muted-foreground">
               Fórmula determinística oficial baseada no registro do plenário
@@ -353,27 +379,27 @@ export default function FAQPage() {
 
         <div className="space-y-4 text-sm text-muted-foreground leading-relaxed">
           <p>
-            O cálculo de afinidade compara suas opiniões (<strong>Concordo</strong> ou <strong>Discordo</strong>) com os votos nominais registrados pelos parlamentares:
+            O cálculo de afinidade compara suas opiniões (<strong>Concordo</strong> ou <strong>Discordo</strong>) com os votos nominais registrados pelos deputados:
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-4 rounded-xl bg-muted/50 border border-border/80 text-xs text-foreground space-y-2">
-              <span className="font-bold text-primary block">1. Afinidade Individual dos Parlamentares:</span>
+              <span className="font-bold text-primary block">1. Afinidade Individual dos Deputados:</span>
               <code className="text-xs font-mono bg-background px-2 py-1 rounded border border-border inline-block">
                 Índice = Concordâncias ÷ Comparações Válidas
               </code>
               <p className="text-muted-foreground pt-1 text-[11px] leading-relaxed">
-                Cada sessão de deliberação nominal em que o parlamentar votou gera uma comparação independente. Votos com abstenção, obstrução ou falta não entram no cálculo.
+                Cada sessão de deliberação nominal em que o deputado votou gera uma comparação independente. Votos com abstenção, obstrução ou falta não entram no cálculo.
               </p>
             </div>
 
             <div className="p-4 rounded-xl bg-muted/50 border border-border/80 text-xs text-foreground space-y-2">
-              <span className="font-bold text-primary block">2. Afinidade dos Partidos (Fidelidade do Voto):</span>
+              <span className="font-bold text-primary block">2. Afinidade dos Partidos (Média da Bancada):</span>
               <code className="text-xs font-mono bg-background px-2 py-1 rounded border border-border inline-block">
                 Índice Partidário = Concordâncias dos Filiados ÷ Votos Válidos dos Filiados
               </code>
               <p className="text-muted-foreground pt-1 text-[11px] leading-relaxed">
-                Calculada pela média dos votos nominais de parlamentares filiados. Cada voto é vinculado à legenda em que o parlamentar estava registrado <strong>no momento exato em que votou no plenário</strong> (extraído diretamente do painel oficial de votações da Câmara e do Senado).
+                Calculada pela média dos votos nominais de deputados filiados. Cada voto é vinculado à legenda em que o parlamentar estava registrado <strong>no momento exato em que votou no plenário</strong> (extraído diretamente do painel oficial de votações da Câmara dos Deputados).
               </p>
             </div>
           </div>
@@ -385,7 +411,7 @@ export default function FAQPage() {
               <span>Efeito em Partidos Recentes e Fusões:</span>
             </div>
             <p className="text-muted-foreground leading-relaxed text-xs">
-              Partidos criados recentemente ou resultantes de fusões, como <strong>União Brasil</strong> (DEM + PSL) e <strong>PRD</strong> (PTB + Patriota), são considerados apenas a partir de sua constituição formal. Assim, votos registrados antes da criação da nova legenda permanecem atribuídos aos partidos existentes à época da votação e não são transferidos retroativamente para o partido sucessor. Por exemplo, votos anteriores continuam vinculados a legendas como <em>DEM</em>, <em>PSL</em>, <em>PTB</em> e <em>Patriota</em>.
+              Partidos criados recentemente ou resultantes de fusões são considerados a partir de sua constituição formal. Votos registrados antes da criação da nova legenda permanecem atribuídos aos partidos existentes à época da votação.
             </p>
             <div className="font-bold text-primary flex items-center gap-2 pt-1">
               <FaBalanceScale className="w-3.5 h-3.5" />
@@ -450,54 +476,6 @@ export default function FAQPage() {
               <FaExternalLinkAlt className="w-2.5 h-2.5 ml-0.5" />
             </a>
           </p>
-        </div>
-
-        <div className="pt-4 flex flex-wrap gap-3">
-          <Button variant="hero" href="/opiniao">
-            Analisar Propostas
-          </Button>
-          <Button variant="outline" href="/afinidade">
-            Ver Afinidade
-          </Button>
-        </div>
-      </section>
-
-      {/* 8. PENSAMENTOS & REFLEXÕES */}
-      <section className="space-y-4 pt-4">
-        <div className="flex items-center gap-2 border-b border-border pb-3">
-          <FaQuoteLeft className="text-primary w-5 h-5" />
-          <h2 className="text-2xl font-bold text-foreground">
-            Pensamentos & Inspirações
-          </h2>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4">
-          <div className="p-5 rounded-2xl bg-card border border-border/80 shadow-soft flex flex-col justify-between space-y-3">
-            <p className="text-sm italic text-foreground leading-relaxed">
-              &ldquo;Julgue um homem pelas suas perguntas, não pelas suas respostas.&rdquo;
-            </p>
-            <span className="text-xs font-semibold text-primary">
-              — Voltaire
-            </span>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-card border border-border/80 shadow-soft flex flex-col justify-between space-y-3">
-            <p className="text-sm italic text-foreground leading-relaxed">
-              &ldquo;A dúvida é o princípio da sabedoria.&rdquo;
-            </p>
-            <span className="text-xs font-semibold text-primary">
-              — Aristóteles
-            </span>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-primary/5 border border-primary/20 shadow-soft flex flex-col justify-between space-y-3">
-            <p className="text-sm italic text-foreground font-medium leading-relaxed">
-              &ldquo;Nenhuma fonte é completa por si só. Busque informações diversas e verificáveis para formar sua opinião.&rdquo;
-            </p>
-            <span className="text-xs font-bold text-primary">
-              — Zancanela, Luis (LegisVisão, 2026)
-            </span>
-          </div>
         </div>
       </section>
     </main>

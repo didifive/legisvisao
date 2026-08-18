@@ -2,6 +2,8 @@ import { db } from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 import { withServerCache } from "@/lib/server-cache";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -22,69 +24,62 @@ export async function GET(
     const data = await withServerCache(cacheKey, async () => {
       // 1. Dados do Partido
       const partyRes = await db`
-        SELECT * FROM political_parties WHERE id = ${partyId} LIMIT 1;
+        SELECT * FROM parties WHERE id = ${partyId} LIMIT 1;
       `;
       if (!partyRes || partyRes.length === 0) {
         return null;
       }
       const party = partyRes[0];
 
-      // 2. Parlamentares do Partido (Deputados e Senadores com mandato ativo)
-      const politicians = await db`
+      // 2. Deputados do Partido em exercício
+      const deputies = await db`
         SELECT 
-          p.id,
-          p.name,
-          p.type,
-          p.state,
-          p.photo_url,
-          p.email,
-          p.source,
-          m.office as mandate_office
-        FROM politicians p
-        INNER JOIN politician_party_history pph 
-          ON p.id = pph.politician_id 
-          AND pph.party_id = ${partyId} 
-          AND pph.end_date IS NULL
-        LEFT JOIN mandates m
-          ON m.politician_id = p.id
-          AND (m.end_date IS NULL OR m.end_date >= CURRENT_DATE)
-        WHERE p.is_active = TRUE
-        ORDER BY p.type ASC, p.name ASC;
+          d.id,
+          d.nome,
+          d.nome_eleitoral,
+          d.sigla_partido,
+          d.sigla_uf,
+          d.url_foto,
+          d.email,
+          d.situacao,
+          d.legislatura
+        FROM deputies d
+        WHERE d.sigla_partido = ${party.sigla} AND d.is_active = TRUE
+        ORDER BY d.nome_eleitoral ASC;
       `;
 
-      // 3. Votos Nominais dos Parlamentares Filiados nos Projetos (atribuídos diretamente à legenda)
-      const politicianVotes = await db`
+      // 3. Votos Nominais dos Deputados do Partido
+      const deputyVotes = await db`
         SELECT 
-          pv.id as vote_id,
-          pv.politician_id,
-          pv.party_id,
-          pv.vote_original,
-          p.name as politician_name,
-          vs.id as vote_session_id,
-          vs.date as session_date,
-          vs.description as session_description,
-          lp.id as project_id,
-          lp.canonical_id,
-          lp.number as project_number,
-          lp.year as project_year,
-          lp.type as project_type,
-          lp.title as project_title,
-          lp.description as project_description,
-          phr.house,
-          phr.official_url
-        FROM politician_votes pv
-        JOIN politicians p ON p.id = pv.politician_id
-        JOIN vote_sessions vs ON vs.id = pv.vote_session_id
-        JOIN project_house_records phr ON phr.id = vs.house_record_id
-        JOIN legislative_projects lp ON lp.id = phr.project_id
-        WHERE pv.party_id = ${partyId}
-        ORDER BY vs.date DESC;
+          dv.id AS vote_id,
+          dv.deputado_id,
+          dv.sigla_partido,
+          dv.voto_original,
+          d.nome_eleitoral AS deputado_nome,
+          vs.id AS vote_session_id,
+          vs.data_hora AS session_date,
+          vs.descricao AS session_description,
+          p.id AS proposicao_id,
+          p.numero AS proposicao_numero,
+          p.ano AS proposicao_ano,
+          p.sigla_tipo AS proposicao_tipo,
+          p.titulo AS proposicao_titulo,
+          p.ementa AS proposicao_ementa,
+          p.url_camara
+        FROM deputy_votes dv
+        JOIN deputies d ON d.id = dv.deputado_id
+        JOIN vote_sessions vs ON vs.id = dv.votacao_id
+        JOIN propositions p ON p.id = vs.proposicao_id
+        WHERE dv.sigla_partido = ${party.sigla}
+        ORDER BY vs.data_hora DESC;
       `;
 
       return {
         party,
-        politicians,
-        politicianVotes,
+        deputies,
+        politicians: deputies, // Suporte para templates existentes
+        deputyVotes,
+        politicianVotes: deputyVotes, // Suporte para templates existentes
       };
     });
 

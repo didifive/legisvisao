@@ -101,8 +101,8 @@ export const Footer = () => {
             </div>
             <p className="text-muted-foreground text-sm leading-relaxed">
               Uma plataforma cívica, independente e transparente para ajudar cidadãos
-              a descobrirem sua afinidade política com base em votações nominais reais da
-              Câmara dos Deputados e do Senado Federal.
+              a descobrirem sua afinidade política com base em votações nominais reais de
+              Deputados Federais na Câmara dos Deputados.
             </p>
 
             {/* Card de Feedback */}

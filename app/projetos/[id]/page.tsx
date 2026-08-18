@@ -2,39 +2,32 @@ import { notFound } from "next/navigation";
 import ProjectDetailsClient from "./ProjectDetailsClient";
 import { db } from "@/lib/db";
 import type { Metadata } from "next";
-import type {
-  LegislativeProject,
-  ProjectHouseRecord,
-  LegislativePhase,
-  ProjectVoteSessionRow,
-  VoteDetailRow,
-} from "@/types/db";
+import type { Proposition, VoteSession } from "@/types/db";
 
 export async function generateMetadata(
   props: { params: Promise<{ id: string }> }
 ): Promise<Metadata> {
   const { id } = await props.params;
-  const projectId = Number(id);
-  if (isNaN(projectId)) return { title: "Projeto não encontrado" };
+  const propId = Number(id);
+  if (isNaN(propId)) return { title: "Proposição não encontrada" };
 
-  const projectRes = await db<LegislativeProject[]>`
-    SELECT title, canonical_id, type, number, year, description
-    FROM legislative_projects
-    WHERE id = ${projectId}
+  const propRes = await db<Proposition[]>`
+    SELECT id, titulo, sigla_tipo, numero, ano, ementa
+    FROM propositions
+    WHERE id = ${propId}
     LIMIT 1;
   `;
-  if (!projectRes || projectRes.length === 0) {
-    return { title: "Projeto não encontrado" };
+  if (!propRes || propRes.length === 0) {
+    return { title: "Proposição não encontrada" };
   }
 
-  const p = projectRes[0];
-  const ident = p.canonical_id || `${p.type} ${p.number}/${p.year}`;
+  const p = propRes[0];
 
   return {
-    title: `${ident} - ${p.title} | Detalhes e Votações Nominais`,
-    description: p.description
-      ? `${p.description.slice(0, 160)}...`
-      : `Veja o histórico de deliberações e os votos nominais de deputados e senadores sobre ${ident}.`,
+    title: `${p.titulo} | Detalhes e Votações Nominais na Câmara`,
+    description: p.ementa
+      ? `${p.ementa.slice(0, 160)}...`
+      : `Veja o histórico de deliberações e os votos nominais dos deputados federais sobre ${p.titulo}.`,
   };
 }
 
@@ -42,95 +35,65 @@ export default async function ProjectPage(
   props: { params: Promise<{ id: string }> }
 ) {
   const { id } = await props.params;
-  const projectId = Number(id);
+  const propId = Number(id);
 
-  if (isNaN(projectId)) {
+  if (isNaN(propId)) {
     notFound();
   }
 
-  // 1. Buscar projeto canônico
-  const projectsResult = await db<LegislativeProject[]>`
-    SELECT * FROM legislative_projects WHERE id = ${projectId} LIMIT 1;
+  // 1. Buscar proposição
+  const propResult = await db<Proposition[]>`
+    SELECT * FROM propositions WHERE id = ${propId} LIMIT 1;
   `;
 
-  if (!projectsResult || projectsResult.length === 0) {
+  if (!propResult || propResult.length === 0) {
     notFound();
   }
 
-  const project = projectsResult[0];
+  const proposition = propResult[0];
 
-  // 2. Buscar registros por casa legislativa (Câmara / Senado)
-  const houseRecords = await db<ProjectHouseRecord[]>`
-    SELECT * FROM project_house_records
-    WHERE project_id = ${projectId}
-    ORDER BY house ASC;
+  // 2. Buscar sessões de votação
+  const sessions = await db<VoteSession[]>`
+    SELECT * FROM vote_sessions
+    WHERE proposicao_id = ${propId}
+    ORDER BY data_hora DESC;
   `;
 
-  const houseRecordIds = houseRecords.map((r) => r.id);
+  const sessionIds = sessions.map((s) => s.id);
 
-  // 3. Buscar fases legislativas
-  let phases: LegislativePhase[] = [];
-  if (houseRecordIds.length > 0) {
-    phases = await db<LegislativePhase[]>`
-      SELECT * FROM legislative_phases
-      WHERE house_record_id = ANY(${houseRecordIds})
-      ORDER BY phase_order ASC;
-    `;
-  }
+  // 3. Buscar votos nominais dos deputados
+  let votes: Array<{
+    id: number;
+    votacao_id: string;
+    deputado_id: number;
+    sigla_partido: string;
+    voto_original: string;
+    deputado_nome: string;
+    deputado_uf: string;
+    deputado_foto: string | null;
+  }> = [];
 
-  // 4. Buscar sessões de votação
-  let sessions: ProjectVoteSessionRow[] = [];
-  let votes: VoteDetailRow[] = [];
-
-  if (houseRecordIds.length > 0) {
-    sessions = await db<ProjectVoteSessionRow[]>`
+  if (sessionIds.length > 0) {
+    votes = await db`
       SELECT 
-        vs.id,
-        vs.house_record_id,
-        vs.phase_id,
-        vs.external_vote_id,
-        vs.date,
-        vs.description,
-        vs.result,
-        phr.house,
-        lp.phase_name
-      FROM vote_sessions vs
-      JOIN project_house_records phr ON phr.id = vs.house_record_id
-      LEFT JOIN legislative_phases lp ON lp.id = vs.phase_id
-      WHERE vs.house_record_id = ANY(${houseRecordIds})
-      ORDER BY vs.date DESC;
+        dv.id,
+        dv.votacao_id,
+        dv.deputado_id,
+        dv.sigla_partido,
+        dv.voto_original,
+        d.nome_eleitoral AS deputado_nome,
+        d.sigla_uf AS deputado_uf,
+        d.url_foto AS deputado_foto
+      FROM deputy_votes dv
+      JOIN deputies d ON d.id = dv.deputado_id
+      WHERE dv.votacao_id = ANY(${sessionIds})
+      ORDER BY d.nome_eleitoral ASC;
     `;
-
-    if (sessions.length > 0) {
-      const sessionIds = sessions.map((s) => s.id);
-
-      // 5. Buscar votos nominais
-      votes = await db<VoteDetailRow[]>`
-        SELECT 
-          pv.id,
-          pv.vote_session_id,
-          pv.politician_id,
-          pv.party_id,
-          pv.vote_original,
-          p.name AS politician_name,
-          p.type AS politician_type,
-          p.state AS politician_state,
-          part.sigla AS party_sigla
-        FROM politician_votes pv
-        JOIN vote_sessions vs ON vs.id = pv.vote_session_id
-        JOIN politicians p ON pv.politician_id = p.id
-        LEFT JOIN political_parties part ON part.id = pv.party_id
-        WHERE pv.vote_session_id = ANY(${sessionIds})
-        ORDER BY p.name ASC;
-      `;
-    }
   }
 
   return (
     <ProjectDetailsClient
-      project={project}
-      houseRecords={houseRecords}
-      phases={phases}
+      proposition={proposition}
       sessions={sessions}
       votes={votes}
     />

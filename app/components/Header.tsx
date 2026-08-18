@@ -198,7 +198,7 @@ export const Header = () => {
                   LegisVisão
                 </span>
                 <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-                  Congresso Nacional
+                  Câmara dos Deputados
                 </span>
               </div>
             </Link>

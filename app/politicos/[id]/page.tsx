@@ -2,52 +2,40 @@ import { notFound } from "next/navigation";
 import PoliticianDetailsClient from "./PoliticianDetailsClient";
 import { db } from "@/lib/db";
 import type { Metadata } from "next";
-import type {
-  PoliticianDetail,
-  Mandate,
-  PartyHistoryRow,
-  PoliticianVoteRow,
-} from "@/types/db";
+import type { Deputy, DeputyVoteDetail } from "@/types/db";
 
 export async function generateMetadata(
   props: { params: Promise<{ id: string }> }
 ): Promise<Metadata> {
   const { id } = await props.params;
-  const politicianId = Number(id);
-  if (isNaN(politicianId)) return { title: "Parlamentar não encontrado" };
+  const deputyId = Number(id);
+  if (isNaN(deputyId)) return { title: "Deputado não encontrado" };
 
-  const politicianResult = await db<PoliticianDetail[]>`
+  const deputyResult = await db<Array<Deputy & { party_name: string | null }>>`
     SELECT 
-      p.id,
-      p.source,
-      p.external_id,
-      p.name,
-      p.type,
-      p.state,
-      p.photo_url,
-      p.email,
-      part.sigla AS party_sigla,
-      part.nome AS party_name
-    FROM politicians p
-    LEFT JOIN politician_party_history pph
-      ON p.id = pph.politician_id
-     AND pph.end_date IS NULL
-    LEFT JOIN political_parties part
-      ON part.id = pph.party_id
-    WHERE p.id = ${politicianId}
+      d.id,
+      d.nome,
+      d.nome_eleitoral,
+      d.sigla_partido,
+      d.sigla_uf,
+      d.url_foto,
+      d.email,
+      p.nome AS party_name
+    FROM deputies d
+    LEFT JOIN parties p ON p.sigla = d.sigla_partido
+    WHERE d.id = ${deputyId}
     LIMIT 1;
   `;
 
-  if (!politicianResult || politicianResult.length === 0) {
-    return { title: "Parlamentar não encontrado" };
+  if (!deputyResult || deputyResult.length === 0) {
+    return { title: "Deputado não encontrado" };
   }
 
-  const pol = politicianResult[0];
-  const cargo = pol.type === "SENATOR" ? "Senador" : "Deputado Federal";
+  const dep = deputyResult[0];
 
   return {
-    title: `${pol.name} (${cargo} - ${pol.state}) | Votos e Mandatos`,
-    description: `Consulte o histórico oficial de votações nominais e mandatos de ${pol.name} (${pol.party_sigla || ""}) no Congresso Nacional.`,
+    title: `${dep.nome_eleitoral || dep.nome} (Deputado Federal - ${dep.sigla_uf}) | Votos e Posicionamentos`,
+    description: `Consulte o histórico oficial de votações nominais de ${dep.nome_eleitoral || dep.nome} (${dep.sigla_partido}) na Câmara dos Deputados.`,
   };
 }
 
@@ -55,98 +43,61 @@ export default async function PoliticianPage(
   props: { params: Promise<{ id: string }> }
 ) {
   const { id } = await props.params;
-  const politicianId = Number(id);
+  const deputyId = Number(id);
 
-  if (isNaN(politicianId)) {
+  if (isNaN(deputyId)) {
     notFound();
   }
 
-  // 1. Dados cadastrais do parlamentar
-  const politicianResult = await db<PoliticianDetail[]>`
+  // 1. Dados cadastrais do deputado
+  const deputyResult = await db<Array<Deputy & { party_name: string | null }>>`
     SELECT 
-      p.id,
-      p.source,
-      p.external_id,
-      p.name,
-      p.type,
-      p.state,
-      p.photo_url,
-      p.email,
-      part.sigla AS party_sigla,
-      part.nome AS party_name
-    FROM politicians p
-    LEFT JOIN politician_party_history pph
-      ON p.id = pph.politician_id
-     AND pph.end_date IS NULL
-    LEFT JOIN political_parties part
-      ON part.id = pph.party_id
-    WHERE p.id = ${politicianId}
+      d.id,
+      d.nome,
+      d.nome_eleitoral,
+      d.sigla_partido,
+      d.sigla_uf,
+      d.url_foto,
+      d.email,
+      d.situacao,
+      d.legislatura,
+      d.is_active,
+      p.nome AS party_name
+    FROM deputies d
+    LEFT JOIN parties p ON p.sigla = d.sigla_partido
+    WHERE d.id = ${deputyId}
     LIMIT 1;
   `;
 
-  if (!politicianResult || politicianResult.length === 0) {
+  if (!deputyResult || deputyResult.length === 0) {
     notFound();
   }
 
-  const politician = politicianResult[0];
+  const deputy = deputyResult[0];
 
-  // 2. Mandatos
-  const mandates = await db<Mandate[]>`
-    SELECT id, politician_id, office, house, start_date, end_date, legislature_id
-    FROM mandates
-    WHERE politician_id = ${politicianId}
-    ORDER BY start_date DESC;
-  `;
-
-  // 3. Histórico partidário
-  const partyHistory = await db<PartyHistoryRow[]>`
+  // 2. Histórico de votos nominais registrados na Câmara
+  const votes = await db<DeputyVoteDetail[]>`
     SELECT 
-      pph.id,
-      pph.start_date,
-      pph.end_date,
-      part.sigla AS party_sigla,
-      part.nome AS party_name
-    FROM politician_party_history pph
-    JOIN political_parties part
-      ON part.id = pph.party_id
-    WHERE pph.politician_id = ${politicianId}
-    ORDER BY pph.start_date DESC;
-  `;
-
-  // 4. Histórico de votos nominais registrados (com partido no momento da votação)
-  const votes = await db<PoliticianVoteRow[]>`
-    SELECT 
-      pv.id AS vote_id,
-      pv.party_id,
-      pv.vote_original,
-      vs.date AS vote_date,
-      vs.description AS vote_description,
-      vs.result AS vote_result,
-      lp.id AS project_id,
-      lp.canonical_id,
-      lp.title AS project_title,
-      lp.description AS project_description,
-      phr.house,
-      phr.official_url,
-      part.sigla AS party_sigla
-    FROM politician_votes pv
-    JOIN vote_sessions vs
-      ON vs.id = pv.vote_session_id
-    JOIN project_house_records phr
-      ON phr.id = vs.house_record_id
-    JOIN legislative_projects lp
-      ON lp.id = phr.project_id
-    LEFT JOIN political_parties part
-      ON part.id = pv.party_id
-    WHERE pv.politician_id = ${politicianId}
-    ORDER BY vs.date DESC;
+      dv.id AS vote_id,
+      dv.votacao_id,
+      dv.voto_original,
+      vs.data_hora,
+      vs.resultado,
+      p.id AS proposicao_id,
+      p.titulo,
+      p.ementa,
+      p.tema,
+      p.url_camara
+    FROM deputy_votes dv
+    JOIN vote_sessions vs ON vs.id = dv.votacao_id
+    JOIN propositions p ON p.id = vs.proposicao_id
+    WHERE dv.deputado_id = ${deputyId}
+    ORDER BY vs.data_hora DESC;
   `;
 
   return (
     <PoliticianDetailsClient
-      politician={politician}
-      mandates={mandates}
-      partyHistory={partyHistory}
+      deputy={deputy}
       votes={votes}
     />
   );

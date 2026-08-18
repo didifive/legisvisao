@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { cachedFetch } from "@/lib/cache";
-import type { ProjectWithLastVote } from "@/types/db";
+import type { PropositionWithVoteSession } from "@/types/db";
 import { Button } from "@/app/components/ui/Button";
 import {
   FaCheck,
@@ -46,7 +46,7 @@ function shuffleDeterministic<T>(array: T[], seed: number): T[] {
 }
 
 export default function VoteForm() {
-  const [projects, setProjects] = useState<ProjectWithLastVote[]>([]);
+  const [propositions, setPropositions] = useState<PropositionWithVoteSession[]>([]);
   const [answers, setAnswers] = useState<StoredAnswers>({});
   const [search, setSearch] = useState("");
   const [limit, setLimit] = useState(10);
@@ -57,24 +57,24 @@ export default function VoteForm() {
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Carregar projetos + opiniões existentes
+  // Carregar proposições + opiniões existentes
   useEffect(() => {
     let mounted = true;
 
     async function load() {
       try {
-        const projectsData = await cachedFetch("projects", () =>
-          fetch("/api/projects").then((r) => r.json())
+        const propsData = await cachedFetch("propositions", () =>
+          fetch("/api/propositions").then((r) => r.json())
         );
 
         const savedAnswers = getStoredAnswers();
 
         if (!mounted) return;
 
-        setProjects(projectsData.projects || []);
+        setPropositions(propsData.propositions || propsData.projects || []);
         setAnswers(savedAnswers);
       } catch (err) {
-        console.error("Erro ao carregar projetos:", err);
+        console.error("Erro ao carregar proposições:", err);
       } finally {
         if (mounted) setLoading(false);
       }
@@ -105,25 +105,25 @@ export default function VoteForm() {
     }
   }
 
-  // Lista dinâmica de situações disponíveis nos projetos
+  // Lista dinâmica de situações disponíveis nas proposições
   const availableStatus = useMemo(() => {
     const statusSet = new Set<string>();
-    for (const p of projects) {
-      const st = p.current_status || "Em Tramitação";
+    for (const p of propositions) {
+      const st = p.ultimo_status || "Em Tramitação";
       if (st) statusSet.add(st);
     }
     return Array.from(statusSet).sort();
-  }, [projects]);
+  }, [propositions]);
 
   // Lista de anos disponíveis
   const availableYears = useMemo(() => {
     const yearsSet = new Set<number>();
-    for (const p of projects) {
-      const year = p.year;
+    for (const p of propositions) {
+      const year = p.ano;
       if (year && !Number.isNaN(year)) yearsSet.add(year);
     }
     return Array.from(yearsSet).sort((a, b) => b - a);
-  }, [projects]);
+  }, [propositions]);
 
   function toggleStatus(st: string) {
     setSelectedStatus((prev) =>
@@ -143,46 +143,46 @@ export default function VoteForm() {
     setSearch("");
   }
 
-  const shuffledProjects = useMemo(() => {
-    if (!shuffle || seed === null) return projects;
-    return shuffleDeterministic(projects, seed);
-  }, [shuffle, seed, projects]);
+  const shuffledPropositions = useMemo(() => {
+    if (!shuffle || seed === null) return propositions;
+    return shuffleDeterministic(propositions, seed);
+  }, [shuffle, seed, propositions]);
 
-  const unvotedProjects = useMemo(() => {
-    return shuffledProjects.filter((p) => !answers[p.id]);
-  }, [shuffledProjects, answers]);
+  const unvotedPropositions = useMemo(() => {
+    return shuffledPropositions.filter((p) => !answers[p.id]);
+  }, [shuffledPropositions, answers]);
 
   const filtered = useMemo(() => {
-    let list = [...unvotedProjects];
+    let list = [...unvotedPropositions];
 
     // Filtro por busca de texto
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
         (p) =>
-          p.title.toLowerCase().includes(q) ||
-          (p.description && p.description.toLowerCase().includes(q)) ||
-          (p.canonical_id && p.canonical_id.toLowerCase().includes(q))
+          p.titulo.toLowerCase().includes(q) ||
+          (p.ementa && p.ementa.toLowerCase().includes(q)) ||
+          (p.tema && p.tema.toLowerCase().includes(q))
       );
     }
 
     // Filtro por situação
     if (selectedStatus.length > 0) {
       list = list.filter((p) => {
-        const st = p.current_status || "Em Tramitação";
+        const st = p.ultimo_status || "Em Tramitação";
         return selectedStatus.includes(st);
       });
     }
 
     // Filtro por anos
     if (selectedYears.length > 0) {
-      list = list.filter((p) => selectedYears.includes(p.year));
+      list = list.filter((p) => selectedYears.includes(p.ano));
     }
 
     if (!shuffle) {
       list.sort((a, b) => {
-        const da = (p: ProjectWithLastVote) => {
-          const dateStr = p.last_vote_date || p.last_event_date || p.last_updated_at;
+        const da = (p: PropositionWithVoteSession) => {
+          const dateStr = p.vote_session_date || p.data_apresentacao;
           return dateStr ? new Date(dateStr).getTime() : 0;
         };
         return da(b) - da(a);
@@ -190,10 +190,10 @@ export default function VoteForm() {
     }
 
     return list.slice(0, limit);
-  }, [unvotedProjects, search, limit, shuffle, selectedStatus, selectedYears]);
+  }, [unvotedPropositions, search, limit, shuffle, selectedStatus, selectedYears]);
 
-  function handleVote(projectId: number, opinion: "CONCORDO" | "DISCORDO") {
-    const newAnswers = { ...answers, [projectId]: opinion };
+  function handleVote(propId: number, opinion: "CONCORDO" | "DISCORDO") {
+    const newAnswers = { ...answers, [propId]: opinion };
     setAnswers(newAnswers);
     saveStoredAnswers(newAnswers);
   }
@@ -205,12 +205,12 @@ export default function VoteForm() {
     return (
       <div className="py-12 text-center text-muted-foreground flex flex-col items-center gap-3">
         <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
-        <span>Carregando propostas legislativas com deliberação oficial...</span>
+        <span>Carregando propostas legislativas da Câmara dos Deputados...</span>
       </div>
     );
   }
 
-  if (projects.length === 0) {
+  if (propositions.length === 0) {
     return (
       <div className="p-8 sm:p-10 rounded-2xl bg-card border border-border text-center space-y-5 shadow-soft max-w-2xl mx-auto my-6 animate-fade-in">
         <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border border-amber-500/20">
@@ -221,7 +221,7 @@ export default function VoteForm() {
             Nenhuma proposta de lei disponível no momento
           </h3>
           <p className="text-sm text-muted-foreground leading-relaxed max-w-md mx-auto">
-            Os dados oficiais de proposições legislativas e votações nominais não foram carregados ou ainda não foram sincronizados neste ambiente.
+            Os dados oficiais de proposições e votações da Câmara dos Deputados ainda não foram sincronizados.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
@@ -433,7 +433,7 @@ export default function VoteForm() {
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
             {activeFiltersCount > 0
               ? "Experimente selecionar outros anos, situações ou limpar os filtros de busca."
-              : "Você pode revisar suas opiniões registradas ou conferir o ranking de afinidade com os parlamentares e partidos."}
+              : "Você pode revisar suas opiniões registradas ou conferir o ranking de afinidade com os deputados e partidos."}
           </p>
           <div className="flex justify-center gap-3 pt-2">
             {activeFiltersCount > 0 && (
@@ -449,19 +449,10 @@ export default function VoteForm() {
       ) : (
         <div className="space-y-4">
           {filtered.map((p) => {
-            const situacaoAtual = p.current_status || "Em Tramitação";
-            const lastVoteDate = p.last_vote_date
-              ? new Date(p.last_vote_date).toLocaleDateString("pt-BR")
+            const situacaoAtual = p.ultimo_status || "Em Tramitação";
+            const lastVoteDate = p.vote_session_date
+              ? new Date(p.vote_session_date).toLocaleDateString("pt-BR")
               : null;
-            function formatHouses(raw?: string | null): string {
-              if (!raw) return "Congresso Nacional";
-              const up = raw.toUpperCase();
-              if (up.includes("CAMARA") && up.includes("SENADO")) return "Bicameral (Câmara & Senado)";
-              if (up.includes("SENADO")) return "Senado Federal";
-              if (up.includes("CAMARA")) return "Câmara dos Deputados";
-              return raw;
-            }
-            const houses = formatHouses(p.houses);
             const isAprovado = situacaoAtual.toLowerCase().includes("aprovad") || situacaoAtual.toLowerCase().includes("lei") || situacaoAtual.toLowerCase().includes("norma");
             const isEncerrado = situacaoAtual.toLowerCase().includes("arquivad") || situacaoAtual.toLowerCase().includes("rejeitad") || situacaoAtual.toLowerCase().includes("encerrad");
 
@@ -478,10 +469,10 @@ export default function VoteForm() {
                     </span>
                     <div>
                       <h3 className="font-extrabold text-foreground text-base sm:text-lg">
-                        {p.title}
+                        {p.titulo}
                       </h3>
                       <span className="text-xs text-muted-foreground">
-                        {p.canonical_id || `${p.type} nº ${p.number}/${p.year}`}
+                        {p.sigla_tipo} nº {p.numero}/{p.ano}
                       </span>
                     </div>
                   </div>
@@ -490,7 +481,7 @@ export default function VoteForm() {
                     {/* Badge de Casa Legislativa */}
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 font-bold">
                       <FaLandmark className="w-3 h-3" />
-                      <span>{houses}</span>
+                      <span>Câmara dos Deputados</span>
                     </span>
 
                     {/* Badge de Situação */}
@@ -519,7 +510,7 @@ export default function VoteForm() {
 
                 {/* Ementa / Descrição */}
                 <p className="text-sm text-foreground/90 leading-relaxed font-normal">
-                  {p.description}
+                  {p.ementa_detalhada || p.ementa}
                 </p>
 
                 {/* Acesso a Detalhes e Fontes Oficiais */}

@@ -1,7 +1,7 @@
 // ====================================================================
-// LegisVisão - Módulo de Match e Afinidade Política
+// LegisVisão - Módulo de Afinidade e Posicionamentos (Deputados Federais)
 // ====================================================================
-export * from "./attachProjectId";
+export * from "./attachPropositionId";
 export * from "./calculatePoliticianMatch";
 export * from "./calculatePartyMatch";
 export * from "./normalizeVotes";

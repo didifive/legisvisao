@@ -12,12 +12,12 @@ import {
   FaGlobeAmericas,
   FaBalanceScale,
 } from "react-icons/fa";
-import type { PoliticalParty } from "@/types/db";
-import type { PoliticianMatch, PartyMatchResult } from "@/lib/match/types";
+import type { Party } from "@/types/db";
+import type { DeputyMatch, PartyMatchResult } from "@/lib/match/types";
 
 export type ResultsShape = {
-  politicians: PoliticianMatch[];
-  parties: Array<PoliticalParty & { match: PartyMatchResult }>;
+  deputies: DeputyMatch[];
+  parties: Array<Party & { match: PartyMatchResult }>;
 } | null;
 
 export interface MatchResultsProps {
@@ -28,7 +28,7 @@ export interface MatchResultsProps {
   onStateChange: (state: string | null) => void;
 }
 
-interface NormalizedParty extends PoliticalParty {
+interface NormalizedParty extends Party {
   match: PartyMatchResult;
   adherence: number | null;
 }
@@ -41,14 +41,6 @@ function clamp01(value: number | null | undefined): number | null {
   return Math.max(0, Math.min(1, num));
 }
 
-function normalizePoliticianType(type?: string | null): "DEPUTADO" | "SENADOR" | null {
-  if (!type) return null;
-  const upper = type.toString().toUpperCase();
-  if (upper.includes("DEPUT")) return "DEPUTADO";
-  if (upper.includes("SENAT") || upper.includes("SENAD")) return "SENADOR";
-  return null;
-}
-
 function getProgressGradientClass(pct: number | null): string {
   if (pct === null) return "bg-slate-400";
   if (pct >= 70) return "bg-gradient-to-r from-emerald-500 to-emerald-400";
@@ -57,7 +49,8 @@ function getProgressGradientClass(pct: number | null): string {
 }
 
 function sortRankingEntities<T extends {
-  name?: string;
+  nome?: string;
+  nome_eleitoral?: string;
   sigla?: string;
   adherence: number | null;
   matches_count?: number;
@@ -68,18 +61,16 @@ function sortRankingEntities<T extends {
   const adhB = b.adherence ?? b.match?.adherence ?? -1;
   if (adhB !== adhA) return adhB - adhA;
 
-  // Critério de desempate 1: Maior volume de votos considerados (maior amostragem/relevância estatística)
   const compA = a.comparable_count ?? a.match?.comparable_count ?? 0;
   const compB = b.comparable_count ?? b.match?.comparable_count ?? 0;
   if (compB !== compA) return compB - compA;
 
-  // Critério de desempate 2: Maior número de concordâncias absolutas
   const matchesA = a.matches_count ?? a.match?.matches_count ?? 0;
   const matchesB = b.matches_count ?? b.match?.matches_count ?? 0;
   if (matchesB !== matchesA) return matchesB - matchesA;
 
-  const labelA = (a.sigla || a.name || "").toString();
-  const labelB = (b.sigla || b.name || "").toString();
+  const labelA = (a.sigla || a.nome_eleitoral || a.nome || "").toString();
+  const labelB = (b.sigla || b.nome_eleitoral || b.nome || "").toString();
   return labelA.localeCompare(labelB);
 }
 
@@ -87,7 +78,7 @@ function LoadingState() {
   return (
     <div className="py-16 text-center text-muted-foreground flex flex-col items-center gap-3">
       <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
-      <span>Calculando sua afinidade política com dados oficiais...</span>
+      <span>Calculando sua afinidade com os Deputados Federais...</span>
     </div>
   );
 }
@@ -118,22 +109,19 @@ interface PartyCardProps {
 function PartyCard({ party, rank }: PartyCardProps) {
   const pct = party.adherence === null ? null : Math.round(party.adherence * 100);
   const isTop3 = rank <= 3 && pct !== null && pct > 0;
-  const isInactive = (party.situacao || "").toUpperCase() === "INATIVO";
   const totalComp = party.match?.comparable_count ?? 0;
   const totalMatches = party.match?.matches_count ?? 0;
 
   return (
     <Link
       href={`/partidos/${party.id}`}
-      className={`group block p-4 sm:p-5 rounded-xl bg-card border ${
-        isInactive ? "border-border/60 opacity-90" : "border-border hover:border-primary/50"
-      } shadow-soft hover:shadow-medium transition-smooth`}
+      className="group block p-4 sm:p-5 rounded-xl bg-card border border-border hover:border-primary/50 shadow-soft hover:shadow-medium transition-smooth"
     >
       <div className="flex items-center justify-between gap-4 mb-2.5">
         <div className="flex items-center gap-3">
           <span
             className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-              isTop3 && !isInactive
+              isTop3
                 ? "bg-primary text-white shadow-soft"
                 : "bg-muted text-muted-foreground"
             }`}
@@ -146,20 +134,15 @@ function PartyCard({ party, rank }: PartyCardProps) {
               <span className="text-xs font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded">
                 {party.sigla}
               </span>
-              {isInactive && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
-                  Legenda Inativa / Histórica
-                </span>
-              )}
             </h3>
             <span className="text-xs text-muted-foreground block mt-0.5">
               {totalComp > 0 ? (
                 <>
-                  Baseado em <strong>{totalComp}</strong> {totalComp === 1 ? "voto de filiado" : "votos de filiados"}{" "}
+                  Baseado em <strong>{totalComp}</strong> {totalComp === 1 ? "voto de deputado filiado" : "votos de deputados filiados"}{" "}
                   <span className="text-primary font-semibold">({totalMatches} {totalMatches === 1 ? "concordância" : "concordâncias"})</span>
                 </>
               ) : (
-                "Sem votos nominais registrados pelos filiados nestas propostas"
+                "Sem votos nominais registrados pelos deputados filiados nestas propostas"
               )}
             </span>
           </div>
@@ -183,33 +166,31 @@ function PartyCard({ party, rank }: PartyCardProps) {
   );
 }
 
-interface PoliticianCardProps {
-  politician: PoliticianMatch;
-  isSenator?: boolean;
+interface DeputyCardProps {
+  deputy: DeputyMatch;
 }
 
-function PoliticianCard({ politician, isSenator = false }: PoliticianCardProps) {
-  const pct = politician.adherence === null ? null : Math.round(politician.adherence * 100);
-  const progressBg = isSenator ? "bg-secondary" : "bg-primary";
-  const compCount = politician.comparable_count ?? 0;
-  const matchCount = politician.matches_count ?? 0;
+function DeputyCard({ deputy }: DeputyCardProps) {
+  const pct = deputy.adherence === null ? null : Math.round(deputy.adherence * 100);
+  const compCount = deputy.comparable_count ?? 0;
+  const matchCount = deputy.matches_count ?? 0;
 
   return (
     <Link
-      href={`/politicos/${politician.id}`}
+      href={`/politicos/${deputy.id}`}
       className="p-4 rounded-xl bg-card border border-border shadow-soft flex items-center justify-between gap-4 transition-smooth hover:border-primary/50 group block"
     >
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <h3 className="font-bold text-foreground text-sm truncate group-hover:text-primary transition-smooth" title={politician.name}>
-            {politician.name}
+          <h3 className="font-bold text-foreground text-sm truncate group-hover:text-primary transition-smooth" title={deputy.nome_eleitoral || deputy.nome}>
+            {deputy.nome_eleitoral || deputy.nome}
           </h3>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mt-1">
-          <span className="font-semibold text-primary">{politician.state}</span>
+          <span className="font-semibold text-primary">{deputy.sigla_uf}</span>
           <span>•</span>
-          <span>{isSenator ? "Senador" : politician.party_sigla || "Dep. Federal"}</span>
+          <span>{deputy.sigla_partido || "Dep. Federal"}</span>
           <span>•</span>
           <span className="text-[11px] text-muted-foreground">
             <strong>{compCount}</strong> {compCount === 1 ? "voto considerado" : "votos considerados"} ({matchCount} {matchCount === 1 ? "concordância" : "concordâncias"})
@@ -220,7 +201,7 @@ function PoliticianCard({ politician, isSenator = false }: PoliticianCardProps) 
       <div className="flex items-center gap-3 shrink-0">
         <div className="w-24 bg-muted h-2.5 rounded-full overflow-hidden border border-border/40">
           <div
-            className={`${progressBg} h-full rounded-full transition-smooth`}
+            className="bg-primary h-full rounded-full transition-smooth"
             style={{ width: `${pct ?? 0}%` }}
           />
         </div>
@@ -251,26 +232,20 @@ export default function MatchResults({
       .sort(sortRankingEntities);
   }, [results.parties]);
 
-  const { deputies, senators } = useMemo(() => {
-    const raw: PoliticianMatch[] = (results.politicians || []).map((pol) => {
-      const normalizedType = normalizePoliticianType(pol.type ?? (pol as unknown as Record<string, string>)?.politician_type ?? null) ?? "DEPUTADO";
-      return {
-        ...pol,
-        type: normalizedType,
-        adherence: clamp01(pol.adherence ?? null),
-      };
-    });
+  const validDeputies: DeputyMatch[] = useMemo(() => {
+    const raw: DeputyMatch[] = (results.deputies || []).map((dep) => ({
+      ...dep,
+      adherence: clamp01(dep.adherence ?? null),
+    }));
 
-    const validDeputies = raw
-      .filter((p) => p.type === "DEPUTADO" && (p.comparable_count ?? 0) > 0 && p.adherence !== null)
+    const filtered = stateFilter
+      ? raw.filter((d) => (d.sigla_uf || "").toUpperCase() === stateFilter.toUpperCase())
+      : raw;
+
+    return filtered
+      .filter((p) => (p.comparable_count ?? 0) > 0 && p.adherence !== null)
       .sort(sortRankingEntities);
-
-    const validSenators = raw
-      .filter((p) => p.type === "SENADOR" && (p.comparable_count ?? 0) > 0 && p.adherence !== null)
-      .sort(sortRankingEntities);
-
-    return { deputies: validDeputies, senators: validSenators };
-  }, [results.politicians]);
+  }, [results.deputies, stateFilter]);
 
   return (
     <div className="space-y-12">
@@ -282,7 +257,7 @@ export default function MatchResults({
             <span>Aviso de Transparência Legislativa:</span>
           </div>
           <p className="text-muted-foreground text-xs leading-relaxed">
-            <strong>Esta ferramenta não recomenda representantes. Apenas compara dados públicos.</strong> Os índices apresentados decorrem do cruzamento determinístico das suas opiniões com as votações nominais oficiais registradas na Câmara dos Deputados e no Senado Federal.
+            <strong>Esta ferramenta não recomenda votos nem candidatos. Apenas compara dados públicos.</strong> Os índices apresentados decorrem do cruzamento determinístico das suas opiniões com as votações nominais oficiais registradas pelos Deputados Federais na Câmara dos Deputados.
           </p>
         </div>
       </div>
@@ -298,12 +273,12 @@ export default function MatchResults({
 
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-semibold">
               <FaGlobeAmericas className="w-3 h-3" />
-              <span>Média dos Parlamentares Filiados</span>
+              <span>Média dos Deputados Federais Filiados</span>
             </span>
           </div>
 
           <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-            A afinidade partidária reflete a média dos votos nominais individuais de todos os deputados federais e senadores filiados à legenda nas propostas avaliadas.
+            A afinidade partidária reflete a média dos votos nominais individuais de todos os deputados federais filiados à legenda nas propostas avaliadas.
           </p>
         </div>
 
@@ -326,11 +301,11 @@ export default function MatchResults({
           <div className="flex items-center gap-2">
             <FaMapMarkerAlt className="text-primary w-4 h-4" />
             <h3 className="font-bold text-foreground text-base">
-              Filtrar Parlamentares por Estado (UF)
+              Filtrar Deputados Federais por Estado (UF)
             </h3>
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            Selecione seu estado para ver a afinidade com os deputados federais e senadores da bancada estadual.
+            Selecione seu estado para ver a afinidade com os deputados federais da sua bancada estadual.
           </p>
         </div>
 
@@ -340,7 +315,7 @@ export default function MatchResults({
             onChange={(e) => onStateChange(e.target.value || null)}
             className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground font-semibold focus:ring-2 focus:ring-primary/20 outline-none w-full sm:w-48 cursor-pointer shadow-soft"
           >
-            <option value="">Selecione um Estado...</option>
+            <option value="">Todos os Estados</option>
             {availableStates.map((state) => (
               <option key={state} value={state}>
                 {state}
@@ -350,72 +325,30 @@ export default function MatchResults({
         </div>
       </section>
 
-      {/* 3. PARLAMENTARES POR ESTADO */}
-      {!stateFilter ? (
-        <div className="p-8 rounded-2xl bg-muted/40 border border-dashed border-border text-center space-y-3">
-          <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto">
-            <FaInfoCircle className="w-6 h-6" />
-          </div>
-          <h3 className="text-base sm:text-lg font-bold text-foreground">
-            Escolha um estado acima para ver seus parlamentares
-          </h3>
-          <p className="text-xs sm:text-sm text-muted-foreground max-w-md mx-auto">
-            Selecione uma UF para listar os deputados federais e senadores que registraram votos nominais nas matérias selecionadas.
+      {/* 3. DEPUTADOS FEDERAIS */}
+      <section className="space-y-4">
+        <div className="border-b border-border pb-3">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <FaUserTie className="text-secondary w-5 h-5" />
+            Deputados Federais {stateFilter ? `(${stateFilter})` : ""}
+          </h2>
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            Parlamentares da Câmara dos Deputados com votações nominais registradas nas propostas analisadas.
           </p>
         </div>
-      ) : (
-        <div className="space-y-10">
-          {/* DEPUTADOS FEDERAIS */}
-          <section className="space-y-4">
-            <div className="border-b border-border pb-3">
-              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                <FaUserTie className="text-secondary w-5 h-5" />
-                Deputados Federais ({stateFilter})
-              </h2>
-              <p className="text-xs sm:text-sm text-muted-foreground">
-                Parlamentares da Câmara dos Deputados com votações nominais registradas nas propostas analisadas.
-              </p>
-            </div>
 
-            {deputies.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                Nenhum deputado com votações nominais comparáveis encontradas para {stateFilter}.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {deputies.map((deputy) => (
-                  <PoliticianCard key={deputy.id} politician={deputy} isSenator={false} />
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* SENADORES */}
-          <section className="space-y-4">
-            <div className="border-b border-border pb-3">
-              <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                <FaVoteYea className="text-primary w-5 h-5" />
-                Senadores ({stateFilter})
-              </h2>
-              <p className="text-xs sm:text-sm text-muted-foreground">
-                Parlamentares do Senado Federal com votações nominais registradas nas matérias analisadas.
-              </p>
-            </div>
-
-            {senators.length === 0 ? (
-              <p className="text-muted-foreground text-sm">
-                Nenhum senador com votações nominais comparáveis encontradas para {stateFilter}.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {senators.map((senator) => (
-                  <PoliticianCard key={senator.id} politician={senator} isSenator={true} />
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
-      )}
+        {validDeputies.length === 0 ? (
+          <p className="text-muted-foreground text-sm">
+            Nenhum deputado com votações nominais comparáveis encontrado para os filtros atuais.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {validDeputies.map((deputy) => (
+              <DeputyCard key={deputy.id} deputy={deputy} />
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

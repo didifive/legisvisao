@@ -1,40 +1,33 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import MatchResults from "@/app/afinidade/components/MatchResults";
 import { Button } from "@/app/components/ui/Button";
 import { FaExclamationTriangle, FaSyncAlt } from "react-icons/fa";
 import { useSystemStatus } from "@/app/components/SystemStatusProvider";
 import type {
-  VoteDetailRow,
-  PoliticalParty,
-  PoliticianSearchResult,
+  Party,
+  DeputySearchResult,
 } from "@/types/db";
 import type {
-  VoteDetailWithProject,
-  PoliticianMatch,
+  DeputyMatch,
   PartyMatchResult,
   UserVotes,
+  VoteDetailWithProposition,
 } from "@/lib/match/types";
 import {
-  attachProjectIdToVotes,
+  attachPropositionIdToVotes,
   calculatePoliticianMatch,
   calculatePartyMatch,
 } from "@/lib/match";
 import { getStoredAnswers } from "@/lib/storage";
 
-type MatchResultsShape = {
-  politicians: PoliticianMatch[];
-  parties: Array<PoliticalParty & { match: PartyMatchResult }>;
-} | null;
-
 export default function AfinidadePage() {
   const { isReady } = useSystemStatus();
   const [loading, setLoading] = useState(false);
   const [stateFilter, setStateFilter] = useState<string | null>(null);
-  const [calculatedParties, setCalculatedParties] = useState<Array<PoliticalParty & { match: PartyMatchResult }>>([]);
-  const [allCalculatedPoliticians, setAllCalculatedPoliticians] = useState<PoliticianMatch[]>([]);
+  const [calculatedParties, setCalculatedParties] = useState<Array<Party & { match: PartyMatchResult }>>([]);
+  const [allCalculatedDeputies, setAllCalculatedDeputies] = useState<DeputyMatch[]>([]);
   const [availableStates, setAvailableStates] = useState<string[]>([]);
   const [hasVotes, setHasVotes] = useState(false);
 
@@ -42,26 +35,26 @@ export default function AfinidadePage() {
   async function loadInitialData() {
     setLoading(true);
     try {
-      const [pRes, partiesRes, projectsRes] = await Promise.all([
-        fetch("/api/politicians"),
+      const [deputiesRes, partiesRes, statesRes] = await Promise.all([
+        fetch("/api/deputies"),
         fetch("/api/parties"),
-        fetch("/api/projects").catch(() => null),
+        fetch("/api/states").catch(() => null),
       ]);
 
-      const politiciansJson = await pRes.json();
-      const fetchedPoliticians: PoliticianSearchResult[] = Array.isArray(politiciansJson)
-        ? politiciansJson
-        : politiciansJson?.results ?? [];
+      const deputiesJson = await deputiesRes.json();
+      const fetchedDeputies: DeputySearchResult[] = Array.isArray(deputiesJson)
+        ? deputiesJson
+        : deputiesJson?.results ?? [];
 
       const partiesJson = await partiesRes.json();
-      const fetchedParties: PoliticalParty[] = Array.isArray(partiesJson)
+      const fetchedParties: Party[] = Array.isArray(partiesJson)
         ? partiesJson
         : partiesJson?.results ?? [];
 
-      if (projectsRes && projectsRes.ok) {
-        const projectsData = await projectsRes.json();
-        if (projectsData.states && Array.isArray(projectsData.states)) {
-          setAvailableStates(projectsData.states);
+      if (statesRes && statesRes.ok) {
+        const statesData = await statesRes.json();
+        if (Array.isArray(statesData)) {
+          setAvailableStates(statesData);
         }
       }
 
@@ -79,7 +72,7 @@ export default function AfinidadePage() {
       setHasVotes(votesCount > 0);
 
       if (votesCount > 0) {
-        await calculateAllMatches(stored, fetchedPoliticians, fetchedParties);
+        await calculateAllMatches(stored, fetchedDeputies, fetchedParties);
       }
     } catch (err) {
       console.error("Erro ao carregar dados iniciais:", err);
@@ -88,24 +81,13 @@ export default function AfinidadePage() {
     }
   }
 
-  // Calcula os índices de afinidade a nível nacional
+  // Calcula os índices de afinidade
   async function calculateAllMatches(
     votes: UserVotes,
-    currentPoliticians: PoliticianSearchResult[],
-    currentParties: PoliticalParty[]
+    currentDeputies: DeputySearchResult[],
+    currentParties: Party[]
   ) {
     try {
-      function normalizePoliticianType(
-        t?: string | null,
-        defaultType: "DEPUTADO" | "SENADOR" = "DEPUTADO"
-      ): "DEPUTADO" | "SENADOR" {
-        if (!t) return defaultType;
-        const up = t.toString().toUpperCase();
-        if (up.includes("SENAT") || up.includes("SENAD")) return "SENADOR";
-        if (up.includes("DEPUT") || up.includes("DEPUTADO")) return "DEPUTADO";
-        return defaultType;
-      }
-
       function normalizeAdherence(raw?: number | null): number | null {
         if (raw === null || raw === undefined) return null;
         const v = Number(raw);
@@ -116,73 +98,74 @@ export default function AfinidadePage() {
         return Math.max(0, Math.min(1, v));
       }
 
-      const projectIds = Object.keys(votes).map((k) => Number(k)).filter((n) => !Number.isNaN(n));
-      if (projectIds.length === 0) {
+      const propIds = Object.keys(votes).map((k) => Number(k)).filter((n) => !Number.isNaN(n));
+      if (propIds.length === 0) {
         setCalculatedParties([]);
-        setAllCalculatedPoliticians([]);
+        setAllCalculatedDeputies([]);
         return;
       }
 
-      const projectPromises = projectIds.map((id) =>
-        fetch(`/api/projects/${id}`).then((r) => r.json()).catch((e) => {
-          console.error("Erro no fetch do projeto", id, e);
+      const propPromises = propIds.map((id) =>
+        fetch(`/api/propositions/${id}`).then((r) => r.json()).catch((e) => {
+          console.error("Erro no fetch da proposição", id, e);
           return null;
         })
       );
-      const projectsData = await Promise.all(projectPromises);
+      const propsData = await Promise.all(propPromises);
 
-      const allVotes: VoteDetailRow[] = [];
-      const voteSessionToProject: Record<number, number> = {};
+      const rawVotes: Array<{
+        deputado_id: number;
+        votacao_id: string;
+        voto_original: string;
+        sigla_partido?: string | null;
+      }> = [];
+      const voteSessionToProposition: Record<string, number> = {};
 
-      for (const pd of projectsData) {
+      for (const pd of propsData) {
         if (!pd) continue;
-        const pId = pd.project?.id;
+        const pId = pd.proposition?.id || pd.project?.id;
         if (typeof pId === "number" && Array.isArray(pd.sessions)) {
           for (const s of pd.sessions) {
-            if (typeof s.id === "number") {
-              voteSessionToProject[s.id] = pId;
+            if (s.id) {
+              voteSessionToProposition[String(s.id)] = pId;
             }
           }
         }
         if (pd.votes && Array.isArray(pd.votes)) {
-          allVotes.push(...pd.votes);
+          for (const v of pd.votes) {
+            rawVotes.push({
+              deputado_id: v.deputado_id || v.politician_id,
+              votacao_id: String(v.votacao_id || v.vote_session_id),
+              voto_original: v.voto_original,
+              sigla_partido: v.sigla_partido || v.party_sigla,
+            });
+          }
         }
       }
 
-      const allVotesWithProject: VoteDetailWithProject[] = attachProjectIdToVotes(allVotes, voteSessionToProject);
+      const allVotesWithProp: VoteDetailWithProposition[] = attachPropositionIdToVotes(rawVotes, voteSessionToProposition);
 
-      const polsById: Record<number, PoliticianSearchResult & { type?: string | null }> = {};
-      for (const p of currentPoliticians) {
-        polsById[p.id] = {
-          ...p,
-          type: normalizePoliticianType(p.type, "DEPUTADO"),
-        };
-      }
-
-      const pols = Object.values(polsById);
-
-      // 1. Afinidade dos Partidos (Média dos Posicionamentos dos Parlamentares Filiados)
+      // 1. Afinidade dos Partidos (Média dos Deputados)
       const partyMatches = currentParties.map((party) => {
-        const polVotesForParty = allVotesWithProject.filter(
-          (v) => (v.party_sigla ?? "").toUpperCase() === (party.sigla ?? "").toUpperCase()
+        const votesForParty = allVotesWithProp.filter(
+          (v) => (v.sigla_partido ?? "").toUpperCase() === (party.sigla ?? "").toUpperCase()
         );
-        const rawMatch = calculatePartyMatch(votes, polVotesForParty);
+        const rawMatch = calculatePartyMatch(votes, votesForParty);
         const normalizedMatch = rawMatch
           ? { ...rawMatch, adherence: normalizeAdherence(rawMatch.adherence) }
           : { adherence: null, matches_count: 0, comparable_count: 0 };
         return { ...party, match: normalizedMatch };
       });
 
-      // 2. Afinidade Individual dos Parlamentares
-      const politicianMatches: PoliticianMatch[] = pols.map((pol) => {
-        const votesOfPol = allVotesWithProject.filter((v) => v.politician_id === pol.id);
-        const polForCalc = { ...pol, type: pol.type ?? null };
-        const raw = calculatePoliticianMatch(votes, votesOfPol, polForCalc);
+      // 2. Afinidade Individual dos Deputados
+      const deputyMatches: DeputyMatch[] = currentDeputies.map((dep) => {
+        const votesOfDep = allVotesWithProp.filter((v) => v.deputado_id === dep.id);
+        const raw = calculatePoliticianMatch(votes, votesOfDep, dep);
         const normalized = raw ? { ...raw, adherence: normalizeAdherence(raw.adherence) } : raw;
         return normalized;
       });
 
-      const sortedPoliticians = politicianMatches.slice().sort((a, b) => {
+      const sortedDeputies = deputyMatches.slice().sort((a, b) => {
         const adhA = a.adherence ?? -1;
         const adhB = b.adherence ?? -1;
         if (adhB !== adhA) return adhB - adhA;
@@ -195,106 +178,91 @@ export default function AfinidadePage() {
         const compB = b.comparable_count ?? 0;
         if (compB !== compA) return compB - compA;
 
-        return a.name.localeCompare(b.name);
+        return a.nome_eleitoral.localeCompare(b.nome_eleitoral);
       });
 
       setCalculatedParties(partyMatches);
-      setAllCalculatedPoliticians(sortedPoliticians);
+      setAllCalculatedDeputies(sortedDeputies);
     } catch (err) {
-      console.error("Erro no cálculo da afinidade:", err);
+      console.error("Erro ao calcular afinidade:", err);
     }
   }
 
-  // Filtragem no client-side por estado
-  const filteredPoliticians = useMemo(() => {
-    if (!stateFilter) return allCalculatedPoliticians;
-    return allCalculatedPoliticians.filter(
-      (p) => (p.state || "").toUpperCase() === stateFilter.toUpperCase()
-    );
-  }, [allCalculatedPoliticians, stateFilter]);
-
-  const results: MatchResultsShape = useMemo(() => {
-    if (!hasVotes) return null;
-    return {
-      parties: calculatedParties,
-      politicians: filteredPoliticians,
-    };
-  }, [hasVotes, calculatedParties, filteredPoliticians]);
-
   useEffect(() => {
     loadInitialData();
+
+    const handleStorageUpdate = () => {
+      const stored: UserVotes = getStoredAnswers();
+      const votesCount = Object.keys(stored).length;
+      setHasVotes(votesCount > 0);
+      loadInitialData();
+    };
+
+    window.addEventListener("storage-answers-updated", handleStorageUpdate);
+    window.addEventListener("storage", handleStorageUpdate);
+
+    return () => {
+      window.removeEventListener("storage-answers-updated", handleStorageUpdate);
+      window.removeEventListener("storage", handleStorageUpdate);
+    };
   }, []);
 
-  function handleStateChange(state: string | null) {
-    setStateFilter(state);
-  }
-
-  if (!loading && !isReady) {
-    return (
-      <main className="p-4 sm:p-6 max-w-4xl mx-auto space-y-6">
-        <div className="p-8 sm:p-10 rounded-2xl bg-card border border-border text-center space-y-5 shadow-soft max-w-2xl mx-auto my-6 animate-fade-in">
-          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border border-amber-500/20">
-            <FaExclamationTriangle className="w-7 h-7" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-xl font-bold text-foreground">
-              Base de dados legislativos indisponível
-            </h2>
-            <p className="text-sm text-muted-foreground leading-relaxed max-w-md mx-auto">
-              Não foi possível carregar a lista de parlamentares e partidos políticos para o cálculo de afinidade. A base de dados precisa ser sincronizada com as fontes oficiais.
-            </p>
-          </div>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-            <Button variant="hero" href="/faq">
-              <FaSyncAlt className="w-3.5 h-3.5 mr-1.5" />
-              Consultar Fontes & FAQ
-            </Button>
-            <Button variant="outline" href="/">
-              Voltar ao Início
-            </Button>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
   return (
-    <main className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
-            Sua Afinidade Legislativa
-          </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Cruzamento determinístico das suas opiniões com as votações nominais dos parlamentares e bancadas.
-          </p>
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 space-y-8 animate-fade-in">
+      {/* Alerta de sincronização */}
+      {!isReady && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 dark:bg-amber-950/30 border border-amber-500/30 text-amber-900 dark:text-amber-300 text-xs sm:text-sm flex flex-col sm:flex-row items-center justify-between gap-4 text-left shadow-soft animate-fade-in">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
+              <FaExclamationTriangle className="w-4 h-4" />
+            </div>
+            <div className="space-y-0.5">
+              <span className="font-bold text-sm block text-amber-950 dark:text-amber-200">
+                Base de dados da Câmara dos Deputados em atualização
+              </span>
+              <span className="text-muted-foreground text-xs leading-relaxed block">
+                Os dados oficiais de votações e parlamentares estão sendo sincronizados.
+              </span>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            href="/faq"
+            className="shrink-0 border-amber-500/40 text-amber-900 dark:text-amber-300 hover:bg-amber-500/20 text-xs font-bold gap-1.5"
+          >
+            <FaSyncAlt className="w-3 h-3" />
+            <span>Ver Fontes & FAQ</span>
+          </Button>
         </div>
+      )}
 
-        <div className="flex items-center gap-3">
-          <Link
-            href="/opiniao"
-            className="text-xs sm:text-sm font-semibold text-foreground hover:text-primary transition-smooth"
-          >
-            Analisar mais propostas
-          </Link>
-          <Link
-            href="/opiniao/revisao"
-            className="text-xs sm:text-sm font-semibold text-primary hover:underline"
-          >
-            Revisar minhas opiniões &rarr;
-          </Link>
-        </div>
+      {/* Header */}
+      <div className="space-y-3">
+        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
+          Afinidade com <span className="text-gradient">Deputados Federais e Partidos</span>
+        </h1>
+        <p className="text-sm sm:text-base text-muted-foreground max-w-3xl leading-relaxed">
+          Índice de convergência calculado comparando suas opiniões com os votos nominais registrados pelos 
+          <strong> Deputados Federais</strong> no Plenário da Câmara dos Deputados.
+        </p>
       </div>
 
-      <section>
-        <MatchResults
-          results={results}
-          loading={loading}
-          stateFilter={stateFilter}
-          availableStates={availableStates}
-          onStateChange={handleStateChange}
-        />
-      </section>
-    </main>
+      {/* Resultados */}
+      <MatchResults
+        results={
+          hasVotes
+            ? {
+                deputies: allCalculatedDeputies,
+                parties: calculatedParties,
+              }
+            : null
+        }
+        loading={loading}
+        stateFilter={stateFilter}
+        availableStates={availableStates}
+        onStateChange={setStateFilter}
+      />
+    </div>
   );
 }

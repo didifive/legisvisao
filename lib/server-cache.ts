@@ -7,16 +7,18 @@ interface ServerCacheEntry<T> {
 }
 
 // Armazenamento em memória no servidor (BFF)
-// Pode permanecer em memória: Projetos, Representantes, Partidos, Metadados, Status
-// Não deve permanecer em memória: Sessões de usuário, Opiniões de visitantes, Resultados personalizados
 const memoryCache = new Map<string, ServerCacheEntry<unknown>>();
 
 let lastVersionCheck = 0;
 let cachedDatasetVersion: string | null = null;
-const VERSION_CHECK_INTERVAL_MS = 10000; // Checa o DB a cada 10s no máximo
+
+// Checa o banco a cada 15 minutos (900.000 ms)
+const VERSION_CHECK_INTERVAL_MS = 15 * 60 * 1000;
+// TTL máximo para expiração automática em memória (15 minutos)
+const CACHE_TTL_MS = 15 * 60 * 1000;
 
 /**
- * Obtém a versão ativa do dataset na tabela sync_control
+ * Obtém a versão ativa do dataset na tabela sync_control com intervalo de 15 minutos
  */
 export async function getActiveDatasetVersion(): Promise<string | null> {
   const now = Date.now();
@@ -36,7 +38,6 @@ export async function getActiveDatasetVersion(): Promise<string | null> {
     if (result && result.length > 0 && result[0].dataset_version) {
       cachedDatasetVersion = result[0].dataset_version;
     } else {
-      // Fallback para timestamp mais recente se não houver version explícita
       const fallbackRes = await db`SELECT MAX(last_sync) as latest FROM sync_control;`;
       cachedDatasetVersion = fallbackRes[0]?.latest ? new Date(fallbackRes[0].latest).toISOString() : "v1";
     }
@@ -54,31 +55,35 @@ export async function getActiveDatasetVersion(): Promise<string | null> {
 export function clearServerCache(): void {
   memoryCache.clear();
   cachedDatasetVersion = null;
+  lastVersionCheck = 0;
 }
 
 /**
- * Cache Inteligente no Servidor/BFF:
- * - Mantém dados públicos em memória.
- * - Invalida estritamente quando dataset_version mudar no banco (nunca invalida apenas por tempo).
+ * Cache Inteligente no Servidor/BFF (Intervalo de 15 minutos)
  */
 export async function withServerCache<T>(
   cacheKey: string,
   fetcher: () => Promise<T>
 ): Promise<T> {
+  const now = Date.now();
   const currentVersion = await getActiveDatasetVersion();
   const entry = memoryCache.get(cacheKey) as ServerCacheEntry<T> | undefined;
 
-  // Se o cache existir e pertencer à versão atual do dataset, retorna imediatamente
-  if (entry && entry.datasetVersion === currentVersion) {
+  // Se o cache existir, pertencer à versão atual e não tiver expirado pelo TTL de 15 min
+  if (
+    entry &&
+    entry.datasetVersion === currentVersion &&
+    now - entry.cachedAt < CACHE_TTL_MS
+  ) {
     return entry.data;
   }
 
-  // Se mudou a versão ou não existe no cache, executa fetcher
+  // Se expirou ou não existe no cache, executa fetcher
   const freshData = await fetcher();
 
   memoryCache.set(cacheKey, {
     data: freshData,
-    cachedAt: Date.now(),
+    cachedAt: now,
     datasetVersion: currentVersion,
   });
 

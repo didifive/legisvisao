@@ -16,30 +16,24 @@ export async function GET() {
           last_sync,
           last_successful_sync,
           status,
-          records_count,
-          records_updated,
-          records_inserted,
+          total_deputies,
+          total_propositions,
+          total_vote_sessions,
+          total_votes,
           dataset_version,
           last_error
         FROM sync_control
-        ORDER BY source ASC;
+        WHERE source = 'CAMARA'
+        LIMIT 1;
       `;
 
-      let lastUpdated: string | null = null;
-      if (sources.length > 0) {
-        const latestTime = sources.reduce((max, s) => {
-          const t = new Date(s.last_successful_sync || s.last_sync).getTime();
-          return t > max ? t : max;
-        }, 0);
-        if (latestTime > 0) {
-          lastUpdated = new Date(latestTime).toISOString();
-        }
-      }
+      const sourceInfo = sources[0] || null;
+      const lastUpdated = sourceInfo?.last_successful_sync || sourceInfo?.last_sync || new Date().toISOString();
 
       return {
-        datasetVersion: datasetVersion || lastUpdated || new Date().toISOString(),
-        lastUpdated: lastUpdated || new Date().toISOString(),
-        sources,
+        datasetVersion: datasetVersion || lastUpdated,
+        lastUpdated,
+        source: sourceInfo,
       };
     });
 

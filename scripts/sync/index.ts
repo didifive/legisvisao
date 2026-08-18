@@ -1,11 +1,10 @@
 // ====================================================================
-// LegisVisão - Orquestrador Geral de Sincronização Bicameral
+// LegisVisão - Orquestrador Central de Sincronização (Câmara dos Deputados)
 // ====================================================================
 import { sql, updateSyncStatus, getCurrentDatasetVersion } from "./client";
 import { syncParties } from "./sync-parties";
-import { syncPoliticians } from "./sync-politicians";
-import { syncProjects } from "./sync-projects";
-import { syncVoteSessions } from "./sync-vote-sessions";
+import { syncDeputies } from "./sync-deputies";
+import { syncPropositions } from "./sync-propositions";
 import { syncVotes } from "./sync-votes";
 
 function formatNum(n: number): string {
@@ -22,113 +21,111 @@ function padLeft(str: string, length: number): string {
 
 async function main() {
   console.log("================================================================================");
-  console.log("🏛️  LEGISVISÃO - ORQUESTRADOR DE SINCRONIZAÇÃO BICAMERAL (CÂMARA & SENADO)");
+  console.log("🏛️  LEGISVISÃO - SINCRONIZAÇÃO OFICIAL DA CÂMARA DOS DEPUTADOS");
   console.log("================================================================================");
   const startTime = Date.now();
 
   try {
-    // Fase 1: Sincronização paralela de Partidos e Proposições Canônicas
-    console.log("\n⚡ [Fase 1] Sincronizando Catálogo de Partidos e Proposições...");
-    const [partiesResult, projectsResult] = await Promise.all([
-      syncParties(),
-      syncProjects(),
-    ]);
+    // 0. Registrar início da sincronização
+    await updateSyncStatus({
+      source: "CAMARA",
+      name: "Câmara dos Deputados (Dados Abertos)",
+      officialUrl: "https://dadosabertos.camara.leg.br",
+      status: "RUNNING",
+    });
 
-    // Fase 2: Sincronização paralela de Parlamentares e Sessões de Votação
-    console.log("\n⚡ [Fase 2] Sincronizando Parlamentares, Mandatos e Sessões de Votação...");
-    const [politiciansResult, sessionsResult] = await Promise.all([
-      syncPoliticians(partiesResult.partyMap),
-      syncVoteSessions(projectsResult.houseRecordsToSyncVotes),
-    ]);
+    // 1. Sincronizar Catálogo de Partidos
+    console.log("\n⚡ [1/4] Sincronizando Partidos Políticos...");
+    const partiesResult = await syncParties();
 
-    // Fase 3: Sincronização dos Votos Nominais Concorrentes
-    console.log("\n⚡ [Fase 3] Sincronizando Votos Nominais Parlamentares...");
+    // 2. Sincronizar Deputados Federais da 57ª Legislatura
+    console.log("\n⚡ [2/4] Sincronizando Deputados Federais em Exercício...");
+    const deputiesResult = await syncDeputies(partiesResult.partyMap);
+
+    // 3. Sincronizar Proposições e Sessões de Votação Nominal
+    console.log("\n⚡ [3/4] Sincronizando Proposições e Sessões de Votação do Plenário...");
+    const propsResult = await syncPropositions();
+
+    // 4. Sincronizar Votos Nominais dos Deputados
+    console.log("\n⚡ [4/4] Sincronizando Votos Nominais Individuais...");
     const votesResult = await syncVotes(
-      sessionsResult.sessionsToSyncVotes,
-      politiciansResult.politicianMap,
-      partiesResult.partyMap
+      propsResult.sessionsToSyncVotes,
+      deputiesResult.deputyMap
     );
 
-    // Controle Inteligente de dataset_version
+    // 5. Totais Consolidados no Banco de Dados
+    const [dbParties] = await sql<Array<{ count: string }>>`SELECT COUNT(*) as count FROM parties`;
+    const [dbDeputies] = await sql<Array<{ count: string }>>`SELECT COUNT(*) as count FROM deputies`;
+    const [dbProps] = await sql<Array<{ count: string }>>`SELECT COUNT(*) as count FROM propositions`;
+    const [dbSessions] = await sql<Array<{ count: string }>>`SELECT COUNT(*) as count FROM vote_sessions`;
+    const [dbVotes] = await sql<Array<{ count: string }>>`SELECT COUNT(*) as count FROM deputy_votes`;
+
+    const finalPartiesCount = Number(dbParties.count);
+    const finalDeputiesCount = Number(dbDeputies.count);
+    const finalPropsCount = Number(dbProps.count);
+    const finalSessionsCount = Number(dbSessions.count);
+    const finalVotesCount = Number(dbVotes.count);
+
+    // Controle de Versão do Dataset
     const totalInserted =
       partiesResult.inserted +
-      politiciansResult.inserted +
-      projectsResult.insertedProjects +
-      projectsResult.insertedRecords +
-      sessionsResult.insertedSessions +
+      deputiesResult.inserted +
+      propsResult.insertedPropositions +
+      propsResult.insertedSessions +
       votesResult.insertedVotes;
 
     const totalUpdated =
       partiesResult.updated +
-      politiciansResult.updated +
-      projectsResult.updatedProjects +
-      projectsResult.updatedRecords;
+      deputiesResult.updated +
+      propsResult.updatedPropositions;
 
     const totalChanges = totalInserted + totalUpdated;
     let currentVersion = await getCurrentDatasetVersion();
 
     if (totalChanges > 0 || !currentVersion) {
       currentVersion = new Date().toISOString();
-      console.log(`\n📦 Alterações detectadas (${formatNum(totalInserted)} inserções, ${formatNum(totalUpdated)} atualizações). Novo dataset_version: ${currentVersion}`);
+      console.log(`\n📦 Alterações aplicadas (${formatNum(totalInserted)} novos, ${formatNum(totalUpdated)} atualizados). Versão do dataset: ${currentVersion}`);
     } else {
-      console.log(`\n🔒 Nenhuma alteração estrutural detectada. dataset_version mantido: ${currentVersion}`);
+      console.log(`\n🔒 Nenhuma alteração estrutural detectada. Versão mantida: ${currentVersion}`);
     }
 
-    const totalRecords =
-      partiesResult.total +
-      politiciansResult.total +
-      projectsResult.houseRecordsToSyncVotes.length +
-      sessionsResult.totalSessions +
-      votesResult.totalVotes;
-
-    // Atualizar status de sincronização no sync_control
+    // Atualização de Status no sync_control
     await updateSyncStatus({
       source: "CAMARA",
       name: "Câmara dos Deputados (Dados Abertos)",
       officialUrl: "https://dadosabertos.camara.leg.br",
-      recordsCount: totalRecords,
-      recordsUpdated: totalUpdated,
-      recordsInserted: totalInserted,
-      datasetVersion: currentVersion,
-      status: "SUCCESS",
-    });
-
-    await updateSyncStatus({
-      source: "SENADO",
-      name: "Senado Federal (Dados Abertos)",
-      officialUrl: "https://legis.senado.leg.br/dadosabertos",
-      recordsCount: politiciansResult.total,
-      recordsUpdated: politiciansResult.updated,
-      recordsInserted: politiciansResult.inserted,
+      totalDeputies: finalDeputiesCount,
+      totalPropositions: finalPropsCount,
+      totalVoteSessions: finalSessionsCount,
+      totalVotes: finalVotesCount,
       datasetVersion: currentVersion,
       status: "SUCCESS",
     });
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(2);
 
-    // Painel Analítico de Execução
+    // Painel Analítico
     console.log("\n================================================================================");
-    console.log("📊 PAINEL ANALÍTICO DE EXECUÇÃO - LEGISVISÃO");
+    console.log("📊 PAINEL ANALÍTICO DE SINCRONIZAÇÃO - LEGISVISÃO");
     console.log("================================================================================");
-    console.log(`${pad("Entidade / Camada", 30)} | ${padLeft("Existentes", 10)} | ${padLeft("Novos", 9)} | ${padLeft("Atualizados", 11)} | ${padLeft("Total Final", 11)}`);
-    console.log("-------------------------------+------------+-----------+-------------+------------");
-    console.log(`${pad("Partidos Políticos", 30)} | ${padLeft(formatNum(partiesResult.existingCount), 10)} | ${padLeft(formatNum(partiesResult.inserted), 9)} | ${padLeft(formatNum(partiesResult.updated), 11)} | ${padLeft(formatNum(partiesResult.total), 11)}`);
-    console.log(`${pad("Deputados Federais (Câmara)", 30)} | ${padLeft(formatNum(politiciansResult.deputiesTotal - politiciansResult.deputiesInserted), 10)} | ${padLeft(formatNum(politiciansResult.deputiesInserted), 9)} | ${padLeft(formatNum(politiciansResult.deputiesUpdated), 11)} | ${padLeft(formatNum(politiciansResult.deputiesTotal), 11)}`);
-    console.log(`${pad("Senadores da República (Senado)", 30)} | ${padLeft(formatNum(politiciansResult.senatorsTotal - politiciansResult.senatorsInserted), 10)} | ${padLeft(formatNum(politiciansResult.senatorsInserted), 9)} | ${padLeft(formatNum(politiciansResult.senatorsUpdated), 11)} | ${padLeft(formatNum(politiciansResult.senatorsTotal), 11)}`);
-    console.log(`${pad("Projetos Canônicos", 30)} | ${padLeft(formatNum(projectsResult.existingProjectsCount), 10)} | ${padLeft(formatNum(projectsResult.insertedProjects), 9)} | ${padLeft(formatNum(projectsResult.updatedProjects), 11)} | ${padLeft(formatNum(projectsResult.totalProjects), 11)}`);
-    console.log(`${pad("Registros Tramitação (Câmara)", 30)} | ${padLeft("-", 10)} | ${padLeft("-", 9)} | ${padLeft("-", 11)} | ${padLeft(formatNum(projectsResult.camaraRecordsCount), 11)}`);
-    console.log(`${pad("Registros Tramitação (Senado)", 30)} | ${padLeft("-", 10)} | ${padLeft("-", 9)} | ${padLeft("-", 11)} | ${padLeft(formatNum(projectsResult.senadoRecordsCount), 11)}`);
-    console.log(`${pad("Proposições Bicamerais", 30)} | ${padLeft("-", 10)} | ${padLeft("-", 9)} | ${padLeft("-", 11)} | ${padLeft(formatNum(projectsResult.bicameralProjectsCount), 11)}`);
-    console.log(`${pad("Sessões de Votação (Câmara)", 30)} | ${padLeft(formatNum(sessionsResult.camaraSessionsTotal - sessionsResult.camaraSessionsInserted), 10)} | ${padLeft(formatNum(sessionsResult.camaraSessionsInserted), 9)} | ${padLeft("-", 11)} | ${padLeft(formatNum(sessionsResult.camaraSessionsTotal), 11)}`);
-    console.log(`${pad("Sessões de Votação (Senado)", 30)} | ${padLeft(formatNum(sessionsResult.senadoSessionsTotal - sessionsResult.senadoSessionsInserted), 10)} | ${padLeft(formatNum(sessionsResult.senadoSessionsInserted), 9)} | ${padLeft("-", 11)} | ${padLeft(formatNum(sessionsResult.senadoSessionsTotal), 11)}`);
-    console.log(`${pad("Votos Nominais (Câmara)", 30)} | ${padLeft("-", 10)} | ${padLeft(formatNum(votesResult.camaraVotesInserted), 9)} | ${padLeft("-", 11)} | ${padLeft("-", 11)}`);
-    console.log(`${pad("Votos Nominais (Senado)", 30)} | ${padLeft("-", 10)} | ${padLeft(formatNum(votesResult.senadoVotesInserted), 9)} | ${padLeft("-", 11)} | ${padLeft("-", 11)}`);
-    console.log(`${pad("Votos Nominais (Consolidado)", 30)} | ${padLeft(formatNum(votesResult.existingVotesCount), 10)} | ${padLeft(formatNum(votesResult.insertedVotes), 9)} | ${padLeft("-", 11)} | ${padLeft(formatNum(votesResult.totalVotes), 11)}`);
+    console.log(`${pad("Entidade", 30)} | ${padLeft("Novos", 10)} | ${padLeft("Atualizados", 12)} | ${padLeft("Total no Banco", 14)}`);
+    console.log("-------------------------------+------------+--------------+---------------");
+    console.log(`${pad("Partidos Políticos", 30)} | ${padLeft(formatNum(partiesResult.inserted), 10)} | ${padLeft(formatNum(partiesResult.updated), 12)} | ${padLeft(formatNum(finalPartiesCount), 14)}`);
+    console.log(`${pad("Deputados Federais (57ª)", 30)} | ${padLeft(formatNum(deputiesResult.inserted), 10)} | ${padLeft(formatNum(deputiesResult.updated), 12)} | ${padLeft(formatNum(finalDeputiesCount), 14)}`);
+    console.log(`${pad("Proposições Legislativas", 30)} | ${padLeft(formatNum(propsResult.insertedPropositions), 10)} | ${padLeft(formatNum(propsResult.updatedPropositions), 12)} | ${padLeft(formatNum(finalPropsCount), 14)}`);
+    console.log(`${pad("Sessões de Votação (Plenário)", 30)} | ${padLeft(formatNum(propsResult.insertedSessions), 10)} | ${padLeft("-", 12)} | ${padLeft(formatNum(finalSessionsCount), 14)}`);
+    console.log(`${pad("Votos Nominais Individuais", 30)} | ${padLeft(formatNum(votesResult.insertedVotes), 10)} | ${padLeft("-", 12)} | ${padLeft(formatNum(finalVotesCount), 14)}`);
     console.log("================================================================================");
     console.log(`⏱️  Tempo total de execução: ${elapsed}s | Dataset: ${currentVersion}`);
     console.log("================================================================================\n");
+
   } catch (err) {
     console.error("❌ Falha fatal no orquestrador de sincronização:", err);
+    await updateSyncStatus({
+      source: "CAMARA",
+      status: "FAILED",
+      error: String(err),
+    });
     process.exit(1);
   } finally {
     await sql.end();

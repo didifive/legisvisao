@@ -3,23 +3,24 @@ import { urls, appConfig } from "@/lib/urls";
 
 export const siteConfig = {
   name: "LegisVisão",
-  title: "LegisVisão | Transparência Legislativa e Afinidade com Propostas Reais",
+  title: "LegisVisão | Afinidade com Deputados Federais e Partidos Políticos",
   description:
-    "Analise propostas legislativas reais da Câmara dos Deputados e do Senado Federal e descubra quais parlamentares e partidos têm maior afinidade com seus posicionamentos. 100% privado, local e transparente.",
+    "Descubra quais Deputados Federais e Partidos votam como você. Compare seus posicionamentos com os votos reais do Plenário da Câmara dos Deputados de forma 100% privada (Local-First), determinística e transparente.",
   url: appConfig.url,
   keywords: [
     "legisvisao",
-    "transparencia legislativa",
+    "afinidade politica",
     "camara dos deputados",
-    "senado federal",
+    "deputados federais",
+    "votos nominais",
     "projetos de lei",
     "proposicoes legislativas",
-    "afinidadade partidaria",
-    "posicionamentos parlamentares",
-    "deputados federais",
-    "senadores",
+    "fidelidade partidaria",
+    "plenario da camara",
+    "57 legislatura",
     "transparencia publica",
-    "congresso nacional",
+    "politica brasileira",
+    "simulador de votos",
     "luis zancanela",
   ],
   author: {

@@ -70,7 +70,7 @@ export default function Home() {
                     Base de dados legislativos não carregada
                   </span>
                   <span className="text-muted-foreground text-xs leading-relaxed block">
-                    Os dados oficiais de proposições, parlamentares e sessões de votação ainda não foram sincronizados neste ambiente.
+                    Os dados oficiais de proposições, deputados e sessões de votação da Câmara ainda não foram sincronizados.
                   </span>
                 </div>
               </div>
@@ -88,15 +88,15 @@ export default function Home() {
 
           {/* Título Principal */}
           <h1 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tight leading-[1.15] mb-6">
-            Descubra quais parlamentares e partidos{" "}
-            <span className="text-gradient">posicionam-se como você</span>
+            Descubra quais Deputados Federais{" "}
+            <span className="text-gradient">votam como você</span>
           </h1>
 
           {/* Subtítulo */}
           <p className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed mb-8 sm:mb-10">
-            Analise propostas de lei reais deliberadas na Câmara dos Deputados e no Senado Federal.
+            Analise propostas de lei reais deliberadas no Plenário da Câmara dos Deputados.
             Registre sua opinião (<strong>CONCORDO</strong> ou <strong>DISCORDO</strong>) e descubra
-            em instantes seu índice de afinidade legislativa real, com total neutralidade.
+            em instantes seu índice de afinidade legislativa real com Deputados Federais e Partidos, com total neutralidade.
           </p>
 
           {/* CTAs */}
@@ -110,7 +110,7 @@ export default function Home() {
                   className="w-full sm:w-auto flex items-center justify-center gap-2 text-base"
                 >
                   <FaVoteYea className="w-5 h-5" />
-                  <span>{opinionsCount > 0 ? "Continuar Analisando" : "Começar Agora"}</span>
+                  <span>{opinionsCount > 0 ? "Continuar Analisando" : "Opinar em Propostas"}</span>
                   <FaArrowRight className="w-4 h-4 ml-1" />
                 </Button>
 
@@ -134,24 +134,22 @@ export default function Home() {
                 <Button
                   variant="hero"
                   size="xl"
-                  href="/faq"
+                  href="/opiniao"
                   className="w-full sm:w-auto flex items-center justify-center gap-2 text-base"
                 >
-                  <FaSyncAlt className="w-4 h-4" />
-                  <span>Consultar Status das Fontes</span>
+                  <FaVoteYea className="w-5 h-5" />
+                  <span>Opinar em Propostas</span>
                   <FaArrowRight className="w-4 h-4 ml-1" />
                 </Button>
 
                 <Button
                   variant="outline"
                   size="xl"
-                  href="https://github.com/didifive/legisvisao"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href="/faq"
                   className="w-full sm:w-auto flex items-center justify-center gap-2 text-base"
                 >
-                  <FaExternalLinkAlt className="w-3.5 h-3.5" />
-                  <span>Instruções no GitHub</span>
+                  <FaSyncAlt className="w-3.5 h-3.5 text-primary" />
+                  <span>Status da Câmara & FAQ</span>
                 </Button>
               </>
             )}
@@ -177,7 +175,7 @@ export default function Home() {
             Como o LegisVisão funciona?
           </h2>
           <p className="text-muted-foreground text-sm sm:text-base">
-            Um processo direto, transparente e fundamentado em dados públicos da Câmara dos Deputados e do Senado Federal.
+            Um processo direto, transparente e fundamentado exclusivamente em dados abertos oficiais da Câmara dos Deputados.
           </p>
         </div>
 
@@ -194,7 +192,7 @@ export default function Home() {
               Analise as Propostas de Lei
             </h3>
             <p className="text-muted-foreground text-sm leading-relaxed flex-1">
-              Leia o resumo objetivo de cada proposta deliberada no Congresso Nacional e registre sua opinião (<strong>CONCORDO</strong> ou <strong>DISCORDO</strong>).
+              Leia o resumo objetivo de cada matéria votada no Plenário da Câmara e registre sua opinião (<strong>CONCORDO</strong> ou <strong>DISCORDO</strong>).
             </p>
           </div>
 
@@ -210,7 +208,7 @@ export default function Home() {
               Cruzamento de Dados Oficial
             </h3>
             <p className="text-muted-foreground text-sm leading-relaxed flex-1">
-              O sistema compara suas escolhas diretamente com as votações nominais dos deputados e senadores registradas nos canais oficiais.
+              O sistema compara suas escolhas diretamente com os votos nominais individuais registrados pelos Deputados Federais.
             </p>
           </div>
 
@@ -226,7 +224,7 @@ export default function Home() {
               Descubra sua Afinidade
             </h3>
             <p className="text-muted-foreground text-sm leading-relaxed flex-1">
-              Consulte seu índice de afinidade percentual com os parlamentares e com a média dos partidos, identificando alinhamentos reais e divergências.
+              Consulte seu índice de afinidade percentual com cada Deputado Federal e com a média dos Partidos, filtrando por estado ou bancada.
             </p>
           </div>
         </div>
@@ -248,122 +246,38 @@ export default function Home() {
                   Seus dados são seus. Nada vai para servidores externos.
                 </h2>
                 <p className="text-muted-foreground text-sm sm:text-base leading-relaxed">
-                  O <strong>LegisVisão</strong> opera no modelo <em>Local-First</em>: todas as suas respostas são processadas e salvas unicamente na memória local (<code>localStorage</code>) do seu navegador.
+                  Todas as suas opiniões são salvas exclusivamente na memória local do seu navegador (<em>LocalStorage</em>). Nenhum dado pessoal é rastreado, transmitido ou monetizado.
                 </p>
-                <ul className="space-y-2 text-sm text-foreground/90 pt-1">
-                  <li className="flex items-center gap-2">
-                    <FaCheckCircle className="text-primary w-4 h-4 shrink-0" />
-                    <span>Nenhum cadastro ou email é exigido</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <FaCheckCircle className="text-primary w-4 h-4 shrink-0" />
-                    <span>Sem cookies de rastreamento ou telemetria invasiva</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <FaCheckCircle className="text-primary w-4 h-4 shrink-0" />
-                    <span>Você pode exportar em JSON ou limpar tudo em um clique</span>
-                  </li>
-                </ul>
-                <div className="pt-2">
-                  <a
-                    href="https://github.com/didifive/legisvisao"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-semibold"
-                  >
-                    <span>A configuração de não coletar dados pode ser confirmada no código-fonte</span>
-                    <FaExternalLinkAlt className="w-2.5 h-2.5" />
-                  </a>
-                </div>
               </div>
 
-              {/* Card de Gestão Rápida de Dados */}
-              <div className="w-full lg:w-auto p-5 rounded-xl bg-background border border-border shadow-soft flex flex-col space-y-3 min-w-[260px]">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Controle Local de Opiniões
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
+              {/* Botões de Gerenciamento de Dados */}
+              <div className="flex flex-col sm:flex-row lg:flex-col gap-3 w-full lg:w-auto shrink-0">
+                <button
+                  type="button"
                   onClick={exportAnswersToJson}
-                  className="w-full justify-start text-xs gap-2"
+                  className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-border bg-card text-foreground font-semibold text-xs sm:text-sm hover:bg-muted transition-smooth shadow-soft"
                 >
-                  <FaDownload className="text-secondary w-3.5 h-3.5" />
-                  <span>Exportar Opiniões (.JSON)</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const el = document.querySelector('input[type="file"]') as HTMLInputElement;
-                    if (el) el.click();
-                  }}
-                  className="w-full justify-start text-xs gap-2"
-                >
-                  <FaUpload className="text-primary w-3.5 h-3.5" />
-                  <span>Importar Opiniões (.JSON)</span>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    window.dispatchEvent(new Event("request-clear-opinions"));
-                  }}
-                  className="w-full justify-start text-xs gap-2 text-destructive hover:bg-destructive/10"
-                >
-                  <FaTrashAlt className="w-3.5 h-3.5" />
-                  <span>Limpar Minhas Opiniões</span>
-                </Button>
+                  <FaDownload className="text-primary w-4 h-4" />
+                  <span>Exportar Minhas Opiniões (.json)</span>
+                </button>
+
+                {mounted && opinionsCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm("Tem certeza que deseja apagar todas as opiniões salvas no seu navegador?")) {
+                        clearStoredAnswers();
+                      }
+                    }}
+                    className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-rose-500/30 text-rose-600 dark:text-rose-400 font-semibold text-xs sm:text-sm hover:bg-rose-500/10 transition-smooth"
+                  >
+                    <FaTrashAlt className="w-3.5 h-3.5" />
+                    <span>Limpar Dados Locais</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* 4. SEÇÃO INSTITUCIONAL & CTA FINAL */}
-      <section className="py-16 sm:py-20 text-center max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="w-14 h-14 rounded-2xl bg-gradient-primary text-white flex items-center justify-center mx-auto mb-6 shadow-medium">
-          <FaLandmark className="w-7 h-7" />
-        </div>
-        <h2 className="text-3xl sm:text-4xl font-bold tracking-tight mb-4">
-          Pronto para descobrir sua afinidade legislativa?
-        </h2>
-        <p className="text-muted-foreground text-base sm:text-lg max-w-2xl mx-auto mb-8">
-          Leva apenas alguns minutos para opinar sobre as principais pautas do país e entender quais parlamentares melhor refletem sua visão.
-        </p>
-
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-          {isReady ? (
-            <>
-              <Button
-                variant="hero"
-                size="lg"
-                href="/opiniao"
-                className="w-full sm:w-auto px-8"
-              >
-                Iniciar Análise de Propostas
-              </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                href="/opiniao/revisao"
-                className="w-full sm:w-auto px-8"
-              >
-                <FaHistory className="w-4 h-4 mr-1 text-muted-foreground" />
-                Revisar Opiniões Anteriores
-              </Button>
-            </>
-          ) : (
-            <Button
-              variant="hero"
-              size="lg"
-              href="/faq"
-              className="w-full sm:w-auto px-8"
-            >
-              <FaSyncAlt className="w-4 h-4 mr-1.5" />
-              Ver Fontes & Sincronização
-            </Button>
-          )}
         </div>
       </section>
     </div>

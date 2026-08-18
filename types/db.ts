@@ -1,107 +1,68 @@
 // ====================================================================
 // LegisVisão - Tipos do Banco de Dados & Modelos Relacionais
+// Foco: Câmara dos Deputados (Deputados Federais)
 // ====================================================================
 
-export interface PoliticalParty {
+// 1. Partidos Políticos
+export interface Party {
   id: number;
   sigla: string;
   nome: string;
-  uri?: string | null;
-  situacao?: string | null; // 'Ativo' | 'Inativo'
-  total_membros?: number | null;
-  total_posse?: number | null;
-  numero_eleitoral?: number | null;
   logo_url?: string | null;
+  total_membros: number;
 }
 
-export interface Politician {
+// 2. Deputados Federais
+export interface Deputy {
   id: number;
-  source: string;
-  external_id: string;
-  name: string;
-  type: string; // 'DEPUTY' ou 'SENATOR'
-  state: string;
-  photo_url?: string | null;
+  nome: string;
+  nome_eleitoral: string;
+  sigla_partido: string;
+  sigla_uf: string;
+  url_foto?: string | null;
   email?: string | null;
-  is_active?: boolean;
+  situacao: string;
+  legislatura: number;
+  is_active: boolean;
 }
 
-export interface PoliticianPartyHistory {
+// 3. Proposições Legislativas
+export interface Proposition {
   id: number;
-  politician_id: number;
-  party_id: number;
-  start_date: string;
-  end_date: string | null;
-}
-
-export interface Mandate {
-  id: number;
-  politician_id: number;
-  office: string; // 'Deputado Federal' ou 'Senador'
-  house: string; // 'CAMARA' ou 'SENADO'
-  start_date: string;
-  end_date: string | null;
-  legislature_id?: number | null;
-}
-
-export interface LegislativeProject {
-  id: number;
-  canonical_id: string; // "PL-2630-2020", "PEC-45-2019"
-  type: string;
-  number: string;
-  year: number;
-  title: string;
-  description: string | null;
-  current_status: string | null;
+  sigla_tipo: string;
+  numero: number;
+  ano: number;
+  titulo: string;
+  ementa: string;
+  ementa_detalhada?: string | null;
+  tema?: string | null;
+  url_inteiro_teor?: string | null;
+  url_camara?: string | null;
+  data_apresentacao?: string | null;
+  ultimo_status?: string | null;
   last_updated_at?: string | null;
 }
 
-export interface ProjectHouseRecord {
-  id: number;
-  project_id: number;
-  house: string; // 'CAMARA' ou 'SENADO'
-  external_id: string;
-  official_url: string | null;
-  full_text_url: string | null;
-  presentation_date: string | null;
-  author_name: string | null;
-  author_party: string | null;
-  author_state: string | null;
-  rapporteur_name: string | null;
-  tramitacao_etapa: string | null;
-  despacho: string | null;
-  last_event_date: string | null;
-  source_updated_at?: string | null;
-  source_read_at?: string | null;
-}
-
-export interface LegislativePhase {
-  id: number;
-  house_record_id: number;
-  phase_name: string;
-  phase_order: number;
-  started_at?: string | null;
-  completed_at?: string | null;
-}
-
+// 4. Sessões de Votação Nominal do Plenário
 export interface VoteSession {
-  id: number;
-  house_record_id: number;
-  phase_id: number | null;
-  external_vote_id: string | null;
-  date: string;
-  description: string | null;
-  result: string | null;
+  id: string;
+  proposicao_id: number;
+  data_hora: string;
+  descricao: string;
+  resultado?: string | null;
+  sigla_orgao: string;
 }
 
-export interface PoliticianVote {
+// 5. Votos Nominais dos Deputados
+export interface DeputyVote {
   id: number;
-  vote_session_id: number;
-  politician_id: number;
-  party_id?: number | null;
-  vote_original: string;
+  votacao_id: string;
+  deputado_id: number;
+  sigla_partido?: string | null;
+  voto_original: string;
 }
 
+// 6. Controle de Sincronização
 export interface SyncControl {
   source: string;
   name: string | null;
@@ -109,149 +70,88 @@ export interface SyncControl {
   last_sync: string;
   last_successful_sync: string | null;
   status: string;
-  records_count: number;
-  records_updated: number;
-  records_inserted: number;
+  total_deputies: number;
+  total_propositions: number;
+  total_vote_sessions: number;
+  total_votes: number;
   dataset_version: string | null;
   last_error: string | null;
 }
 
 // ====================================================================
-// Composite / Query Types
+// Tipos de Consulta, Visões e Motor de Afinidade (BFF & Frontend)
 // ====================================================================
 
 export interface StateRow {
   state: string;
+  total_deputies?: number;
 }
 
-export interface PartyAdherenceRow {
+export interface UserOpinion {
+  propositionId: number;
+  userVote: "Sim" | "Não" | "Pular";
+}
+
+export interface DeputySearchResult {
+  id: number;
+  nome: string;
+  nome_eleitoral: string;
+  sigla_partido: string;
+  sigla_uf: string;
+  url_foto?: string | null;
+  email?: string | null;
+  situacao?: string;
+  matches_count: number;
+  comparable_count: number;
+  adherence: number | null;
+}
+
+export interface DeputyVoteDetail {
+  vote_id: number;
+  votacao_id: string;
+  voto_original: string;
+  data_hora: string;
+  proposicao_id: number;
+  titulo: string;
+  ementa: string;
+  tema?: string | null;
+  url_camara?: string | null;
+  resultado?: string | null;
+}
+
+export interface DeputyDetail extends Deputy {
+  party_name?: string | null;
+  votes: DeputyVoteDetail[];
+}
+
+export interface PartyAdherenceResult {
   id: number;
   sigla: string;
-  name: string;
+  nome: string;
+  logo_url?: string | null;
+  total_deputados: number;
   matches_count: number;
   comparable_count: number;
   adherence: number | null;
 }
 
-export interface PoliticianAdherenceRow {
-  id: number;
-  name: string;
-  type: string;
-  state: string;
-  party_sigla: string | null;
-  party_name: string | null;
-  mandate_office?: string | null;
-  matches_count: number;
-  comparable_count: number;
-  adherence: number | null;
+export interface PropositionWithVoteSession extends Proposition {
+  vote_session_id?: string;
+  vote_session_date?: string;
+  vote_session_description?: string;
+  vote_session_result?: string | null;
+  total_sim?: number;
+  total_nao?: number;
+  total_outros?: number;
 }
 
-export interface ProjectWithRecords extends LegislativeProject {
-  records?: ProjectHouseRecord[];
-  sessions?: VoteSession[];
+export interface PropositionDetail extends PropositionWithVoteSession {
+  votes: Array<{
+    deputado_id: number;
+    deputado_nome: string;
+    sigla_partido: string;
+    sigla_uf: string;
+    url_foto?: string | null;
+    voto_original: string;
+  }>;
 }
-
-export interface ProjectWithLastVote extends LegislativeProject {
-  official_urls?: string[];
-  houses?: string;
-  last_vote_date?: string | null;
-  last_vote_description?: string | null;
-  tramitacao_etapa?: string | null;
-  despacho?: string | null;
-  presentation_date?: string | null;
-  last_event_date?: string | null;
-  author_name?: string | null;
-  official_url?: string | null;
-}
-
-export interface PoliticianSearchResult {
-  id: number;
-  source: string;
-  external_id: string;
-  name: string;
-  type: string;
-  state: string;
-  photo_url?: string | null;
-  party_sigla: string | null;
-  party_name: string | null;
-  mandate_office?: string | null;
-}
-
-export interface PoliticianDetail extends Politician {
-  party_sigla: string | null;
-  party_name: string | null;
-}
-
-export interface PartyHistoryRow {
-  id: number;
-  start_date: string;
-  end_date: string | null;
-  party_sigla: string;
-  party_name: string;
-}
-
-export interface PoliticianVoteRow {
-  vote_id: number;
-  party_id?: number | null;
-  vote_original: string;
-  vote_date: string;
-  vote_description: string | null;
-  vote_result: string | null;
-  project_id: number;
-  canonical_id: string;
-  project_title: string;
-  project_description: string | null;
-  house: string;
-  official_url: string | null;
-  party_sigla?: string | null;
-}
-
-export interface VoteDetailRow {
-  id: number;
-  vote_session_id: number;
-  politician_id: number;
-  party_id?: number | null;
-  vote_original: string;
-  politician_name: string;
-  politician_type: string;
-  politician_state: string;
-  party_sigla: string | null;
-}
-
-export interface PartyPoliticianMember {
-  id: number;
-  name: string;
-  type: string;
-  state: string;
-  photo_url: string | null;
-  email: string | null;
-  source: string;
-  mandate_office?: string | null;
-}
-
-export interface PartyPoliticianVoteDetail {
-  vote_id: number;
-  politician_id: number;
-  party_id: number | null;
-  vote_original: string;
-  politician_name: string;
-  vote_session_id: number;
-  session_date: string;
-  session_description: string | null;
-  project_id: number;
-  canonical_id: string;
-  project_number: string;
-  project_year: number;
-  project_type: string;
-  project_title: string;
-  project_description: string | null;
-  house: string;
-  official_url: string | null;
-}
-
-export interface ProjectVoteSessionRow extends VoteSession {
-  house: string;
-  phase_name?: string | null;
-}
-
-export type SQLParam = string | number | boolean | null;

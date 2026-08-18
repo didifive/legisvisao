@@ -10,7 +10,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "sync": "tsx scripts/sync/index.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.3",

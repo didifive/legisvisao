@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Guardrails e Diretrizes do Repositório VerCandidato
 
 Este documento estabelece as regras obrigatórias e princípios arquiteturais que **todos os agentes de IA, desenvolvedores e pipelines automatizados devem seguir estritamente**.

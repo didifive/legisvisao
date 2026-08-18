@@ -5,16 +5,17 @@ import * as path from "node:path";
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
-export interface SyncResult {
-  source: string;
-  name: string;
-  officialUrl: string;
-  recordsCount: number;
-  recordsUpdated?: number;
-  recordsInserted?: number;
+export interface SyncControlUpdate {
+  source?: string;
+  name?: string;
+  officialUrl?: string;
+  totalDeputies?: number;
+  totalPropositions?: number;
+  totalVoteSessions?: number;
+  totalVotes?: number;
   datasetVersion?: string | null;
-  status: "SUCCESS" | "FAILED" | "PENDING";
-  error?: string;
+  status: "SUCCESS" | "FAILED" | "RUNNING" | "PENDING";
+  error?: string | null;
 }
 
 const connectionString = process.env.DATABASE_URL;
@@ -34,11 +35,10 @@ export const sql = postgres(connectionString, {
 });
 
 export const CAMARA_API_BASE = "https://dadosabertos.camara.leg.br/api/v2";
-export const SENADO_API_BASE = "https://legis.senado.leg.br/dadosabertos";
 
 export const DEFAULT_HEADERS = {
   Accept: "application/json",
-  "User-Agent": "LegisVisao/1.0 (https://legisvisao.com.br; luis@zancanela.dev.br)",
+  "User-Agent": "LegisVisao/1.0 (https://legisvisao.com.br; contato@legisvisao.com.br)",
 };
 
 export async function fetchWithRetry(url: string, maxRetries = 3, delayMs = 1000): Promise<Response> {
@@ -56,7 +56,7 @@ export async function fetchWithRetry(url: string, maxRetries = 3, delayMs = 1000
 }
 
 /**
- * Executa tarefas assíncronas com concorrência controlada para evitar sobrecarregar APIs públicas.
+ * Executa tarefas assíncronas com concorrência controlada para respeitar o rate-limit da Câmara.
  */
 export async function mapConcurrent<T, R>(
   items: T[],
@@ -80,69 +80,42 @@ export async function mapConcurrent<T, R>(
   return results;
 }
 
-/**
- * Consome múltiplos resultados paginados da API da Câmara seguindo links HATEOAS (rel: "next").
- */
-export async function fetchCamaraPaginated<T>(
-  initialUrl: string,
-  maxPages = 2
-): Promise<T[]> {
-  const allItems: T[] = [];
-  let nextUrl: string | null = initialUrl;
-  let pageCount = 0;
+export async function updateSyncStatus(data: SyncControlUpdate): Promise<void> {
+  const nowUtc = new Date().toISOString();
+  const source = data.source || "CAMARA";
+  const name = data.name || "Câmara dos Deputados (Dados Abertos)";
+  const officialUrl = data.officialUrl || "https://dadosabertos.camara.leg.br";
 
-  while (nextUrl && pageCount < maxPages) {
-    pageCount++;
-    try {
-      const res = await fetchWithRetry(nextUrl, 2, 500);
-      if (!res.ok) break;
-      const data = await res.json();
-      const items: T[] = data.dados || [];
-      allItems.push(...items);
-
-      const nextLink = Array.isArray(data.links)
-        ? data.links.find((l: { rel?: string; href?: string }) => l.rel === "next")
-        : null;
-
-      nextUrl = nextLink?.href || null;
-    } catch (err) {
-      console.warn(`[API Câmara] Aviso na paginação HATEOAS (${nextUrl}):`, err);
-      break;
-    }
-  }
-
-  return allItems;
-}
-
-export async function updateSyncStatus(result: SyncResult): Promise<void> {
   await sql`
     INSERT INTO sync_control (
       source, name, official_url, last_sync, last_successful_sync,
-      status, records_count, records_updated, records_inserted,
-      dataset_version, last_error
+      status, total_deputies, total_propositions, total_vote_sessions,
+      total_votes, dataset_version, last_error
     )
     VALUES (
-      ${result.source},
-      ${result.name},
-      ${result.officialUrl},
-      NOW(),
-      ${result.status === "SUCCESS" ? sql`NOW()` : null},
-      ${result.status},
-      ${result.recordsCount},
-      ${result.recordsUpdated || 0},
-      ${result.recordsInserted || 0},
-      ${result.datasetVersion || null},
-      ${result.error || null}
+      ${source},
+      ${name},
+      ${officialUrl},
+      ${nowUtc}::timestamptz,
+      ${data.status === "SUCCESS" ? nowUtc : null}::timestamptz,
+      ${data.status},
+      ${data.totalDeputies || 0},
+      ${data.totalPropositions || 0},
+      ${data.totalVoteSessions || 0},
+      ${data.totalVotes || 0},
+      ${data.datasetVersion || null},
+      ${data.error || null}
     )
     ON CONFLICT (source) DO UPDATE SET
       name = EXCLUDED.name,
       official_url = EXCLUDED.official_url,
-      last_sync = NOW(),
-      last_successful_sync = CASE WHEN EXCLUDED.status = 'SUCCESS' THEN NOW() ELSE sync_control.last_successful_sync END,
+      last_sync = EXCLUDED.last_sync,
+      last_successful_sync = CASE WHEN EXCLUDED.status = 'SUCCESS' THEN EXCLUDED.last_successful_sync ELSE sync_control.last_successful_sync END,
       status = EXCLUDED.status,
-      records_count = EXCLUDED.records_count,
-      records_updated = EXCLUDED.records_updated,
-      records_inserted = EXCLUDED.records_inserted,
+      total_deputies = EXCLUDED.total_deputies,
+      total_propositions = EXCLUDED.total_propositions,
+      total_vote_sessions = EXCLUDED.total_vote_sessions,
+      total_votes = EXCLUDED.total_votes,
       dataset_version = COALESCE(EXCLUDED.dataset_version, sync_control.dataset_version),
       last_error = EXCLUDED.last_error;
   `;
@@ -151,8 +124,8 @@ export async function updateSyncStatus(result: SyncResult): Promise<void> {
 export async function getCurrentDatasetVersion(): Promise<string | null> {
   const rows = await sql`
     SELECT dataset_version FROM sync_control 
-    WHERE dataset_version IS NOT NULL 
-    ORDER BY last_sync DESC LIMIT 1
+    WHERE source = 'CAMARA' AND dataset_version IS NOT NULL 
+    LIMIT 1
   `;
   return rows.length > 0 ? rows[0].dataset_version : null;
 }

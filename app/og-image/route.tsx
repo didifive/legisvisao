@@ -14,7 +14,7 @@ export async function GET() {
             justifyContent: "center",
             backgroundColor: "#0d1f14",
             backgroundImage:
-              "radial-gradient(circle at 50% 20%, rgba(34, 197, 94, 0.18) 0%, transparent 60%), radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.12) 0%, transparent 40%)",
+              "radial-gradient(circle at 50% 20%, rgba(34, 197, 94, 0.20) 0%, transparent 60%), radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.15) 0%, transparent 40%)",
             color: "#ffffff",
             padding: "60px",
             fontFamily: "sans-serif",
@@ -29,7 +29,7 @@ export async function GET() {
               left: 24,
               right: 24,
               bottom: 24,
-              border: "1px solid rgba(52, 211, 153, 0.2)",
+              border: "1px solid rgba(52, 211, 153, 0.25)",
               borderRadius: 24,
               display: "flex",
             }}
@@ -46,21 +46,21 @@ export async function GET() {
           >
             <div
               style={{
-                width: 56,
-                height: 56,
-                borderRadius: 14,
+                width: 60,
+                height: 60,
+                borderRadius: 16,
                 background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: 30,
+                fontSize: 32,
               }}
             >
               ⚖️
             </div>
             <div
               style={{
-                fontSize: 64,
+                fontSize: 68,
                 fontWeight: 900,
                 letterSpacing: "-0.03em",
                 background: "linear-gradient(90deg, #a7f3d0 0%, #34d399 100%)",
@@ -75,16 +75,16 @@ export async function GET() {
           {/* Subtítulo */}
           <div
             style={{
-              fontSize: 30,
+              fontSize: 32,
               fontWeight: 500,
               color: "#e2e8f0",
               textAlign: "center",
-              maxWidth: 900,
+              maxWidth: 920,
               lineHeight: 1.35,
               marginBottom: 36,
             }}
           >
-            Transparência Legislativa e Afinidade com Propostas Reais
+            Descubra quais Deputados Federais e Partidos votam como você
           </div>
 
           {/* Badges */}
@@ -94,7 +94,7 @@ export async function GET() {
               gap: 14,
               flexWrap: "wrap",
               justifyContent: "center",
-              marginBottom: 40,
+              marginBottom: 44,
             }}
           >
             <span
@@ -102,39 +102,39 @@ export async function GET() {
                 background: "rgba(16, 185, 129, 0.15)",
                 color: "#6ee7b7",
                 border: "1px solid rgba(52, 211, 153, 0.3)",
-                padding: "8px 20px",
+                padding: "8px 22px",
                 borderRadius: 999,
                 fontSize: 18,
                 fontWeight: 600,
               }}
             >
-              🏛️ Congresso Nacional
+              🏛️ Câmara dos Deputados
             </span>
             <span
               style={{
                 background: "rgba(16, 185, 129, 0.15)",
                 color: "#6ee7b7",
                 border: "1px solid rgba(52, 211, 153, 0.3)",
-                padding: "8px 20px",
+                padding: "8px 22px",
                 borderRadius: 999,
                 fontSize: 18,
                 fontWeight: 600,
               }}
             >
-              🔒 100% Local & Privado
+              🔒 100% Local-First
             </span>
             <span
               style={{
                 background: "rgba(16, 185, 129, 0.15)",
                 color: "#6ee7b7",
                 border: "1px solid rgba(52, 211, 153, 0.3)",
-                padding: "8px 20px",
+                padding: "8px 22px",
                 borderRadius: 999,
                 fontSize: 18,
                 fontWeight: 600,
               }}
             >
-              📊 Afinidade Política
+              📊 Votações Nominais Reais
             </span>
           </div>
 
@@ -153,7 +153,7 @@ export async function GET() {
             }}
           >
             <div>Desenvolvido por Luis Zancanela • zancanela.dev.br</div>
-            <div style={{ color: "#34d399", fontWeight: 600 }}>legisvisao</div>
+            <div style={{ color: "#34d399", fontWeight: 700 }}>legisvisao.com.br</div>
           </div>
         </div>
       ),
