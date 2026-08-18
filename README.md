@@ -25,7 +25,7 @@
 
 O **LegisVisão** é uma plataforma cívica de código aberto desenvolvida para aproximar a sociedade civil das deliberações do Poder Legislativo Brasileiro.
 
-A aplicação permite que qualquer cidadão opine (**CONCORDO** ou **DISCORDO**) sobre propostas de lei reais (PL, PEC, PLP, MPV votadas no Plenário da Câmara dos Deputados) e compare seus posicionamentos de forma determinística com os votos nominais registrados pelos 513 Deputados Federais e as bancadas partidárias.
+A aplicação permite que qualquer cidadão opine (**CONCORDO** ou **DISCORDO**) sobre propostas de lei reais (PL, PEC, PLP, MPV votadas no Plenário da Câmara dos Deputados) e compare seus posicionamentos de forma determinística com os votos nominais registrados pelos 513 Deputados Federais e as bancadas partidárias da 57ª Legislatura (2023–2027).
 
 A ferramenta opera sob o modelo **Local-First (Privacidade Absoluta)**: nenhuma escolha, voto ou preferência do visitante é enviada para servidores ou gravada em bancos de dados remotos.
 
@@ -140,8 +140,8 @@ erDiagram
         varchar tema "Classificação temática"
         text url_inteiro_teor "Link para PDF oficial"
         text url_camara "Página da proposição na Câmara"
-        timestamp data_apresentacao "Data de protocolo"
-        varchar ultimo_status "Situação de tramitação"
+        date data_apresentacao "Data de apresentação"
+        text ultimo_status "Situação da tramitação"
     }
 
     VOTE_SESSIONS {
@@ -154,7 +154,7 @@ erDiagram
     }
 
     DEPUTY_VOTES {
-        bigserial id PK "Chave primária interna"
+        serial id PK "Chave primária interna"
         varchar votacao_id FK "ID da sessão de votação"
         int deputado_id FK "ID do deputado votante"
         varchar sigla_partido FK "Partido no momento do voto"
@@ -166,7 +166,7 @@ erDiagram
         varchar name "Nome da fonte"
         text official_url "URL do portal"
         timestamp last_sync "Última sincronização"
-        varchar status "SUCCESS | FAILED | RUNNING"
+        varchar status "SUCCESS | FAILED | RUNNING | PENDING"
         int total_deputies "Total de deputados"
         int total_propositions "Total de proposições"
         int total_vote_sessions "Total de sessões"
@@ -175,6 +175,20 @@ erDiagram
         text last_error "Mensagem de erro em caso de falha"
     }
 ```
+
+---
+
+## 🔗 Rastreabilidade de Dados e Fontes Oficiais
+
+| Entidade / Dado | Origem Primária Oficial | Endpoint da API Pública | Aplicação no LegisVisão |
+|---|---|---|---|
+| **Partidos Políticos** | Câmara dos Deputados | `/partidos` | Identificação das legendas e agregação da média partidária |
+| **Deputados Federais** | Câmara dos Deputados | `/deputados` | 513 parlamentares da 57ª Legislatura, fotos oficiais e e-mails |
+| **Proposições Legislativas** | Câmara dos Deputados | `/proposicoes` e `/proposicoes/{id}` | Projetos com deliberação no Plenário, ementas e íntegras |
+| **Sessões de Votação** | Câmara dos Deputados | `/votacoes` e `/votacoes/{id}` | Data, hora, resultado e descrição oficial do objeto deliberado |
+| **Votos Nominais** | Câmara dos Deputados | `/votacoes/{id}/votos` | Registros auditáveis de cada deputado (Sim, Não, Abstenção) |
+
+> 🔍 **Auditoria Cívica Direta**: Cada página de proposição (`/projetos/[id]`) e cada perfil de parlamentar (`/politicos/[id]`) contém links diretos para a respectiva página oficial no portal da Câmara dos Deputados (`camara.leg.br`).
 
 ---
 
@@ -198,6 +212,16 @@ $$\text{Afinidade}(\%) = \left( \frac{\sum \text{Concordâncias}}{\text{Total de
 
 ---
 
+## 🤖 Engenharia e Desenvolvimento Acelerado por IA
+
+A concepção, arquitetura, design de interface e implementação do **LegisVisão** foram desenvolvidos utilizando práticas modernas de **Engenharia de Software Aumentada por Inteligência Artificial (AI-Assisted Engineering)**, combinando as seguintes ferramentas:
+
+- **🚀 Google Antigravity & Google Gemini**: Utilizados como agente autônomo principal de programação em par (pair programming), estruturação da arquitetura em camadas, implementação do design system (Tailwind CSS e Dark Mode), refatoração modular dos scripts de sincronização e otimização de batch inserts no banco de dados.
+- **💻 GitHub Copilot**: Utilizado no ambiente de desenvolvimento para geração contextual de código TypeScript, validação de tipagens estritas, criação de rotas de API e aceleração de testes de componentes React.
+- **📊 Microsoft 365 Copilot**: Utilizado na fase de planejamento estratégico, levantamento de requisitos de transparência pública, refinamento da metodologia de cálculo e elaboração da documentação técnica e cívica.
+
+---
+
 ## 🛠️ Tecnologias Utilizadas
 
 - **Frontend**: [Next.js 16.3 (Turbopack)](https://nextjs.org/) + [React 19](https://react.dev/)
@@ -206,15 +230,69 @@ $$\text{Afinidade}(\%) = \left( \frac{\sum \text{Concordâncias}}{\text{Total de
 - **Banco de Dados**: [PostgreSQL](https://www.postgresql.org/) hospedado no [Supabase](https://supabase.com/)
 - **Driver de Conexão**: [postgres.js](https://github.com/porsager/postgres) com pool de conexões otimizado (`prepare: false` para transaction pooler)
 - **Pipeline de Ingestão**: Scripts TypeScript com `tsx` e rate limiting nativo
+- **SEO & Metadados**: OpenGraph dinâmico com `@vercel/og`, sitemap XML dinâmico e Web App Manifest (PWA)
 
 ---
 
-## 🚀 Como Executar o Projeto
+## 📁 Estrutura de Diretórios
+
+```
+├── app/
+│   ├── afinidade/           # Visualização de Afinidades por Deputado e Partido
+│   ├── api/                 # Endpoints REST (BFF com cache inteligente)
+│   │   ├── deputies/        # Consulta e perfil de Deputados Federais
+│   │   ├── metadata/        # Metadados e versão do dataset ativo
+│   │   ├── parties/         # Consulta de legendas e bancadas
+│   │   ├── politicians/     # Rota de compatibilidade para deputados
+│   │   ├── projects/        # Rota de compatibilidade para proposições
+│   │   ├── propositions/    # Catálogo de proposições e sessões nominais
+│   │   ├── states/          # Lista de UFs representadas
+│   │   ├── sync-status/     # Monitor de atualização das fontes oficiais
+│   │   ├── system-status/   # Indicador de prontidão do sistema
+│   │   └── version/         # Versão do dataset ativo
+│   ├── components/          # Componentes visuais globais (Header, Footer, ThemeToggle)
+│   ├── faq/                 # Metodologia, FAQ e Monitor de Fontes da Câmara
+│   ├── og-image/            # Gerador dinâmico de imagem Open Graph (@vercel/og)
+│   ├── opiniao/             # Simulador de Votação e Minhas Opiniões (Revisão)
+│   ├── partidos/            # Páginas de Detalhes dos Partidos e Bancadas
+│   ├── politicos/           # Páginas de Perfil e Votações Nominais dos Deputados
+│   ├── projetos/            # Detalhes da Proposição, Texto Integral e Votos Nominais
+│   ├── globals.css          # Design tokens HSL, tema escuro/claro e utilitários
+│   ├── layout.tsx           # Layout raiz com ThemeProvider e SystemStatusProvider
+│   ├── manifest.ts          # Web App Manifest (PWA)
+│   ├── page.tsx             # Página inicial institucional e hero
+│   ├── robots.ts            # Configuração de indexação para buscadores
+│   └── sitemap.ts           # Sitemap XML dinâmico (deputados, projetos, partidos)
+├── lib/
+│   ├── match/               # Motor de cálculo determinístico e normalização de votos
+│   ├── cache.ts             # Cache client-side (sessionStorage) com TTL de 3 minutos
+│   ├── db.ts                # Conexão singleton com PostgreSQL (postgres.js)
+│   ├── metadata.ts          # Configurações globais de SEO e Open Graph
+│   ├── server-cache.ts      # Cache server-side em memória com TTL de 15 minutos
+│   ├── storage.ts           # Gerenciamento Local-First de votos (localStorage)
+│   └── urls.ts              # Configuração centralizada de URLs e contatos
+├── scripts/
+│   └── sync/                # Pipeline de ingestão da API de Dados Abertos da Câmara
+│       ├── client.ts        # Cliente Postgres, controle de concorrência e rate-limiting
+│       ├── index.ts         # Orquestrador linear de sincronização
+│       ├── sync-deputies.ts # Ingestão dos 513 deputados federais da 57ª legislatura
+│       ├── sync-parties.ts  # Ingestão de partidos políticos com representação
+│       ├── sync-propositions.ts # Ingestão de proposições e sessões nominais do Plenário
+│       └── sync-votes.ts    # Ingestão em lote dos votos nominais individuais
+├── supabase/
+│   └── migrations/          # Migration SQL minimalista do PostgreSQL (5 tabelas)
+└── types/
+    └── db.ts                # Tipagens TypeScript estritas do schema e domínio
+```
+
+---
+
+## 🚀 Como Executar o Projeto Localmente
 
 ### Pré-requisitos
 - **Node.js**: `20.x` ou superior
 - **NPM**: `10.x` ou superior
-- **Instância PostgreSQL / Supabase**
+- **Instância PostgreSQL** ou projeto no **Supabase**
 
 ### 1. Clonar o Repositório e Instalar Dependências
 ```bash
@@ -231,12 +309,13 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 ```
 
 ### 3. Aplicar o Esquema do Banco de Dados
-Execute o script SQL em [`supabase/migrations/20260817000000_init.sql`](supabase/migrations/20260817000000_init.sql) no seu banco de dados ou via Supabase CLI:
+Execute a migration inicial com o Supabase CLI ou via script:
 ```bash
-npx supabase db push
+npm run db:reset
+# ou npx supabase db push
 ```
 
-### 4. Sincronizar os Dados da Câmara dos Deputados
+### 4. Sincronizar os Dados Oficiais da Câmara dos Deputados
 Execute o pipeline de ingestão linear para popular os 513 deputados, partidos, proposições e votos nominais:
 ```bash
 npm run sync
@@ -262,8 +341,8 @@ npm run start
 |---|---|---|
 | `/api/propositions` | `GET` | Lista proposições com deliberação no Plenário para o questionário |
 | `/api/propositions/[id]` | `GET` | Detalhes da proposição, sessões de votação e votos nominais |
-| `/api/deputies` | `GET` | Lista deputados federais com suporte a filtros por `state`, `party` e `search` |
-| `/api/deputies/[id]` | `GET` | Perfil completo do deputado e histórico de votações |
+| `/api/deputies` | `GET` | Lista deputados federais com filtros por `state`, `party` e `search` |
+| `/api/deputies/[id]` | `GET` | Perfil completo do deputado e histórico de votações nominais |
 | `/api/parties` | `GET` | Lista partidos registrados na Câmara e total de membros |
 | `/api/parties/[id]` | `GET` | Detalhes do partido, bancada de deputados e histórico de votos |
 | `/api/states` | `GET` | Lista de UFs (estados) com deputados federais em exercício |
@@ -273,8 +352,27 @@ npm run start
 
 ---
 
+## ⚖️ Termos de Uso e Neutralidade Cívica
+
+> **Esta ferramenta não recomenda representantes. Apenas compara dados públicos.**
+
+- **Finalidade Cívica e Educacional**: O **LegisVisão** é uma ferramenta de transparência pública, sem fins lucrativos ou vínculos com partidos políticos.
+- **Vedações**: É estritamente vedado o uso desta plataforma, de seus relatórios, marca ou índices para fins de **propaganda eleitoral, campanhas político-partidárias ou promoção de candidaturas**.
+- **Auditoria de Código**: O código-fonte é 100% aberto sob a licença MIT para permitir auditoria independente de toda a lógica e dos dados coletados.
+
+---
+
 ## 📄 Licença
 
 Este projeto está licenciado sob os termos da licença [MIT](LICENSE).
 
-Desenvolvido por **[Luis Zancanela](https://zancanela.dev.br)**.
+---
+
+## 👨‍💻 Autor
+
+Desenvolvido por **Luis Zancanela**.
+
+- 🌐 **Website**: [zancanela.dev.br](https://zancanela.dev.br)
+- 💼 **LinkedIn**: [linkedin.com/in/luis-zancanela](https://www.linkedin.com/in/luis-zancanela)
+- 🐙 **GitHub**: [@didifive](https://github.com/didifive)
+- 📧 **E-mail**: [luis@zancanela.dev.br](mailto:luis@zancanela.dev.br)
