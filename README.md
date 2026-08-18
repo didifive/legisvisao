@@ -108,7 +108,7 @@ Apresenta o ecossistema geral, os usuários e as interações com os sistemas ex
 C4Context
     title Nível 1 (C1): Diagrama de Contexto do Sistema - LegisVisão
 
-    Person(cidadao, "Cidadão / Eleitor", "Usuário que deseja comparar suas opiniões legislativas com os votos reais do Congresso.")
+    Person(cidadao, "Cidadão", "Usuário que deseja comparar suas opiniões legislativas com os votos reais do Congresso.")
     
     System(legisvisao, "LegisVisão", "Plataforma cívica web Local-First para análise de afinidade político-partidária e transparência legislativa.")
     
@@ -129,7 +129,7 @@ Detalha as aplicações, serviços, orquestradores de dados e armazenamentos que
 C4Container
     title Nível 2 (C2): Diagrama de Contêineres - LegisVisão
 
-    Person(cidadao, "Cidadão / Eleitor", "Usuário no navegador web")
+    Person(cidadao, "Cidadão", "Usuário no navegador web")
 
     System_Ext(camara, "API Câmara dos Deputados", "API REST pública de dados abertos")
     System_Ext(senado, "API Senado Federal", "API REST pública de dados abertos")
