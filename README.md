@@ -10,6 +10,8 @@
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Supabase-336791?style=for-the-badge&logo=postgresql)](https://supabase.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
+[![Netlify Status](https://api.netlify.com/api/v1/badges/4168480c-025c-45cc-8217-f0f40fbed713/deploy-status)](https://app.netlify.com/projects/legisvisao/deploys)
+
 <p align="center">
   <strong>Descubra quais Deputados Federais e Partidos votam como você.</strong><br>
   Uma aplicação <em>Local-First</em>, determinística, auditável e alimentada exclusivamente por dados públicos oficiais da Câmara dos Deputados.
