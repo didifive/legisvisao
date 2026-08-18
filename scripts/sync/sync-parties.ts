@@ -28,39 +28,49 @@ export async function syncParties(): Promise<SyncPartiesResult> {
   const json = await res.json();
   const parties: CamaraPartyItem[] = json.dados || [];
 
-  let inserted = 0;
-  let updated = 0;
   const partyMap = new Map<string, number>();
+  const partiesMapToInsert = new Map<number, {
+    id: number;
+    sigla: string;
+    nome: string;
+    logo_url: string | null;
+    total_membros: number;
+  }>();
 
   for (const party of parties) {
     const sigla = party.sigla.trim().toUpperCase();
     partyMap.set(sigla, party.id);
+    partiesMapToInsert.set(party.id, {
+      id: party.id,
+      sigla,
+      nome: party.nome.trim(),
+      logo_url: null,
+      total_membros: 0,
+    });
+  }
 
+  const valuesToInsert = Array.from(partiesMapToInsert.values());
+
+  let inserted = 0;
+  let updated = 0;
+
+  if (valuesToInsert.length > 0) {
     const result = await sql`
-      INSERT INTO parties (id, sigla, nome, logo_url, total_membros)
-      VALUES (
-        ${party.id},
-        ${sigla},
-        ${party.nome.trim()},
-        ${null},
-        0
-      )
+      INSERT INTO parties ${sql(valuesToInsert, "id", "sigla", "nome", "logo_url", "total_membros")}
       ON CONFLICT (id) DO UPDATE SET
         sigla = EXCLUDED.sigla,
         nome = EXCLUDED.nome
       RETURNING (xmax = 0) AS is_insert;
     `;
 
-    if (result.length > 0) {
-      if (result[0].is_insert) inserted++;
-      else updated++;
-    }
+    inserted = result.filter((r) => r.is_insert).length;
+    updated = result.length - inserted;
   }
 
-  console.log(`✅ [Partidos] ${parties.length} partidos sincronizados (${inserted} novos, ${updated} atualizados).`);
+  console.log(`✅ [Partidos] ${valuesToInsert.length} partidos sincronizados em lote (${inserted} novos, ${updated} atualizados).`);
 
   return {
-    total: parties.length,
+    total: valuesToInsert.length,
     inserted,
     updated,
     partyMap,

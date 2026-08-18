@@ -98,6 +98,132 @@ flowchart TB
 
 ---
 
+## 🔄 Fluxos de Execução e Diagramas de Sequência
+
+### 1. Jornada do Cidadão (Votação e Afinidade Local-First)
+Demonstra o ciclo de vida completo da navegação, gravação estritamente local no navegador e cálculo determinístico no cliente:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Usuario as Visitante / Cidadão
+    participant UI as Frontend (Next.js / UI)
+    participant LocalStorage as Navegador (localStorage)
+    participant ClientMatch as Motor de Afinidade (lib/match)
+    participant API as BFF / API Routes (/api/*)
+    participant DB as PostgreSQL (Cache Oficial)
+
+    Note over Usuario,DB: 1. Acesso e Análise de Propostas
+    Usuario->>UI: Acessa a página de Propostas (/opiniao)
+    UI->>API: GET /api/propositions
+    API->>DB: Consulta proposições e sessões de votação
+    DB-->>API: Retorna proposições e histórico de deliberações
+    API-->>UI: Responde lista de proposições canônicas
+    UI-->>Usuario: Exibe proposições com ementas e links oficiais
+
+    loop Para cada proposição avaliada
+        Usuario->>UI: Clica em "CONCORDO" ou "DISCORDO"
+        UI->>LocalStorage: Salva resposta em legisvisao_user_opinions
+    end
+
+    Note over Usuario,DB: 2. Consulta de Resultados e Afinidade
+    Usuario->>UI: Navega para a página de Afinidade (/afinidade)
+    UI->>LocalStorage: Recupera respostas gravadas
+    LocalStorage-->>UI: Retorna mapa de opiniões do usuário
+    UI->>API: GET /api/deputies e GET /api/parties
+    API->>DB: Consulta deputados, legendas e votos nominais
+    DB-->>API: Retorna registros consolidados
+    API-->>UI: Responde dados brutos dos deputados e partidos
+    UI->>ClientMatch: Executa calculatePoliticianMatch() e calculatePartyMatch()
+    ClientMatch-->>UI: Retorna índices determinísticos calculados no cliente
+    UI-->>Usuario: Exibe afinidades (%) de Deputados Federais e Partidos
+
+    Note over Usuario,LocalStorage: 3. Exportação, Limpeza e Restauração de Dados
+    Usuario->>UI: Clica em "Exportar" (JSON)
+    UI->>LocalStorage: Lê dados salvos
+    LocalStorage-->>UI: Retorna opiniões
+    UI-->>Usuario: Dispara download do arquivo legisvisao-opinioes-AAAA-MM-DD.json
+
+    Usuario->>UI: Clica em "Limpar" (Ícone de Lixeira)
+    UI->>LocalStorage: clearStoredAnswers()
+    UI-->>Usuario: Notifica limpeza e reseta simulador
+
+    Usuario->>UI: Clica em "Importar" e seleciona arquivo .json
+    UI->>UI: Valida estrutura do JSON v1 (schema estrito)
+    UI->>LocalStorage: Grava respostas normalizadas
+    UI-->>Usuario: Restaura sessões e recalcula afinidades instantaneamente
+```
+
+---
+
+### 2. Pipeline de Ingestão e Sincronização Governamental (ETL)
+Demonstra como o orquestrador de sincronização consome os dados abertos da Câmara, aplica verificação ativa em cache, executa inserções em lote (bulk insert) e versiona o dataset:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Cron as ⏰ GitHub Actions / CLI
+    participant Engine as ⚡ Sync Engine<br/>(scripts/sync/index.ts)
+    participant Parties as 🔄 syncParties
+    participant Deputies as 🔄 syncDeputies
+    participant Props as 🔄 syncPropositions
+    participant Votes as 🔄 syncVotes
+    participant Camara as 🏛️ API da Câmara dos Deputados
+    participant DB as 🗄️ PostgreSQL (Supabase)
+
+    Cron->>Engine: npx tsx scripts/sync/index.ts
+    Engine->>DB: updateSyncStatus({ status: 'RUNNING' })
+
+    rect rgb(59, 130, 246, 0.08)
+    Note over Engine,DB: ⚡ [1/4] Partidos Políticos
+    Engine->>Parties: syncParties()
+    Parties->>Camara: GET /partidos?itens=100
+    Camara-->>Parties: Lista de siglas e legendas oficiais
+    Parties->>DB: Batch Insert em parties (ON CONFLICT DO UPDATE)
+    Parties-->>Engine: partyMap + contadores
+    end
+
+    rect rgb(16, 185, 129, 0.08)
+    Note over Engine,DB: ⚡ [2/4] Deputados Federais (57ª Legislatura)
+    Engine->>Deputies: syncDeputies(partyMap)
+    Deputies->>Camara: GET /deputados?idLegislatura=57
+    Camara-->>Deputies: 513 parlamentares, fotos e e-mails
+    Deputies->>DB: Batch Insert em deputies (ON CONFLICT DO UPDATE)
+    Deputies->>DB: UPDATE parties (total_membros agregado em 1 query)
+    Deputies-->>Engine: deputyMap + contadores
+    end
+
+    rect rgb(245, 158, 11, 0.08)
+    Note over Engine,DB: ⚡ [3/4] Proposições e Sessões de Votação
+    Engine->>Props: syncPropositions()
+    Props->>DB: Consulta proposições e sessões existentes (cache)
+    Props->>Camara: GET /votacoes (janelas trimestrais em paralelo)
+    Camara-->>Props: Sessões deliberadas no Plenário
+    Props->>Camara: GET /proposicoes/{id} (detalhes pendentes)
+    Props->>DB: Batch Insert em propositions (lotes de 100)
+    Props->>DB: Batch Insert em vote_sessions (lotes de 200)
+    Props-->>Engine: sessionsToSyncVotes + contadores
+    end
+
+    rect rgb(139, 92, 246, 0.08)
+    Note over Engine,DB: ⚡ [4/4] Votos Nominais Individuais (Streaming em Lote)
+    Engine->>Votes: syncVotes(sessions, deputyMap)
+    Votes->>DB: SELECT votacao_id FROM deputy_votes (skip de consolidadas)
+    loop Para cada sessão pendente
+        Votes->>Camara: GET /votacoes/{id}/votos
+        Camara-->>Votes: Votos nominais dos deputados
+        Votes->>DB: Batch Insert em deputy_votes (lotes de 1.000 a 2.000)
+    end
+    Votes-->>Engine: totalVotes + contadores
+    end
+
+    Note over Engine,DB: 🏁 Finalização e Versionamento
+    Engine->>DB: updateSyncStatus({ status: 'SUCCESS', datasetVersion })
+    Engine-->>Cron: Pipeline finalizado com integridade garantida
+```
+
+---
+
 ## 🗄️ Esquema do Banco de Dados (PostgreSQL)
 
 O banco de dados do LegisVisão é modelado com **apenas 5 tabelas centrais + 1 tabela de controle operacional**:

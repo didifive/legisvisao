@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
           COALESCE(vs.total_outros, 0) as total_outros
         FROM propositions p
         INNER JOIN (
-          SELECT 
+          SELECT DISTINCT ON (v.proposicao_id)
             v.proposicao_id,
             v.id,
             v.data_hora,
@@ -48,8 +48,10 @@ export async function GET(request: NextRequest) {
             COUNT(CASE WHEN dv.voto_original ILIKE 'N%' OR dv.voto_original ILIKE 'Não%' THEN 1 END) as total_nao,
             COUNT(CASE WHEN dv.voto_original NOT ILIKE 'Sim%' AND dv.voto_original NOT ILIKE 'N%' THEN 1 END) as total_outros
           FROM vote_sessions v
-          LEFT JOIN deputy_votes dv ON dv.votacao_id = v.id
+          JOIN deputy_votes dv ON dv.votacao_id = v.id
           GROUP BY v.id, v.proposicao_id, v.data_hora, v.descricao, v.resultado
+          HAVING COUNT(CASE WHEN dv.voto_original ILIKE 'Sim%' OR dv.voto_original ILIKE 'N%' OR dv.voto_original ILIKE 'Não%' THEN 1 END) > 0
+          ORDER BY v.proposicao_id, v.data_hora DESC
         ) vs ON vs.proposicao_id = p.id
         WHERE 1=1
       `;

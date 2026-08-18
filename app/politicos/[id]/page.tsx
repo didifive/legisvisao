@@ -82,6 +82,7 @@ export default async function PoliticianPage(
       dv.votacao_id,
       dv.voto_original,
       vs.data_hora,
+      vs.descricao AS vote_description,
       vs.resultado,
       p.id AS proposicao_id,
       p.titulo,

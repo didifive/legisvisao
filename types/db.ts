@@ -117,6 +117,7 @@ export interface DeputyVoteDetail {
   tema?: string | null;
   url_camara?: string | null;
   resultado?: string | null;
+  vote_description?: string | null;
 }
 
 export interface DeputyDetail extends Deputy {

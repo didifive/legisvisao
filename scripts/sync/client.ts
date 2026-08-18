@@ -80,6 +80,18 @@ export async function mapConcurrent<T, R>(
   return results;
 }
 
+/**
+ * Divide um array em lotes (chunks) de tamanho fixo para inserções em massa.
+ */
+export function chunkArray<T>(items: T[], size: number): T[][] {
+  if (items.length === 0) return [];
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
 export async function updateSyncStatus(data: SyncControlUpdate): Promise<void> {
   const nowUtc = new Date().toISOString();
   const source = data.source || "CAMARA";

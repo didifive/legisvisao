@@ -424,7 +424,91 @@ export default function FAQPage() {
         </div>
       </section>
 
-      {/* 6. AVISO LEGAL DE NEUTRALIDADE CÍVICA */}
+      {/* 6. MÚLTIPLAS VOTAÇÕES DE UM MESMO PROJETO */}
+      <section id="multiplas-votacoes" className="p-6 sm:p-8 rounded-2xl bg-card border border-border shadow-soft space-y-6 scroll-mt-24">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+            <FaVoteYea className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold text-foreground">
+              Como funcionam as Múltiplas Votações de um mesmo Projeto?
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              Entenda a distinção entre Mérito Principal, Destaques e Requerimentos Procedimentais
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-4 text-sm text-muted-foreground leading-relaxed">
+          <p>
+            No processo legislativo da Câmara dos Deputados, uma mesma proposta de lei (PL, PEC, PLP ou MPV) costuma passar por <strong>diversas deliberações nominais em plenário</strong> ao longo de sua tramitação. O LegisVisão classifica e agrupa cada votação para assegurar máxima transparência:
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* 1. Mérito Principal */}
+            <div className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 text-xs space-y-2">
+              <span className="font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 text-sm">
+                <span>1. Mérito / Texto-Base</span>
+              </span>
+              <p className="text-muted-foreground leading-relaxed text-xs">
+                <strong>Utilizada no cálculo de afinidade.</strong> É a votação substantiva central onde o plenário decide pela aprovação ou rejeição da lei (Texto-Base, Substitutivo ou Projeto de Lei de Conversão). Expressa a posição ideológica direta do parlamentar sobre a matéria.
+              </p>
+            </div>
+
+            {/* 2. Destaques e Emendas */}
+            <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/20 text-xs space-y-2">
+              <span className="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5 text-sm">
+                <span>2. Destaques & Emendas</span>
+              </span>
+              <p className="text-muted-foreground leading-relaxed text-xs">
+                Votações pontuais (DTQ / DVS / Emendas) para manter, suprimir ou alterar artigos, parágrafos ou regras específicas dentro do texto já aprovado.
+              </p>
+            </div>
+
+            {/* 3. Requerimentos Procedimentais */}
+            <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/20 text-xs space-y-2">
+              <span className="font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1.5 text-sm">
+                <span>3. Requerimentos de Pauta</span>
+              </span>
+              <p className="text-muted-foreground leading-relaxed text-xs">
+                Manobras de regimento interno (ex: Retirada de Pauta, Adiamento da Votação, Urgência). Frequentemente usadas pela oposição ou governo como tática para acelerar ou postergar deliberações.
+              </p>
+            </div>
+          </div>
+
+          <div className="p-4 sm:p-5 rounded-xl bg-muted/60 border border-border text-xs text-foreground space-y-2">
+            <span className="font-bold text-primary block">🎯 Por que o Voto de Mérito Principal é o considerado no cálculo de afinidade?</span>
+            <p className="text-muted-foreground text-xs leading-relaxed">
+              Quando você responde ao questionário de opiniões ("Concordo" ou "Discordo"), você está avaliando o <strong>mérito substantivo da proposta</strong>. Vincular sua resposta à deliberação principal de mérito evita que táticas meramente regimentais (como votar "Sim" para retirar de pauta para estender o debate) distorçam a afinidade real do eleitor com o parlamentar. No perfil de cada deputado, todos os momentos são exibidos de forma auditável e transparente.
+            </p>
+          </div>
+
+          {/* Critério Determinístico Estrito de Classificação */}
+          <div className="p-4 sm:p-5 rounded-xl bg-primary/5 border border-primary/20 text-xs text-foreground space-y-3">
+            <div className="font-bold text-primary flex items-center gap-2">
+              <FaBalanceScale className="w-3.5 h-3.5" />
+              <span>Hierarquia Determinística de Eleição da Votação Principal:</span>
+            </div>
+            <p className="text-muted-foreground leading-relaxed text-xs">
+              Para garantir que o cálculo e a exibição sejam <strong>100% determinísticos, auditáveis e reproduzíveis</strong> em qualquer dispositivo, a seleção da votação principal segue rigorosamente três níveis de critérios ordenados:
+            </p>
+            <ol className="list-decimal pl-4 space-y-1.5 text-muted-foreground text-xs leading-relaxed">
+              <li>
+                <strong>Nível 1 (Relevância de Mérito):</strong> Prioridade máxima para deliberações de Texto-Base, Substitutivos, Projetos de Lei de Conversão e Pareceres de Mérito da Comissão sobre Emendas, Destaques ou Requerimentos.
+              </li>
+              <li>
+                <strong>Nível 2 (Atualidade):</strong> Em caso de mais de uma deliberação de mérito, seleciona-se a data e hora mais recente (a sessão que consolidou a versão final da matéria na Câmara).
+              </li>
+              <li>
+                <strong>Nível 3 (Desempate Alfanumérico Estrito):</strong> Em caso de empate temporal no mesmo segundo, o identificador oficial único da sessão na Câmara dos Deputados (<code>ID da Votação</code>) é utilizado como critério de desempate determinístico.
+              </li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      {/* 7. AVISO LEGAL DE NEUTRALIDADE CÍVICA */}
       <section className="p-6 sm:p-8 rounded-2xl bg-amber-500/10 dark:bg-amber-950/20 border border-amber-500/30 shadow-soft space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 flex items-center justify-center">

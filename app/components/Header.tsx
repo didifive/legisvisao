@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   FaGithub,
@@ -10,7 +11,6 @@ import {
   FaDownload,
   FaUpload,
   FaTrashAlt,
-  FaBalanceScale,
   FaCheckCircle,
   FaExclamationTriangle,
   FaInfoCircle,
@@ -24,7 +24,6 @@ import {
   parseAndValidateAnswersFile,
   saveStoredAnswers,
   clearStoredAnswers,
-  getStoredAnswers,
   getStoredAnswersCount,
   type StoredAnswers,
 } from "@/lib/storage";
@@ -177,11 +176,10 @@ export const Header = () => {
   return (
     <>
       <header
-        className={`fixed top-0 left-0 right-0 z-50 transition-smooth border-b ${
-          isScrolled
+        className={`fixed top-0 left-0 right-0 z-50 transition-smooth border-b ${isScrolled
             ? "bg-background/85 backdrop-blur-md shadow-soft border-border"
             : "bg-background/95 md:bg-background/70 md:backdrop-blur-sm border-transparent"
-        }`}
+          }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -190,15 +188,19 @@ export const Header = () => {
               href="/"
               className="flex items-center gap-2.5 group focus:outline-none"
             >
-              <div className="w-9 h-9 rounded-lg bg-gradient-primary flex items-center justify-center text-white shadow-soft group-hover:scale-105 transition-smooth">
-                <FaBalanceScale className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-lg bg-gradient-primary flex items-center justify-center p-1 shadow-soft group-hover:scale-105 transition-smooth overflow-hidden">
+                <Image
+                  src="/logo.png"
+                  alt="LegisVisão"
+                  width={36}
+                  height={36}
+                  className="w-full h-full object-contain"
+                  priority
+                />
               </div>
               <div className="flex flex-col">
                 <span className="font-extrabold text-foreground tracking-tight text-lg leading-none group-hover:text-primary transition-smooth">
                   LegisVisão
-                </span>
-                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-                  Câmara dos Deputados
                 </span>
               </div>
             </Link>
@@ -215,11 +217,10 @@ export const Header = () => {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-smooth relative ${
-                      isActive
+                    className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-smooth relative ${isActive
                         ? "text-primary dark:text-emerald-400 bg-primary/10"
                         : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    }`}
+                      }`}
                   >
                     <span>{item.label}</span>
                     {item.href === "/opiniao/revisao" && opinionsCount > 0 && (
@@ -323,11 +324,10 @@ export const Header = () => {
                     key={item.href}
                     href={item.href}
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className={`block px-3 py-2 rounded-md text-base font-medium transition-smooth ${
-                      isActive
+                    className={`block px-3 py-2 rounded-md text-base font-medium transition-smooth ${isActive
                         ? "text-primary dark:text-emerald-400 bg-primary/10 font-semibold"
                         : "text-foreground hover:bg-muted"
-                    }`}
+                      }`}
                   >
                     <div className="flex justify-between items-center">
                       <span>{item.label}</span>
@@ -401,21 +401,19 @@ export const Header = () => {
 
       {/* Toast Notification */}
       {toast && (
-        <div
-          role="status"
-          className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl shadow-large border flex items-center gap-2.5 animate-bounce transition-smooth text-sm font-medium ${
-            toast.type === "error"
+        <output
+          className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl shadow-large border flex items-center gap-2.5 animate-bounce transition-smooth text-sm font-medium ${toast.type === "error"
               ? "bg-card border-rose-500/30 text-rose-600 dark:text-rose-400"
               : toast.type === "info"
-              ? "bg-card border-primary/30 text-primary"
-              : "bg-card border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-          }`}
+                ? "bg-card border-primary/30 text-primary"
+                : "bg-card border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+            }`}
         >
           {toast.type === "error" && <FaExclamationTriangle className="w-4 h-4 shrink-0" />}
           {toast.type === "info" && <FaInfoCircle className="w-4 h-4 shrink-0" />}
           {toast.type === "success" && <FaCheckCircle className="w-4 h-4 shrink-0" />}
           <span>{toast.message}</span>
-        </div>
+        </output>
       )}
 
       {/* Modal de Confirmação para Limpeza de Dados */}
