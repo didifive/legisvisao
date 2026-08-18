@@ -1,10 +1,10 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { defaultMetadata } from "@/lib/metadata";
 import { Header } from "@/app/components/Header";
 import { Footer } from "@/app/components/Footer";
 import { ThemeProvider } from "@/app/components/ThemeProvider";
 import { SystemStatusProvider } from "@/app/components/SystemStatusProvider";
+import { NavigationProgressBar } from "@/app/components/ui/NavigationProgressBar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata = defaultMetadata;
+
 
 export default function RootLayout({
   children,
@@ -29,7 +29,11 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
+      <head>
+        <link rel="preload" href="/logo.png" as="image" type="image/png" />
+      </head>
       <body className="min-h-full flex flex-col bg-background text-foreground transition-colors duration-300">
+        <NavigationProgressBar />
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
@@ -46,3 +50,5 @@ export default function RootLayout({
     </html>
   );
 }
+
+export { defaultMetadata as metadata } from "@/lib/metadata";

@@ -148,11 +148,43 @@ export interface PropositionWithVoteSession extends Proposition {
 
 export interface PropositionDetail extends PropositionWithVoteSession {
   votes: Array<{
+    id: number;
+    votacao_id: string;
     deputado_id: number;
-    deputado_nome: string;
     sigla_partido: string;
-    sigla_uf: string;
-    url_foto?: string | null;
     voto_original: string;
+    deputado_nome: string;
+    deputado_uf: string;
+    deputado_foto: string | null;
   }>;
+}
+
+// ====================================================================
+// Tipos Oficiais da API de Dados Abertos da Câmara dos Deputados
+// ====================================================================
+
+export interface CamaraVoteSessionListItem {
+  id: string;
+  data?: string;
+  dataHoraRegistro?: string;
+  siglaOrgao?: string;
+  uriOrgao?: string;
+  uriProposicaoObjeto?: string;
+  descricao?: string;
+  aprovacao?: number;
+}
+
+export interface CamaraPropositionSummary {
+  id?: number;
+  siglaTipo?: string;
+  numero?: number;
+  ano?: number;
+  ementa?: string;
+  ementaDetalhada?: string;
+  urlInteiroTeor?: string;
+  dataApresentacao?: string;
+  statusProposicao?: {
+    descricaoSituacao?: string;
+    descricaoTramitacao?: string;
+  };
 }

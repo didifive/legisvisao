@@ -1,56 +1,17 @@
-// ====================================================================
-// LegisVisão - Sincronização de Votações e Proposições da Câmara (Otimizado)
-// ====================================================================
-import { sql, CAMARA_API_BASE, fetchWithRetry, mapConcurrent, chunkArray } from "./client";
-
-interface CamaraVoteSessionListItem {
-  id: string;
-  data: string;
-  dataHoraRegistro?: string;
-  siglaOrgao?: string;
-  descricao?: string;
-  aprovacao?: number;
-  proposicaoObjeto?: string | null;
-  uriProposicaoObjeto?: string | null;
-}
-
-interface CamaraPropositionSummary {
-  id: number;
-  siglaTipo: string;
-  numero: number;
-  ano: number;
-  ementa?: string;
-  ementaDetalhada?: string;
-  titulo?: string;
-}
-
-interface CamaraVoteSessionDetail {
-  id: string;
-  dataHoraRegistro?: string;
-  descricao?: string;
-  aprovacao?: number;
-  siglaOrgao?: string;
-  proposicoesAfetadas?: CamaraPropositionSummary[];
-  objetosPossiveis?: CamaraPropositionSummary[];
-}
-
-export interface SyncPropositionsResult {
-  totalPropositions: number;
-  insertedPropositions: number;
-  updatedPropositions: number;
-  totalSessions: number;
-  insertedSessions: number;
-  sessionsToSyncVotes: Array<{ sessionId: string; propositionId: number }>;
-}
+import { CAMARA_API_BASE, fetchWithRetry, sql, mapConcurrent, chunkArray } from "./client";
+import type {
+  CamaraVoteSessionListItem,
+  CamaraPropositionSummary,
+} from "../../types/db";
 
 /**
- * Gera janelas trimestrais de 3 meses de 2023 até o ano corrente para respeitar o limite da API.
+ * Gera as janelas trimestrais da 57ª Legislatura (2023 até 2026)
  */
 function generateQuarters(): Array<{ start: string; end: string }> {
-  const currentYear = new Date().getFullYear();
   const quarters: Array<{ start: string; end: string }> = [];
+  const years = [2023, 2024, 2025, 2026];
 
-  for (let year = 2023; year <= currentYear; year++) {
+  for (const year of years) {
     quarters.push({ start: `${year}-01-01`, end: `${year}-03-31` });
     quarters.push({ start: `${year}-04-01`, end: `${year}-06-30` });
     quarters.push({ start: `${year}-07-01`, end: `${year}-09-30` });
@@ -60,22 +21,32 @@ function generateQuarters(): Array<{ start: string; end: string }> {
   return quarters;
 }
 
-export async function syncPropositions(): Promise<SyncPropositionsResult> {
+/**
+ * Sincroniza Proposições e Sessões de Votação do Plenário da Câmara dos Deputados.
+ * 
+ * Otimizações de Alta Performance:
+ * 1. Coleta e desduplicação paralela de sessões por janela trimestral com paginação até 40 páginas.
+ * 2. Extração determinística do ID da proposição a partir do prefixo da sessão (ex: 2618177-71 -> 2618177).
+ * 3. Enriquecimento paralelo apenas das proposições únicas (reduzindo de 18.000 chamadas para ~1.000).
+ * 4. Inserção em lotes de 100 proposições e 200 sessões com ON CONFLICT DO UPDATE.
+ */
+export async function syncPropositions(): Promise<{
+  insertedPropositions: number;
+  updatedPropositions: number;
+  insertedSessions: number;
+  updatedSessions: number;
+  sessionsToSyncVotes: Array<{ sessionId: string; propositionId: number }>;
+}> {
   console.log("🚩 [Proposições] Verificando dados existentes no banco e consultando API da Câmara...");
 
-  // 0. Verificação ativa no banco de dados para evitar requisições redundantes
-  const existingPropsRows = await sql<Array<{ id: number }>>`
-    SELECT id FROM propositions
-  `;
-  const existingPropsSet = new Set<number>(existingPropsRows.map((r) => r.id));
+  // Cache existente no banco
+  const [existingPropsRows, existingSessionsRows] = await Promise.all([
+    sql<{ id: number }[]>`SELECT id FROM propositions`,
+    sql<{ id: string; proposicao_id: number }[]>`SELECT id, proposicao_id FROM vote_sessions`,
+  ]);
 
-  const existingSessionsRows = await sql<Array<{ id: string; proposicao_id: number }>>`
-    SELECT id, proposicao_id FROM vote_sessions
-  `;
-  const existingSessionsMap = new Map<string, number>();
-  for (const s of existingSessionsRows) {
-    existingSessionsMap.set(s.id, s.proposicao_id);
-  }
+  const existingPropsSet = new Set(existingPropsRows.map((r) => r.id));
+  const existingSessionsMap = new Map(existingSessionsRows.map((r) => [r.id, r.proposicao_id]));
 
   console.log(`📊 [Proposições] Cache do banco: ${existingPropsSet.size} proposições e ${existingSessionsMap.size} sessões já registradas.`);
 
@@ -83,6 +54,7 @@ export async function syncPropositions(): Promise<SyncPropositionsResult> {
   const rawSessionsMap = new Map<string, CamaraVoteSessionListItem>();
 
   // 1. Coleta todas as sessões das janelas trimestrais em paralelo
+  console.log("🌐 [Proposições] Consultando janelas trimestrais de votações da 57ª Legislatura...");
   await mapConcurrent(quarters, 4, async (q) => {
     try {
       let page = 1;
@@ -113,140 +85,63 @@ export async function syncPropositions(): Promise<SyncPropositionsResult> {
 
   console.log(`📦 [Proposições] ${rawSessionsMap.size} sessões brutas identificadas na API da Câmara.`);
 
-  // Filtra primariamente sessões do Plenário ou com proposição associada
+  // 2. Extrai e mapeia sessões e proposições únicas em memória instantaneamente
   const rawSessions = Array.from(rawSessionsMap.values());
   const plenSessions = rawSessions.filter(
     (s) => !s.siglaOrgao || s.siglaOrgao === "PLEN" || Boolean(s.uriProposicaoObjeto)
   );
 
-  const validSessions: Array<{
-    sessionId: string;
-    dataHora: string;
+  const validSessionsMap = new Map<string, {
+    id: string;
+    proposicao_id: number;
+    data_hora: string;
     descricao: string;
     resultado: string;
-    propId: number;
-    siglaTipo: string;
-    numero: number;
-    ano: number;
-    titulo: string;
-    ementa: string;
-  }> = [];
+    sigla_orgao: string;
+  }>();
 
-  const uniqueProps = new Map<number, { siglaTipo: string; numero: number; ano: number; titulo: string; ementa: string }>();
+  const uniquePropIds = new Set<number>();
 
-  // 2. Processa detalhes das sessões com concorrência otimizada
-  console.log(`🔍 [Proposições] Processando vínculos para ${plenSessions.length} sessões relevantes...`);
+  for (const s of plenSessions) {
+    let propId = existingSessionsMap.get(s.id);
 
-  await mapConcurrent(plenSessions, 10, async (s) => {
-    try {
-      // Se a sessão já existe no banco e já tem proposição vinculada, reaproveita dados básicos
-      const cachedPropId = existingSessionsMap.get(s.id);
-
-      let det: CamaraVoteSessionDetail | null = null;
-      let targetProp: CamaraPropositionSummary | null = null;
-
-      // Se não temos a proposição mapeada, busca o detalhe da sessão na API
-      if (!cachedPropId) {
-        const detailRes = await fetchWithRetry(`${CAMARA_API_BASE}/votacoes/${s.id}`, 2, 300);
-        if (!detailRes.ok) return;
-
-        const detailJson = await detailRes.json();
-        det = detailJson.dados;
-        if (!det) return;
-
-        const candidates = [
-          ...(det.proposicoesAfetadas || []),
-          ...(det.objetosPossiveis || []),
-        ];
-
-        const priorityTypes = ["PL", "PEC", "PLP", "MPV", "PLV", "PDC", "PDL"];
-        for (const cand of candidates) {
-          if (cand && cand.id && cand.siglaTipo && priorityTypes.includes(cand.siglaTipo.toUpperCase())) {
-            targetProp = cand;
-            break;
-          }
-        }
-
-        if (!targetProp && candidates.length > 0) {
-          const first = candidates.find((c) => c && c.id && c.siglaTipo && c.numero && c.ano);
-          if (first) targetProp = first;
-        }
+    if (!propId && s.id.includes("-")) {
+      const prefix = Number(s.id.split("-")[0]);
+      if (!isNaN(prefix) && prefix > 0) {
+        propId = prefix;
       }
-
-      let propId = targetProp?.id || cachedPropId;
-      let siglaTipo = targetProp?.siglaTipo;
-      let numero = targetProp?.numero;
-      let ano = targetProp?.ano;
-      let ementa = targetProp?.ementa || targetProp?.ementaDetalhada || det?.descricao || "";
-
-      if (!propId && s.id.includes("-")) {
-        const prefixId = Number(s.id.split("-")[0]);
-        if (!isNaN(prefixId) && prefixId > 0) {
-          propId = prefixId;
-        }
-      }
-
-      if (!propId) return;
-
-      // Se faltam dados e a proposição não é conhecida, busca o detalhe da proposição
-      if ((!siglaTipo || !numero || !ano) && !existingPropsSet.has(propId)) {
-        try {
-          const propRes = await fetchWithRetry(`${CAMARA_API_BASE}/proposicoes/${propId}`, 2, 300);
-          if (propRes.ok) {
-            const pJson = await propRes.json();
-            const pd = pJson.dados;
-            if (pd) {
-              siglaTipo = pd.siglaTipo;
-              numero = pd.numero;
-              ano = pd.ano;
-              ementa = pd.ementa || pd.ementaDetalhada || ementa;
-            }
-          }
-        } catch {
-          // Ignora
-        }
-      }
-
-      const typeClean = siglaTipo ? siglaTipo.trim().toUpperCase() : "PROP";
-      const numClean = numero ? Number(numero) : 0;
-      const anoClean = ano ? Number(ano) : 2024;
-      const titulo = numClean > 0 ? `${typeClean} ${numClean}/${anoClean}` : `Proposição ${propId}`;
-      const resultado = det?.aprovacao === 1 ? "Aprovado" : det?.aprovacao === 0 ? "Rejeitado" : "Deliberado";
-
-      validSessions.push({
-        sessionId: s.id,
-        dataHora: det?.dataHoraRegistro || s.dataHoraRegistro || s.data || new Date().toISOString(),
-        descricao: det?.descricao || s.descricao || `Votação de ${titulo}`,
-        resultado,
-        propId,
-        siglaTipo: typeClean,
-        numero: numClean,
-        ano: anoClean,
-        titulo,
-        ementa: ementa || `Deliberação legislativa sobre ${titulo}`,
-      });
-
-      if (!uniqueProps.has(propId) && (!existingPropsSet.has(propId) || numClean > 0)) {
-        uniqueProps.set(propId, {
-          siglaTipo: typeClean,
-          numero: numClean,
-          ano: anoClean,
-          titulo,
-          ementa,
-        });
-      }
-    } catch {
-      // Ignora erro pontual de sessão
     }
-  });
 
-  console.log(`🎯 [Proposições] ${uniqueProps.size} proposições pendentes/atualizadas e ${validSessions.length} sessões identificadas.`);
+    if (!propId && s.uriProposicaoObjeto) {
+      const parts = s.uriProposicaoObjeto.split("/");
+      const last = Number(parts[parts.length - 1]);
+      if (!isNaN(last) && last > 0) {
+        propId = last;
+      }
+    }
 
-  // 3. Enriquecer e salvar Proposições em Lotes (Batch Insert)
-  let insertedProps = 0;
-  let updatedProps = 0;
+    if (!propId) continue;
 
-  const propEntries = Array.from(uniqueProps.entries());
+    uniquePropIds.add(propId);
+
+    const dataHora = s.dataHoraRegistro || s.data || new Date().toISOString();
+    const descricao = s.descricao || `Deliberação legislativa sobre proposição ${propId}`;
+    const resultado = s.aprovacao === 1 ? "Aprovado" : s.aprovacao === 0 ? "Rejeitado" : "Deliberado";
+
+    validSessionsMap.set(s.id, {
+      id: s.id,
+      proposicao_id: propId,
+      data_hora: dataHora,
+      descricao,
+      resultado,
+      sigla_orgao: s.siglaOrgao || "PLEN",
+    });
+  }
+
+  console.log(`🎯 [Proposições] ${uniquePropIds.size} proposições únicas identificadas a partir de ${validSessionsMap.size} sessões de plenário.`);
+
+  // 3. Enriquecer apenas proposições pendentes de cadastro ou atualização
+  const propIdsToEnrich = Array.from(uniquePropIds);
   const propsMapToInsert = new Map<number, {
     id: number;
     sigla_tipo: string;
@@ -261,50 +156,60 @@ export async function syncPropositions(): Promise<SyncPropositionsResult> {
     ultimo_status: string | null;
   }>();
 
-  // Enriquecer apenas proposições que precisam de dados completos
-  await mapConcurrent(propEntries, 10, async ([propId, info]) => {
-    let ementaCompleta = info.ementa;
-    let urlInteiroTeor: string | null = null;
-    let urlCamara = `https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao=${propId}`;
-    let dataApresentacao: string | null = null;
-    let ultimoStatus: string | null = null;
+  let enrichedCount = 0;
+  console.log(`📝 [Proposições] Consultando detalhes de ${propIdsToEnrich.length} proposições na API da Câmara...`);
 
-    if (!existingPropsSet.has(propId)) {
-      try {
-        const detailRes = await fetchWithRetry(`${CAMARA_API_BASE}/proposicoes/${propId}`, 2, 300);
-        if (detailRes.ok) {
-          const detailJson = await detailRes.json();
-          const d = detailJson.dados;
-          if (d) {
-            ementaCompleta = d.ementa || d.ementaDetalhada || ementaCompleta;
-            urlInteiroTeor = d.urlInteiroTeor || null;
-            dataApresentacao = d.dataApresentacao ? d.dataApresentacao.substring(0, 10) : null;
-            ultimoStatus = d.statusProposicao?.descricaoSituacao || d.statusProposicao?.descricaoTramitacao || null;
-          }
+  await mapConcurrent(propIdsToEnrich, 15, async (propId) => {
+    try {
+      const propRes = await fetchWithRetry(`${CAMARA_API_BASE}/proposicoes/${propId}`, 2, 250);
+      if (propRes.ok) {
+        const pJson = await propRes.json();
+        const pd: CamaraPropositionSummary | undefined = pJson.dados;
+
+        if (pd) {
+          const siglaTipo = pd.siglaTipo ? pd.siglaTipo.trim().toUpperCase() : "PROP";
+          const numero = pd.numero ? Number(pd.numero) : 0;
+          const ano = pd.ano ? Number(pd.ano) : 2024;
+          const titulo = numero > 0 ? `${siglaTipo} ${numero}/${ano}` : `Proposição ${propId}`;
+          const ementa = pd.ementa || pd.ementaDetalhada || `Deliberação legislativa sobre ${titulo}`;
+          const urlInteiroTeor = pd.urlInteiroTeor || null;
+          const urlCamara = `https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao=${propId}`;
+          const dataApresentacao = pd.dataApresentacao ? pd.dataApresentacao.substring(0, 10) : null;
+          const ultimoStatus = pd.statusProposicao?.descricaoSituacao || pd.statusProposicao?.descricaoTramitacao || null;
+
+          propsMapToInsert.set(propId, {
+            id: propId,
+            sigla_tipo: siglaTipo,
+            numero,
+            ano,
+            titulo,
+            ementa,
+            ementa_detalhada: ementa,
+            url_inteiro_teor: urlInteiroTeor,
+            url_camara: urlCamara,
+            data_apresentacao: dataApresentacao,
+            ultimo_status: ultimoStatus,
+          });
         }
-      } catch {
-        // Usa dados básicos
+      }
+    } catch {
+      // Ignora erro pontual
+    } finally {
+      enrichedCount++;
+      if (enrichedCount % 100 === 0 || enrichedCount === propIdsToEnrich.length) {
+        const pct = ((enrichedCount / propIdsToEnrich.length) * 100).toFixed(1);
+        console.log(`⏳ [Proposições] ${enrichedCount}/${propIdsToEnrich.length} proposições enriquecidas (${pct}%).`);
       }
     }
-
-    propsMapToInsert.set(propId, {
-      id: propId,
-      sigla_tipo: info.siglaTipo,
-      numero: info.numero,
-      ano: info.ano,
-      titulo: info.titulo,
-      ementa: ementaCompleta,
-      ementa_detalhada: ementaCompleta,
-      url_inteiro_teor: urlInteiroTeor,
-      url_camara: urlCamara,
-      data_apresentacao: dataApresentacao,
-      ultimo_status: ultimoStatus,
-    });
   });
 
-  const propsToInsert = Array.from(propsMapToInsert.values());
+  // 4. Salvar Proposições em Lotes (Batch Insert)
+  let insertedProps = 0;
+  let updatedProps = 0;
 
-  // Envio de proposições em lote de 100 para o Postgres
+  const propsToInsert = Array.from(propsMapToInsert.values());
+  console.log(`💾 [Proposições] Gravando ${propsToInsert.length} proposições no banco de dados...`);
+
   for (const chunk of chunkArray(propsToInsert, 100)) {
     const res = await sql`
       INSERT INTO propositions ${sql(
@@ -340,37 +245,17 @@ export async function syncPropositions(): Promise<SyncPropositionsResult> {
     updatedProps += res.length - inserted;
   }
 
-  // 4. Salvar Sessões de Votação em Lotes (Batch Insert)
+  // 5. Salvar Sessões de Votação em Lotes (Batch Insert)
   let insertedSessions = 0;
-  const sessionsToSyncVotes: Array<{ sessionId: string; propositionId: number }> = [];
-  const sessionsMapToInsert = new Map<string, {
-    id: string;
-    proposicao_id: number;
-    data_hora: string;
-    descricao: string;
-    resultado: string;
-    sigla_orgao: string;
-  }>();
+  let updatedSessions = 0;
 
-  for (const s of validSessions) {
-    if (!sessionsMapToInsert.has(s.sessionId)) {
-      sessionsToSyncVotes.push({
-        sessionId: s.sessionId,
-        propositionId: s.propId,
-      });
+  // Filtra apenas sessões cujas proposições foram efetivamente salvas
+  const savedPropIds = new Set(propsToInsert.map((p) => p.id));
+  const sessionsToInsert = Array.from(validSessionsMap.values()).filter(
+    (s) => savedPropIds.has(s.proposicao_id) || existingPropsSet.has(s.proposicao_id)
+  );
 
-      sessionsMapToInsert.set(s.sessionId, {
-        id: s.sessionId,
-        proposicao_id: s.propId,
-        data_hora: s.dataHora,
-        descricao: s.descricao,
-        resultado: s.resultado,
-        sigla_orgao: "PLEN",
-      });
-    }
-  }
-
-  const sessionsToInsert = Array.from(sessionsMapToInsert.values());
+  console.log(`💾 [Proposições] Gravando ${sessionsToInsert.length} sessões de votação vinculadas no banco de dados...`);
 
   for (const chunk of chunkArray(sessionsToInsert, 200)) {
     const res = await sql`
@@ -387,21 +272,29 @@ export async function syncPropositions(): Promise<SyncPropositionsResult> {
         proposicao_id = EXCLUDED.proposicao_id,
         data_hora = EXCLUDED.data_hora,
         descricao = EXCLUDED.descricao,
-        resultado = EXCLUDED.resultado
+        resultado = EXCLUDED.resultado,
+        sigla_orgao = EXCLUDED.sigla_orgao,
+        last_updated_at = NOW()
       RETURNING (xmax = 0) AS is_insert;
     `;
 
-    insertedSessions += res.filter((r) => r.is_insert).length;
+    const inserted = res.filter((r) => r.is_insert).length;
+    insertedSessions += inserted;
+    updatedSessions += res.length - inserted;
   }
 
-  console.log(`✅ [Proposições] Sincronização concluída em lote: ${propsToInsert.length} proposições (${insertedProps} novas) e ${validSessions.length} sessões de votação (${insertedSessions} novas).`);
+  console.log(
+    `✅ [Proposições] Sincronização concluída: ${insertedProps} novas proposições (${updatedProps} atualizadas), ${insertedSessions} novas sessões (${updatedSessions} atualizadas).`
+  );
 
   return {
-    totalPropositions: propsToInsert.length,
     insertedPropositions: insertedProps,
     updatedPropositions: updatedProps,
-    totalSessions: validSessions.length,
     insertedSessions,
-    sessionsToSyncVotes,
+    updatedSessions,
+    sessionsToSyncVotes: sessionsToInsert.map((s) => ({
+      sessionId: s.id,
+      propositionId: s.proposicao_id,
+    })),
   };
 }

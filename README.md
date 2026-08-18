@@ -100,25 +100,26 @@ flowchart TB
 
 ## 🔄 Fluxos de Execução e Diagramas de Sequência
 
-### 1. Jornada do Cidadão (Votação e Afinidade Local-First)
-Demonstra o ciclo de vida completo da navegação, gravação estritamente local no navegador e cálculo determinístico no cliente:
+### 1. Jornada do Cidadão (Votação, Afinidade e Classificação Determinística)
+Demonstra o ciclo de vida completo da navegação, gravação estritamente local no navegador, classificação determinística de múltiplas deliberações e cálculo no cliente:
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Usuario as Visitante / Cidadão
-    participant UI as Frontend (Next.js / UI)
+    participant UI as Frontend (Next.js / Skeletons)
     participant LocalStorage as Navegador (localStorage)
+    participant Classifier as Classificador (lib/match)
     participant ClientMatch as Motor de Afinidade (lib/match)
     participant API as BFF / API Routes (/api/*)
     participant DB as PostgreSQL (Cache Oficial)
 
     Note over Usuario,DB: 1. Acesso e Análise de Propostas
     Usuario->>UI: Acessa a página de Propostas (/opiniao)
-    UI->>API: GET /api/propositions
-    API->>DB: Consulta proposições e sessões de votação
-    DB-->>API: Retorna proposições e histórico de deliberações
-    API-->>UI: Responde lista de proposições canônicas
+    UI->>API: GET /api/propositions (apenas com votos nominais válidos)
+    API->>DB: Consulta proposições com votos nominais registrados
+    DB-->>API: Retorna proposições e sessões nominais
+    API-->>UI: Responde catálogo filtrado
     UI-->>Usuario: Exibe proposições com ementas e links oficiais
 
     loop Para cada proposição avaliada
@@ -133,12 +134,18 @@ sequenceDiagram
     UI->>API: GET /api/deputies e GET /api/parties
     API->>DB: Consulta deputados, legendas e votos nominais
     DB-->>API: Retorna registros consolidados
-    API-->>UI: Responde dados brutos dos deputados e partidos
+    API-->>UI: Responde dados dos deputados e bancadas
     UI->>ClientMatch: Executa calculatePoliticianMatch() e calculatePartyMatch()
     ClientMatch-->>UI: Retorna índices determinísticos calculados no cliente
     UI-->>Usuario: Exibe afinidades (%) de Deputados Federais e Partidos
 
-    Note over Usuario,LocalStorage: 3. Exportação, Limpeza e Restauração de Dados
+    Note over Usuario,DB: 3. Inspeção de Perfil e Múltiplas Votações
+    Usuario->>UI: Acessa perfil do deputado (/politicos/[id]) ou projeto (/projetos/[id])
+    UI->>Classifier: Executa sortVoteSessionsDeterministic()
+    Classifier-->>UI: Elege Votação Principal (Mérito) e agrupa Destaques/Emendas
+    UI-->>Usuario: Exibe resumo colapsável, placar e histórico transparente
+
+    Note over Usuario,LocalStorage: 4. Exportação, Limpeza e Restauração de Dados
     Usuario->>UI: Clica em "Exportar" (JSON)
     UI->>LocalStorage: Lê dados salvos
     LocalStorage-->>UI: Retorna opiniões
@@ -149,7 +156,7 @@ sequenceDiagram
     UI-->>Usuario: Notifica limpeza e reseta simulador
 
     Usuario->>UI: Clica em "Importar" e seleciona arquivo .json
-    UI->>UI: Valida estrutura do JSON v1 (schema estrito)
+    UI->>UI: Valida estrutura do JSON (retrocompatível com v1 legada)
     UI->>LocalStorage: Grava respostas normalizadas
     UI-->>Usuario: Restaura sessões e recalcula afinidades instantaneamente
 ```
@@ -157,7 +164,7 @@ sequenceDiagram
 ---
 
 ### 2. Pipeline de Ingestão e Sincronização Governamental (ETL)
-Demonstra como o orquestrador de sincronização consome os dados abertos da Câmara, aplica verificação ativa em cache, executa inserções em lote (bulk insert) e versiona o dataset:
+Demonstra como o orquestrador de sincronização consome os dados abertos da Câmara, aplica verificação ativa em cache, executa paginação completa até 40 páginas por trimestre, insere lotes otimizados (bulk insert) e versiona o dataset:
 
 ```mermaid
 sequenceDiagram
@@ -194,10 +201,10 @@ sequenceDiagram
     end
 
     rect rgb(245, 158, 11, 0.08)
-    Note over Engine,DB: ⚡ [3/4] Proposições e Sessões de Votação
+    Note over Engine,DB: ⚡ [3/4] Proposições e Sessões de Votação (Paginação Completa)
     Engine->>Props: syncPropositions()
     Props->>DB: Consulta proposições e sessões existentes (cache)
-    Props->>Camara: GET /votacoes (janelas trimestrais em paralelo)
+    Props->>Camara: GET /votacoes (janelas trimestrais com paginação até 40 páginas)
     Camara-->>Props: Sessões deliberadas no Plenário
     Props->>Camara: GET /proposicoes/{id} (detalhes pendentes)
     Props->>DB: Batch Insert em propositions (lotes de 100)
@@ -276,7 +283,7 @@ erDiagram
         varchar id PK "ID da votação (ex: 2255678-120)"
         int proposicao_id FK "ID da proposição"
         timestamp data_hora "Data e hora da votação"
-        text descricao "Objeto da votação"
+        text descricao "Objeto e ata da votação"
         varchar resultado "Resultado (Aprovado / Rejeitado)"
         varchar sigla_orgao "Órgão deliberativo (PLEN)"
     }
@@ -320,23 +327,23 @@ erDiagram
 
 ---
 
-## 📐 Fórmula Determinística de Afinidade
+## 📐 Fórmula Determinística de Afinidade e Classificação
 
+### 1. Cálculo Aritmético de Afinidade
 O motor de cálculo (`lib/match/`) cruza determinística e pontualmente cada resposta do usuário com os votos nominais dos deputados:
 
 $$\text{Afinidade}(\%) = \left( \frac{\sum \text{Concordâncias}}{\text{Total de Votações Comparáveis}} \right) \times 100$$
 
-### Regras de Normalização de Votos:
-- **Concordância**:
-  - Usuário escolheu **CONCORDO** e Deputado votou **SIM**.
-  - Usuário escolheu **DISCORDO** e Deputado votou **NÃO**.
-- **Divergência**:
-  - Usuário escolheu **CONCORDO** e Deputado votou **NÃO**.
-  - Usuário escolheu **DISCORDO** e Deputado votou **SIM**.
-- **Não comparável** (ignorado do denominador):
-  - Deputado registrou *Abstenção*, *Obstrução*, *Artigo 17* ou esteve *Ausente*.
-- **Afinidade Partidária**:
-  - Média aritmética dos índices de convergência de todos os deputados filiados à legenda nas matérias avaliadas.
+- **Concordância**: Usuário **CONCORDO** $\leftrightarrow$ Deputado **SIM** / Usuário **DISCORDO** $\leftrightarrow$ Deputado **NÃO**.
+- **Divergência**: Usuário **CONCORDO** $\leftrightarrow$ Deputado **NÃO** / Usuário **DISCORDO** $\leftrightarrow$ Deputado **SIM**.
+- **Não comparável** (ignorado do denominador): *Abstenção*, *Obstrução*, *Artigo 17* ou *Ausente*.
+- **Afinidade Partidária**: Média aritmética dos índices de convergência de todos os deputados filiados à legenda nas matérias avaliadas.
+
+### 2. Hierarquia Determinística de Eleição da Votação Principal (`classifyVoteSession`)
+Para proposições com múltiplas deliberações (Texto-Base, Destaques, Emendas e Requerimentos), o sistema elege a sessão principal com base em 3 níveis de desempate estrito:
+1. **Nível 1 (Mérito Substantivo)**: Prioridade 1 (Texto-Base, Substitutivos, Projetos de Lei de Conversão, Redação Final) $>$ Prioridade 2 (Emendas) $>$ Prioridade 3 (Destaques / DTQ / DVS) $>$ Prioridade 4 (Requerimentos de Pauta).
+2. **Nível 2 (Atualidade Temporal)**: `data_hora DESC` (deliberação mais recente que consolidou a decisão da Câmara).
+3. **Nível 3 (Desempate Alfanumérico)**: `ID da Sessão` (`localeCompare` determinístico).
 
 ---
 
@@ -355,9 +362,10 @@ A concepção, arquitetura, design de interface e implementação do **LegisVis�
 - **Frontend**: [Next.js 16.3 (Turbopack)](https://nextjs.org/) + [React 19](https://react.dev/)
 - **Estilização**: [TailwindCSS v4](https://tailwindcss.com/) com paleta HSL dinâmica e suporte a tema Claro/Escuro (`next-themes`)
 - **Ícones**: [React Icons (FontAwesome)](https://react-icons.github.io/react-icons/)
+- **Performance & UX**: Loading Skeletons por rota dinâmica (`loading.tsx`), barra de progresso em tempo real (`NavigationProgressBar`) e preloading de imagens
 - **Banco de Dados**: [PostgreSQL](https://www.postgresql.org/) hospedado no [Supabase](https://supabase.com/)
 - **Driver de Conexão**: [postgres.js](https://github.com/porsager/postgres) com pool de conexões otimizado (`prepare: false` para transaction pooler)
-- **Pipeline de Ingestão**: Scripts TypeScript com `tsx` e rate limiting nativo
+- **Pipeline de Ingestão**: Scripts TypeScript com `tsx`, rate limiting nativo e paginação completa até 40 páginas
 - **SEO & Metadados**: OpenGraph dinâmico com `@vercel/og`, sitemap XML dinâmico e Web App Manifest (PWA)
 
 ---
@@ -366,46 +374,59 @@ A concepção, arquitetura, design de interface e implementação do **LegisVis�
 
 ```
 ├── app/
-│   ├── afinidade/           # Visualização de Afinidades por Deputado e Partido
+│   ├── afinidade/           # Visualização de Afinidades por Deputado e Partido (com loading.tsx)
 │   ├── api/                 # Endpoints REST (BFF com cache inteligente)
 │   │   ├── deputies/        # Consulta e perfil de Deputados Federais
 │   │   ├── metadata/        # Metadados e versão do dataset ativo
 │   │   ├── parties/         # Consulta de legendas e bancadas
 │   │   ├── politicians/     # Rota de compatibilidade para deputados
 │   │   ├── projects/        # Rota de compatibilidade para proposições
-│   │   ├── propositions/    # Catálogo de proposições e sessões nominais
+│   │   ├── propositions/    # Catálogo de proposições e sessões nominais (filtro nominal)
 │   │   ├── states/          # Lista de UFs representadas
 │   │   ├── sync-status/     # Monitor de atualização das fontes oficiais
 │   │   ├── system-status/   # Indicador de prontidão do sistema
 │   │   └── version/         # Versão do dataset ativo
-│   ├── components/          # Componentes visuais globais (Header, Footer, ThemeToggle)
+│   ├── components/          # Componentes visuais globais
+│   │   ├── ui/              # Componentes base (Button, ConfirmationModal, NavigationProgressBar)
+│   │   ├── Footer.tsx       # Rodapé institucional e links cívicos
+│   │   ├── Header.tsx       # Barra de navegação responsiva com logo e menu móvel
+│   │   ├── SystemStatusProvider.tsx # Provedor de prontidão das fontes públicas
+│   │   ├── ThemeProvider.tsx        # Provedor de tema claro/escuro
+│   │   └── ThemeToggle.tsx          # Alternador de tema acessível
 │   ├── faq/                 # Metodologia, FAQ e Monitor de Fontes da Câmara
 │   ├── og-image/            # Gerador dinâmico de imagem Open Graph (@vercel/og)
-│   ├── opiniao/             # Simulador de Votação e Minhas Opiniões (Revisão)
-│   ├── partidos/            # Páginas de Detalhes dos Partidos e Bancadas
-│   ├── politicos/           # Páginas de Perfil e Votações Nominais dos Deputados
-│   ├── projetos/            # Detalhes da Proposição, Texto Integral e Votos Nominais
-│   ├── globals.css          # Design tokens HSL, tema escuro/claro e utilitários
-│   ├── layout.tsx           # Layout raiz com ThemeProvider e SystemStatusProvider
+│   ├── opiniao/             # Simulador de Votação e Minhas Opiniões (com loading.tsx e revisao/)
+│   ├── partidos/            # Páginas de Detalhes dos Partidos e Bancadas (com loading.tsx)
+│   ├── politicos/           # Páginas de Perfil e Votações Nominais dos Deputados (com loading.tsx)
+│   ├── projetos/            # Detalhes da Proposição, Votações e Lista de Deputados (com loading.tsx)
+│   ├── globals.css          # Design tokens HSL, tema escuro/claro, animações e utilitários
+│   ├── layout.tsx           # Layout raiz com preloading de logo, ThemeProvider e NavigationProgressBar
+│   ├── loading.tsx          # Skeleton de carregamento global do app
 │   ├── manifest.ts          # Web App Manifest (PWA)
 │   ├── page.tsx             # Página inicial institucional e hero
 │   ├── robots.ts            # Configuração de indexação para buscadores
 │   └── sitemap.ts           # Sitemap XML dinâmico (deputados, projetos, partidos)
 ├── lib/
-│   ├── match/               # Motor de cálculo determinístico e normalização de votos
+│   ├── match/               # Motor de cálculo determinístico, classificador de sessões e votos
+│   │   ├── calculatePartyMatch.ts       # Cálculo de afinidade de partidos políticos
+│   │   ├── calculatePoliticianMatch.ts  # Cálculo de afinidade de deputados federais
+│   │   ├── classifyVoteSession.ts       # Classificador oficial e ordenador determinístico
+│   │   └── normalizeVotes.ts            # Normalizador de votos nominais (Sim, Não, Abstenção)
 │   ├── cache.ts             # Cache client-side (sessionStorage) com TTL de 3 minutos
 │   ├── db.ts                # Conexão singleton com PostgreSQL (postgres.js)
 │   ├── metadata.ts          # Configurações globais de SEO e Open Graph
 │   ├── server-cache.ts      # Cache server-side em memória com TTL de 15 minutos
-│   ├── storage.ts           # Gerenciamento Local-First de votos (localStorage)
+│   ├── storage.ts           # Gerenciamento Local-First de votos (localStorage com retrocompatibilidade)
 │   └── urls.ts              # Configuração centralizada de URLs e contatos
+├── public/
+│   └── logo.png             # Logotipo oficial em alta resolução
 ├── scripts/
 │   └── sync/                # Pipeline de ingestão da API de Dados Abertos da Câmara
 │       ├── client.ts        # Cliente Postgres, controle de concorrência e rate-limiting
 │       ├── index.ts         # Orquestrador linear de sincronização
 │       ├── sync-deputies.ts # Ingestão dos 513 deputados federais da 57ª legislatura
 │       ├── sync-parties.ts  # Ingestão de partidos políticos com representação
-│       ├── sync-propositions.ts # Ingestão de proposições e sessões nominais do Plenário
+│       ├── sync-propositions.ts # Ingestão de proposições e sessões nominais (paginação completa)
 │       └── sync-votes.ts    # Ingestão em lote dos votos nominais individuais
 ├── supabase/
 │   └── migrations/          # Migration SQL minimalista do PostgreSQL (5 tabelas)

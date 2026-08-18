@@ -208,3 +208,23 @@
     background: hsl(var(--primary-glow));
   }
 }
+
+@keyframes progress {
+  0% {
+    transform: scaleX(0);
+  }
+  40% {
+    transform: scaleX(0.65);
+  }
+  80% {
+    transform: scaleX(0.88);
+  }
+  100% {
+    transform: scaleX(0.98);
+  }
+}
+
+@utility animate-progress {
+  animation: progress 2.5s cubic-bezier(0.1, 0.5, 0.1, 1) infinite;
+}
+
