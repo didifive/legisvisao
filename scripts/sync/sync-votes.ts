@@ -1,16 +1,25 @@
-import { sql, CAMARA_API_BASE, fetchWithRetry, mapConcurrent } from "./client";
+// ====================================================================
+// LegisVisão - Sincronização de Votos Nominais (Câmara & Senado)
+// ====================================================================
+import { sql, mapConcurrent } from "./client";
 import type { SessionToSyncVotes } from "./sync-vote-sessions";
+import {
+  fetchCamaraNominalVotes,
+  type CamaraRawVoteNominalItem,
+} from "./adapters/camara";
+import {
+  fetchSenadoNominalVotes,
+  type RawSenadoVoteItem,
+} from "./adapters/senado";
 
 export interface SyncVotesResult {
   insertedVotes: number;
   totalVotes: number;
 }
 
-interface RawVoteNominalItem {
-  tipoVoto?: string;
-  voto?: string;
-  deputado_?: { id?: number | string; siglaPartido?: string };
-  deputado?: { id?: number | string; siglaPartido?: string };
+export interface PoliticianSummary {
+  id: number;
+  name: string;
 }
 
 interface PoliticianVoteToInsert {
@@ -35,24 +44,7 @@ async function loadExistingVoteKeys(): Promise<Set<string>> {
 }
 
 /**
- * 2. Consulta os votos nominais de uma sessão de votação na API da Câmara.
- */
-async function fetchNominalVotesFromCamara(externalVoteId: string): Promise<RawVoteNominalItem[]> {
-  const votosUrl = `${CAMARA_API_BASE}/votacoes/${externalVoteId}/votos`;
-  const votosRes = await fetchWithRetry(votosUrl, 2, 500);
-  if (!votosRes.ok) return [];
-
-  const votosData = await votosRes.json();
-  return votosData.dados || [];
-}
-
-export interface PoliticianSummary {
-  id: number;
-  name: string;
-}
-
-/**
- * 3. Resolve o partido do parlamentar diretamente a partir da sigla carimbada na folha de votação da API.
+ * 2. Resolve o partido do parlamentar diretamente a partir da sigla carimbada na folha de votação da API.
  */
 function resolvePartyForVote(
   rawPartySigla: string | null,
@@ -65,11 +57,11 @@ function resolvePartyForVote(
 }
 
 /**
- * 4. Mapeia e filtra votos válidos da sessão comparando com o catálogo de parlamentares e partidos.
+ * 3. Mapeia e filtra votos nominais da Câmara.
  */
-function buildVotesToInsert(
+function buildCamaraVotesToInsert(
   sessionId: number,
-  rawVotes: RawVoteNominalItem[],
+  rawVotes: CamaraRawVoteNominalItem[],
   politicianMap: Map<string, PoliticianSummary>,
   partyMap: Map<string, number>,
   existingVoteSet: Set<string>
@@ -104,6 +96,45 @@ function buildVotesToInsert(
 }
 
 /**
+ * 4. Mapeia e filtra votos nominais do Senado Federal.
+ */
+function buildSenadoVotesToInsert(
+  sessionId: number,
+  rawVotes: RawSenadoVoteItem[],
+  politicianMap: Map<string, PoliticianSummary>,
+  partyMap: Map<string, number>,
+  existingVoteSet: Set<string>
+): PoliticianVoteToInsert[] {
+  const rows: PoliticianVoteToInsert[] = [];
+
+  for (const item of rawVotes) {
+    const extSenId = String(item.IdentificacaoParlamentar?.CodigoParlamentar || "");
+    if (!extSenId) continue;
+
+    const polKey = `SENADO_${extSenId}`;
+    const pol = politicianMap.get(polKey);
+    if (!pol?.id) continue;
+
+    const voteKey = `${sessionId}_${pol.id}`;
+    if (existingVoteSet.has(voteKey)) continue;
+
+    const rawVote = String(item.SiglaVoto || "Outros").trim();
+    const rawPartySigla = String(item.IdentificacaoParlamentar?.SiglaPartidoParlamentar || "").trim().toUpperCase() || null;
+    const partyId = resolvePartyForVote(rawPartySigla, partyMap);
+
+    rows.push({
+      vote_session_id: sessionId,
+      politician_id: pol.id,
+      party_id: partyId,
+      vote_original: rawVote,
+    });
+    existingVoteSet.add(voteKey);
+  }
+
+  return rows;
+}
+
+/**
  * 5. Insere votos em lotes (batch) de 500 no banco de dados.
  */
 async function insertVotesBatches(allRows: PoliticianVoteToInsert[]): Promise<void> {
@@ -122,24 +153,25 @@ async function insertVotesBatches(allRows: PoliticianVoteToInsert[]): Promise<vo
 }
 
 /**
- * Orquestrador da sincronização de votos nominais parlamentares (Concorrente em Lote).
+ * Orquestrador da sincronização de votos nominais parlamentares Bicamerais (Concorrente em Lote).
  */
 export async function syncVotes(
   sessions: SessionToSyncVotes[],
   politicianMap: Map<string, PoliticianSummary>,
   partyMap: Map<string, number>
 ): Promise<SyncVotesResult> {
-  console.log("-> [Votos Nominais] Sincronizando votos parlamentares com vinculação partidária nominal direta...");
+  console.log("-> [Votos Nominais] Sincronizando votos parlamentares nominais (Câmara & Senado)...");
 
   const existingVoteSet = await loadExistingVoteKeys();
   const camaraSessions = sessions.filter((s) => s.house === "CAMARA");
+  const senadoSessions = sessions.filter((s) => s.house === "SENADO");
   const allRowsToInsert: PoliticianVoteToInsert[] = [];
 
-  // Executa em paralelo com 8 workers concorrentes
+  // 1. Processa Votos Nominais da Câmara dos Deputados
   await mapConcurrent(camaraSessions, 8, async (session) => {
     try {
-      const rawVotes = await fetchNominalVotesFromCamara(session.external_vote_id);
-      const rows = buildVotesToInsert(
+      const rawVotes = await fetchCamaraNominalVotes(session.external_vote_id);
+      const rows = buildCamaraVotesToInsert(
         session.id,
         rawVotes,
         politicianMap,
@@ -150,7 +182,29 @@ export async function syncVotes(
         allRowsToInsert.push(...rows);
       }
     } catch (err) {
-      console.warn(`[Votos] Erro ao sincronizar votos nominais da sessão ${session.external_vote_id}:`, err);
+      console.warn(`[Votos] Erro ao sincronizar votos da Câmara na sessão ${session.external_vote_id}:`, err);
+    }
+  });
+
+  // 2. Processa Votos Nominais do Senado Federal
+  await mapConcurrent(senadoSessions, 8, async (session) => {
+    try {
+      const rawVotes = await fetchSenadoNominalVotes(
+        session.materia_external_id,
+        session.external_vote_id
+      );
+      const rows = buildSenadoVotesToInsert(
+        session.id,
+        rawVotes,
+        politicianMap,
+        partyMap,
+        existingVoteSet
+      );
+      if (rows.length > 0) {
+        allRowsToInsert.push(...rows);
+      }
+    } catch (err) {
+      console.warn(`[Votos] Erro ao sincronizar votos do Senado na sessão ${session.external_vote_id}:`, err);
     }
   });
 

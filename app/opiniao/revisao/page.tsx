@@ -449,7 +449,15 @@ export default function RevisaoPage() {
                 const lastVoteDate = project.last_vote_date
                   ? new Date(project.last_vote_date).toLocaleDateString("pt-BR")
                   : null;
-                const houses = project.houses || "Congresso Nacional";
+                function formatHouses(raw?: string | null): string {
+                  if (!raw) return "Congresso Nacional";
+                  const up = raw.toUpperCase();
+                  if (up.includes("CAMARA") && up.includes("SENADO")) return "Bicameral (Câmara & Senado)";
+                  if (up.includes("SENADO")) return "Senado Federal";
+                  if (up.includes("CAMARA")) return "Câmara dos Deputados";
+                  return raw;
+                }
+                const houses = formatHouses(project.houses);
                 const isAprovado = situacaoAtual.toLowerCase().includes("aprovad") || situacaoAtual.toLowerCase().includes("lei") || situacaoAtual.toLowerCase().includes("norma");
                 const isEncerrado = situacaoAtual.toLowerCase().includes("arquivad") || situacaoAtual.toLowerCase().includes("rejeitad") || situacaoAtual.toLowerCase().includes("encerrad");
 

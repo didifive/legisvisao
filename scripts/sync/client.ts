@@ -25,9 +25,12 @@ if (!connectionString) {
 
 export const sql = postgres(connectionString, {
   prepare: false,
-  max: 10,
-  idle_timeout: 20,
+  max: 15,
+  idle_timeout: 30,
   connect_timeout: 30,
+  transform: {
+    undefined: null,
+  },
 });
 
 export const CAMARA_API_BASE = "https://dadosabertos.camara.leg.br/api/v2";
