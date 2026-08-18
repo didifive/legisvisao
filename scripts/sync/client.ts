@@ -1,6 +1,6 @@
 import postgres from "postgres";
 import * as dotenv from "dotenv";
-import * as path from "path";
+import * as path from "node:path";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });

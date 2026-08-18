@@ -97,94 +97,58 @@ sequenceDiagram
 
 ---
 
-## 🏗️ Arquitetura do Sistema e Componentes
+## 🏗️ Arquitetura do Sistema (C4 Model)
 
-### 2. Diagrama de Componentes e Fontes Oficiais
+A arquitetura do **LegisVisão** é documentada seguindo o modelo **C4 (Context & Containers)**:
+
+### 1. Nível 1: Diagrama de Contexto do Sistema (C1)
+Apresenta o ecossistema geral, os usuários e as interações com os sistemas externos de dados abertos governamentais.
 
 ```mermaid
-flowchart TB
-    subgraph FontesOficiais["🌐 Fontes de Dados Governamentais Oficiais"]
-        CamaraAPI["🏛️ API Câmara dos Deputados<br/>(dadosabertos.camara.leg.br)<br/>• Proposições, Autores e Tramitações<br/>• Sessões de Votação e Votos Nominais<br/>• Deputados Federais, Partidos e Legislaturas"]
-        SenadoAPI["🏛️ API Senado Federal<br/>(legis.senado.leg.br/dadosabertos)<br/>• Senadores em Exercício<br/>• Mandatos e Legislaturas"]
-    end
+C4Context
+    title Nível 1 (C1): Diagrama de Contexto do Sistema - LegisVisão
 
-    subgraph SyncEngine["⚙️ Orquestrador de Sincronização (scripts/sync/)"]
-        SyncIndex["index.ts<br/>(Controle de Versão e Execução)"]
-        SyncParties["sync-parties.ts"]
-        SyncPoliticians["sync-politicians.ts"]
-        SyncProjects["sync-projects.ts"]
-        SyncSessions["sync-vote-sessions.ts"]
-        SyncVotes["sync-votes.ts"]
-        SyncClient["client.ts<br/>(fetchWithRetry, sql postgres)"]
-    end
+    Person(cidadao, "Cidadão / Eleitor", "Usuário que deseja comparar suas opiniões legislativas com os votos reais do Congresso.")
+    
+    System(legisvisao, "LegisVisão", "Plataforma cívica web Local-First para análise de afinidade político-partidária e transparência legislativa.")
+    
+    System_Ext(camara, "API da Câmara dos Deputados", "dadosabertos.camara.leg.br<br/>Fornece proposições, votações nominais e parlamentares.")
+    System_Ext(senado, "API do Senado Federal", "legis.senado.leg.br/dadosabertos<br/>Fornece senadores em exercício, mandatos e legislaturas.")
 
-    subgraph Database["🗄️ Banco de Dados Relacional (PostgreSQL / Supabase)"]
-        direction TB
-        T_Parties["political_parties"]
-        T_Politicians["politicians"]
-        T_Mandates["mandates"]
-        T_History["politician_party_history"]
-        T_Projects["legislative_projects"]
-        T_Records["project_house_records"]
-        T_Phases["legislative_phases"]
-        T_Sessions["vote_sessions"]
-        T_Votes["politician_votes"]
-        T_Sync["sync_control"]
-    end
+    Rel(cidadao, legisvisao, "Opina em propostas, consulta afinidade e perfis", "HTTPS / Web Browser")
+    Rel(legisvisao, camara, "Ingere proposições e votos nominais", "HTTPS / REST JSON")
+    Rel(legisvisao, senado, "Ingere senadores e mandatos", "HTTPS / REST JSON")
+```
 
-    subgraph BackendBFF["🚀 Backend / BFF (Next.js API Routes com Cache Server-side)"]
-        API_Projects["/api/projects & /api/projects/[id]"]
-        API_Politicians["/api/politicians & /api/politicians/[id]"]
-        API_Parties["/api/parties & /api/parties/[id]"]
-        API_SyncStatus["/api/sync-status"]
-        API_Metadata["/api/metadata & /api/version"]
-        ServerCache["lib/server-cache.ts (Cache em memória + TTL)"]
-    end
+---
 
-    subgraph ClientSide["💻 Aplicação Frontend (Next.js 16 + React 19 + Local-First)"]
-        direction TB
-        subgraph Pages["Rotas da Aplicação"]
-            PageHome["Início (/)"]
-            PageOpiniao["Análise de Propostas (/opiniao)"]
-            PageRevisao["Revisão de Opiniões (/opiniao/revisao)"]
-            PageAfinidade["Resultados de Afinidade (/afinidade)"]
-            PagePolitico["Perfil do Parlamentar (/politicos/[id])"]
-            PagePartido["Perfil do Partido (/partidos/[id])"]
-            PageFAQ["FAQ e Fontes (/faq)"]
-        end
+### 2. Nível 2: Diagrama de Contêineres (C2)
+Detalha as aplicações, serviços, orquestradores de dados e armazenamentos que compõem a solução do LegisVisão.
 
-        subgraph ClientModules["Módulos Locais e Motor de Cálculo"]
-            Storage["lib/storage.ts<br/>(localStorage, export/import JSON v1)"]
-            ClientCache["lib/cache.ts<br/>(cachedFetch com TTL)"]
-            MatchCalc["lib/match/<br/>• calculatePoliticianMatch<br/>• calculatePartyMatch<br/>• normalizeVotes<br/>• attachProjectId"]
-        end
-    end
+```mermaid
+C4Container
+    title Nível 2 (C2): Diagrama de Contêineres - LegisVisão
 
-    %% Relações de Ingestão (Sync)
-    CamaraAPI -->|"JSON REST API"| SyncClient
-    SenadoAPI -->|"JSON REST API"| SyncClient
-    SyncClient --> SyncParties & SyncPoliticians & SyncProjects & SyncSessions & SyncVotes
-    SyncParties --> T_Parties
-    SyncPoliticians --> T_Politicians & T_Mandates & T_History
-    SyncProjects --> T_Projects & T_Records & T_Phases
-    SyncSessions --> T_Sessions
-    SyncVotes --> T_Votes
-    SyncIndex --> T_Sync
+    Person(cidadao, "Cidadão / Eleitor", "Usuário no navegador web")
 
-    %% Relações do Banco com o BFF
-    Database --> ServerCache
-    ServerCache --> BackendBFF
+    System_Ext(camara, "API Câmara dos Deputados", "API REST pública de dados abertos")
+    System_Ext(senado, "API Senado Federal", "API REST pública de dados abertos")
 
-    %% Relações do BFF com o Frontend
-    BackendBFF -->|"JSON Responses"| ClientCache
-    ClientCache --> Pages
+    Container_Boundary(c1, "LegisVisão") {
+        Container(spa, "Single-Page / Web App", "Next.js 16 (React 19), Tailwind CSS 4", "Interface Local-First responsiva onde o usuário opina e os cálculos de afinidade são executados 100% no cliente.")
+        ContainerDb(browser_storage, "Armazenamento Local", "Navegador Web (localStorage)", "Armazena as opiniões do cidadão de forma estritamente local e privada.")
+        Container(bff, "Backend / BFF & API Routes", "Next.js Route Handlers (Node.js / Edge)", "Serve catálogo canônico, metadados e histórico com cache em memória (TTL).")
+        ContainerDb(db, "Banco de Dados Relacional", "PostgreSQL (Supabase)", "Cache persistente das proposições, sessões de voto, parlamentares e histórico partidário.")
+        Container(sync_engine, "Sync Engine (ETL)", "TSX / Node.js Scripts (scripts/sync)", "Pipeline de ingestão, normalização e carga periódica de dados governamentais.")
+    }
 
-    %% Relações Internas do Frontend
-    PageOpiniao -->|"Persiste Votos"| Storage
-    PageRevisao -->|"Gerencia / Limpa"| Storage
-    Storage -->|"Fornece Votos"| MatchCalc
-    Pages --> MatchCalc
-    MatchCalc --> PageAfinidade
+    Rel(cidadao, spa, "Navega, opina em propostas e visualiza gráficos", "HTTPS")
+    Rel(spa, browser_storage, "Lê/Grava opiniões do usuário", "Web Storage API")
+    Rel(spa, bff, "Requisita catálogo de propostas e parlamentares", "HTTPS / JSON")
+    Rel(bff, db, "Consulta dados cacheados e metadados", "SQL (Postgres.js / Pool)")
+    Rel(sync_engine, camara, "Extrai proposições, votações e deputados", "HTTPS / JSON")
+    Rel(sync_engine, senado, "Extrai senadores e mandatos", "HTTPS / JSON")
+    Rel(sync_engine, db, "Persiste dados oficiais normalizados", "SQL (Postgres.js)")
 ```
 
 ---
