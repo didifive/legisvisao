@@ -6,6 +6,7 @@ export interface SessionToSyncVotes {
   house_record_id: number;
   external_vote_id: string;
   house: string;
+  date?: string | null;
 }
 
 export interface SyncVoteSessionsResult {
@@ -159,6 +160,7 @@ export async function syncVoteSessions(
             house_record_id: hr.id,
             external_vote_id: extVoteId,
             house: "CAMARA",
+            date: dataHora,
           });
         }
       }

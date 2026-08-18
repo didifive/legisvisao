@@ -52,7 +52,20 @@ export interface PoliticianSummary {
 }
 
 /**
- * 3. Mapeia e filtra votos válidos da sessão comparando com o catálogo de parlamentares e partidos.
+ * 3. Resolve o partido do parlamentar diretamente a partir da sigla carimbada na folha de votação da API.
+ */
+function resolvePartyForVote(
+  rawPartySigla: string | null,
+  partyMap: Map<string, number>
+): number | null {
+  if (!rawPartySigla) return null;
+  const s = rawPartySigla.trim().toUpperCase();
+  if (!s || s === "S/PARTIDO" || s === "SEM PARTIDO") return null;
+  return partyMap.get(s) || null;
+}
+
+/**
+ * 4. Mapeia e filtra votos válidos da sessão comparando com o catálogo de parlamentares e partidos.
  */
 function buildVotesToInsert(
   sessionId: number,
@@ -75,8 +88,8 @@ function buildVotesToInsert(
     if (existingVoteSet.has(voteKey)) continue;
 
     const rawVote = (item.tipoVoto || item.voto || "Outros").trim();
-    const rawPartySigla = (item.deputado_?.siglaPartido || item.deputado?.siglaPartido || "").trim().toUpperCase();
-    const partyId = rawPartySigla ? partyMap.get(rawPartySigla) || null : null;
+    const rawPartySigla = (item.deputado_?.siglaPartido || item.deputado?.siglaPartido || "").trim().toUpperCase() || null;
+    const partyId = resolvePartyForVote(rawPartySigla, partyMap);
 
     rows.push({
       vote_session_id: sessionId,
@@ -91,7 +104,7 @@ function buildVotesToInsert(
 }
 
 /**
- * 4. Insere votos em lotes (batch) de 500 no banco de dados.
+ * 5. Insere votos em lotes (batch) de 500 no banco de dados.
  */
 async function insertVotesBatches(allRows: PoliticianVoteToInsert[]): Promise<void> {
   if (allRows.length === 0) return;
@@ -116,7 +129,7 @@ export async function syncVotes(
   politicianMap: Map<string, PoliticianSummary>,
   partyMap: Map<string, number>
 ): Promise<SyncVotesResult> {
-  console.log("-> [Votos Nominais] Sincronizando votos parlamentares com valor original das APIs e filiação direta...");
+  console.log("-> [Votos Nominais] Sincronizando votos parlamentares com vinculação partidária nominal direta...");
 
   const existingVoteSet = await loadExistingVoteKeys();
   const camaraSessions = sessions.filter((s) => s.house === "CAMARA");
@@ -126,7 +139,13 @@ export async function syncVotes(
   await mapConcurrent(camaraSessions, 8, async (session) => {
     try {
       const rawVotes = await fetchNominalVotesFromCamara(session.external_vote_id);
-      const rows = buildVotesToInsert(session.id, rawVotes, politicianMap, partyMap, existingVoteSet);
+      const rows = buildVotesToInsert(
+        session.id,
+        rawVotes,
+        politicianMap,
+        partyMap,
+        existingVoteSet
+      );
       if (rows.length > 0) {
         allRowsToInsert.push(...rows);
       }

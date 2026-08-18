@@ -1,4 +1,4 @@
-import { sql, CAMARA_API_BASE, fetchWithRetry, mapConcurrent } from "./client";
+import { sql, CAMARA_API_BASE, fetchWithRetry, mapConcurrent, fetchCamaraPaginated } from "./client";
 import { generateCanonicalId } from "@/lib/match/attachProjectId";
 
 export interface HouseRecordToSync {
@@ -94,7 +94,7 @@ async function loadExistingProjectsData(): Promise<{
 }
 
 /**
- * 2. Consulta catálogo da Câmara dos Deputados em paralelo com concorrência controlada.
+ * 2. Consulta catálogo da Câmara dos Deputados em paralelo com concorrência controlada e paginação HATEOAS.
  */
 async function fetchCamaraPropositionsList(): Promise<RawPropositionListItem[]> {
   const currentYear = new Date().getFullYear();
@@ -112,11 +112,11 @@ async function fetchCamaraPropositionsList(): Promise<RawPropositionListItem[]> 
 
   await mapConcurrent(queries, 6, async ({ yr, tp }) => {
     try {
-      const url = `${CAMARA_API_BASE}/proposicoes?siglaTipo=${tp}&ano=${yr}&itens=15&ordem=DESC&ordenarPor=id`;
-      const res = await fetchWithRetry(url, 2, 500);
-      if (res.ok) {
-        const data = await res.json();
-        for (const item of data.dados || []) {
+      // Usa lote oficial máximo de 100 itens por página com navegação HATEOAS (rel: "next")
+      const url = `${CAMARA_API_BASE}/proposicoes?siglaTipo=${tp}&ano=${yr}&itens=100&ordem=DESC&ordenarPor=id`;
+      const items = await fetchCamaraPaginated<RawPropositionListItem>(url, 2);
+      for (const item of items) {
+        if (item.id) {
           propsMap.set(String(item.id), item);
         }
       }

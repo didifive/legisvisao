@@ -20,8 +20,8 @@ DROP TABLE IF EXISTS bill_vote_sessions CASCADE;
 CREATE TABLE IF NOT EXISTS political_parties (
     id SERIAL PRIMARY KEY,
     sigla VARCHAR(50) UNIQUE NOT NULL,
-    nome VARCHAR(255) NOT NULL,
-    uri VARCHAR(255),
+    nome TEXT NOT NULL,
+    uri TEXT,
     situacao VARCHAR(50) DEFAULT 'Ativo', -- 'Ativo' ou 'Inativo' (oficial da API da Câmara)
     total_membros INTEGER DEFAULT 0,
     total_posse INTEGER DEFAULT 0,
@@ -34,11 +34,11 @@ CREATE TABLE IF NOT EXISTS politicians (
     id SERIAL PRIMARY KEY,
     source VARCHAR(50) NOT NULL, -- 'CAMARA' ou 'SENADO'
     external_id VARCHAR(100) NOT NULL, -- ID oficial nas APIs governamentais
-    name VARCHAR(255) NOT NULL,
+    name TEXT NOT NULL,
     type VARCHAR(50) NOT NULL, -- 'DEPUTY' ou 'SENATOR'
-    state VARCHAR(2) NOT NULL, -- UF (ex: 'SP', 'RJ', 'BR')
+    state VARCHAR(20) NOT NULL, -- UF (ex: 'SP', 'RJ', 'DF', 'BR')
     photo_url TEXT,
-    email VARCHAR(255),
+    email TEXT,
     is_active BOOLEAN DEFAULT TRUE,
     CONSTRAINT unique_politician_source_id UNIQUE (source, external_id)
 );
@@ -70,9 +70,9 @@ CREATE TABLE IF NOT EXISTS legislative_projects (
     type VARCHAR(50) NOT NULL,
     number VARCHAR(50) NOT NULL,
     year INTEGER NOT NULL,
-    title VARCHAR(500) NOT NULL,
+    title TEXT NOT NULL,
     description TEXT,
-    current_status VARCHAR(255),
+    current_status TEXT,
     last_updated_at TIMESTAMP,
     CONSTRAINT unique_canonical_project UNIQUE(type, number, year)
 );
@@ -86,11 +86,11 @@ CREATE TABLE IF NOT EXISTS project_house_records (
     official_url TEXT,
     full_text_url TEXT,
     presentation_date DATE,
-    author_name VARCHAR(255),
-    author_party VARCHAR(50),
-    author_state VARCHAR(10),
-    rapporteur_name VARCHAR(255),
-    tramitacao_etapa VARCHAR(255),
+    author_name TEXT,
+    author_party VARCHAR(100),
+    author_state VARCHAR(50),
+    rapporteur_name TEXT,
+    tramitacao_etapa TEXT,
     despacho TEXT,
     last_event_date DATE,
     source_updated_at TIMESTAMP,
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS project_house_records (
 CREATE TABLE IF NOT EXISTS legislative_phases (
     id SERIAL PRIMARY KEY,
     house_record_id INTEGER NOT NULL REFERENCES project_house_records(id) ON DELETE CASCADE,
-    phase_name VARCHAR(100) NOT NULL,
+    phase_name TEXT NOT NULL,
     phase_order INTEGER DEFAULT 0,
     started_at TIMESTAMP,
     completed_at TIMESTAMP
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS vote_sessions (
     external_vote_id VARCHAR(100),
     date TIMESTAMP NOT NULL,
     description TEXT,
-    result VARCHAR(100),
+    result TEXT,
     CONSTRAINT unique_house_vote_session UNIQUE(house_record_id, external_vote_id)
 );
 
@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS politician_votes (
     vote_session_id INTEGER NOT NULL REFERENCES vote_sessions(id) ON DELETE CASCADE,
     politician_id INTEGER NOT NULL REFERENCES politicians(id) ON DELETE CASCADE,
     party_id INTEGER REFERENCES political_parties(id) ON DELETE SET NULL,
-    vote_original VARCHAR(100) NOT NULL,
+    vote_original TEXT NOT NULL,
     CONSTRAINT unique_vote_session_politician UNIQUE(vote_session_id, politician_id)
 );
 

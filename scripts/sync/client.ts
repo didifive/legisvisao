@@ -77,6 +77,40 @@ export async function mapConcurrent<T, R>(
   return results;
 }
 
+/**
+ * Consome múltiplos resultados paginados da API da Câmara seguindo links HATEOAS (rel: "next").
+ */
+export async function fetchCamaraPaginated<T>(
+  initialUrl: string,
+  maxPages = 2
+): Promise<T[]> {
+  const allItems: T[] = [];
+  let nextUrl: string | null = initialUrl;
+  let pageCount = 0;
+
+  while (nextUrl && pageCount < maxPages) {
+    pageCount++;
+    try {
+      const res = await fetchWithRetry(nextUrl, 2, 500);
+      if (!res.ok) break;
+      const data = await res.json();
+      const items: T[] = data.dados || [];
+      allItems.push(...items);
+
+      const nextLink = Array.isArray(data.links)
+        ? data.links.find((l: { rel?: string; href?: string }) => l.rel === "next")
+        : null;
+
+      nextUrl = nextLink?.href || null;
+    } catch (err) {
+      console.warn(`[API Câmara] Aviso na paginação HATEOAS (${nextUrl}):`, err);
+      break;
+    }
+  }
+
+  return allItems;
+}
+
 export async function updateSyncStatus(result: SyncResult): Promise<void> {
   await sql`
     INSERT INTO sync_control (
