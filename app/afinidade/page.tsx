@@ -3,6 +3,9 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import MatchResults from "@/app/afinidade/components/MatchResults";
+import { Button } from "@/app/components/ui/Button";
+import { FaExclamationTriangle, FaSyncAlt } from "react-icons/fa";
+import { useSystemStatus } from "@/app/components/SystemStatusProvider";
 import type {
   VoteDetailRow,
   PoliticalParty,
@@ -27,6 +30,7 @@ type MatchResultsShape = {
 } | null;
 
 export default function AfinidadePage() {
+  const { isReady } = useSystemStatus();
   const [loading, setLoading] = useState(false);
   const [stateFilter, setStateFilter] = useState<string | null>(null);
   const [calculatedParties, setCalculatedParties] = useState<Array<PoliticalParty & { match: PartyMatchResult }>>([]);
@@ -223,6 +227,35 @@ export default function AfinidadePage() {
 
   function handleStateChange(state: string | null) {
     setStateFilter(state);
+  }
+
+  if (!loading && !isReady) {
+    return (
+      <main className="p-4 sm:p-6 max-w-4xl mx-auto space-y-6">
+        <div className="p-8 sm:p-10 rounded-2xl bg-card border border-border text-center space-y-5 shadow-soft max-w-2xl mx-auto my-6 animate-fade-in">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border border-amber-500/20">
+            <FaExclamationTriangle className="w-7 h-7" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-foreground">
+              Base de dados legislativos indisponível
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-md mx-auto">
+              Não foi possível carregar a lista de parlamentares e partidos políticos para o cálculo de afinidade. A base de dados precisa ser sincronizada com as fontes oficiais.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <Button variant="hero" href="/faq">
+              <FaSyncAlt className="w-3.5 h-3.5 mr-1.5" />
+              Consultar Fontes & FAQ
+            </Button>
+            <Button variant="outline" href="/">
+              Voltar ao Início
+            </Button>
+          </div>
+        </div>
+      </main>
+    );
   }
 
   return (

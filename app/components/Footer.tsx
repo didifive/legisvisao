@@ -15,8 +15,10 @@ import {
 } from "react-icons/fa";
 import { urls } from "@/lib/urls";
 import { getCopyRightYearsDisplay } from "@/lib/utils";
+import { useSystemStatus } from "./SystemStatusProvider";
 
 export const Footer = () => {
+  const { isReady } = useSystemStatus();
   const [version, setVersion] = useState<string>("0.1.0");
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
@@ -71,13 +73,17 @@ export const Footer = () => {
     },
   ];
 
-  const navLinks = [
+  const allNavLinks = [
     { label: "Página Inicial", href: "/" },
     { label: "Analisar Propostas", href: "/opiniao" },
     { label: "Minhas Opiniões", href: "/opiniao/revisao" },
     { label: "Ver Afinidade Legislativa", href: "/afinidade" },
     { label: "Fontes Oficiais & FAQ", href: "/faq" },
   ];
+
+  const navLinks = isReady
+    ? allNavLinks
+    : allNavLinks.filter((link) => link.href === "/" || link.href === "/faq");
 
   return (
     <footer className="bg-muted/40 border-t border-border mt-auto">

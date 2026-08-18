@@ -18,6 +18,8 @@ import {
   FaInfoCircle,
   FaFilter,
   FaLandmark,
+  FaExclamationTriangle,
+  FaSyncAlt,
 } from "react-icons/fa";
 import { saveStoredAnswers, getStoredAnswers, StoredAnswers } from "@/lib/storage";
 
@@ -204,6 +206,33 @@ export default function VoteForm() {
       <div className="py-12 text-center text-muted-foreground flex flex-col items-center gap-3">
         <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
         <span>Carregando propostas legislativas com deliberação oficial...</span>
+      </div>
+    );
+  }
+
+  if (projects.length === 0) {
+    return (
+      <div className="p-8 sm:p-10 rounded-2xl bg-card border border-border text-center space-y-5 shadow-soft max-w-2xl mx-auto my-6 animate-fade-in">
+        <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border border-amber-500/20">
+          <FaExclamationTriangle className="w-7 h-7" />
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-xl font-bold text-foreground">
+            Nenhuma proposta de lei disponível no momento
+          </h3>
+          <p className="text-sm text-muted-foreground leading-relaxed max-w-md mx-auto">
+            Os dados oficiais de proposições legislativas e votações nominais não foram carregados ou ainda não foram sincronizados neste ambiente.
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+          <Button variant="hero" href="/faq">
+            <FaSyncAlt className="w-3.5 h-3.5 mr-1.5" />
+            Consultar Fontes & FAQ
+          </Button>
+          <Button variant="outline" href="/">
+            Voltar ao Início
+          </Button>
+        </div>
       </div>
     );
   }

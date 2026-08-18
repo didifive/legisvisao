@@ -19,6 +19,8 @@ import {
   FaQuoteLeft,
 } from "react-icons/fa";
 import { Button } from "@/app/components/ui/Button";
+import { useSystemStatus } from "@/app/components/SystemStatusProvider";
+import { urls } from "@/lib/urls";
 
 interface SyncSource {
   source: string;
@@ -31,6 +33,7 @@ interface SyncSource {
 }
 
 export default function FAQPage() {
+  const { isReady, isLoading: isStatusLoading } = useSystemStatus();
   const [sources, setSources] = useState<SyncSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [isClient, setIsClient] = useState(false);
@@ -92,6 +95,36 @@ export default function FAQPage() {
         </p>
       </div>
 
+      {/* Aviso Amigável para o Visitante */}
+      {!isStatusLoading && !isReady && (
+        <div className="p-5 sm:p-6 rounded-2xl bg-amber-500/10 dark:bg-amber-950/30 border border-amber-500/30 text-foreground space-y-3 shadow-soft animate-fade-in">
+          <div className="flex items-center gap-2.5 font-bold text-amber-900 dark:text-amber-300 text-base">
+            <FaExclamationTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>Aviso: Dados Governamentais em Processo de Atualização</span>
+          </div>
+          <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+            As proposições legislativas e votações nominais estão temporariamente em processo de sincronização com as bases da Câmara dos Deputados e do Senado Federal. Caso o conteúdo não apareça ou você encontre alguma instabilidade, entre em contato diretamente com o desenvolvedor:
+          </p>
+          <div className="pt-1 flex flex-wrap items-center gap-3">
+            <a
+              href={urls.website}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-primary text-white text-xs font-bold shadow-soft hover:bg-primary/90 transition-smooth"
+            >
+              <span>Falar com Luis Zancanela (zancanela.dev.br)</span>
+              <FaExternalLinkAlt className="w-2.5 h-2.5" />
+            </a>
+            <a
+              href={`mailto:${urls.email}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-card border border-border text-foreground hover:bg-muted text-xs font-medium transition-smooth"
+            >
+              <span>{urls.email}</span>
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* 2. PAINEL DE FONTES OFICIAIS */}
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -101,15 +134,13 @@ export default function FAQPage() {
               Status das Fontes de Dados Oficiais
             </h2>
           </div>
-          <span className="text-xs text-muted-foreground flex items-center gap-1.5">
-            <FaSyncAlt className="w-3 h-3 text-secondary animate-pulse" />
-            <span>Sincronização determinística</span>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {isClient && userTimeZone && (
-              <span className="bg-muted px-2 py-0.5 rounded text-[10px] font-medium text-foreground">
-                Fuso: {userTimeZone}
+              <span className="bg-muted px-2.5 py-1 rounded-md text-[11px] font-medium text-foreground border border-border">
+                Horário local ({userTimeZone})
               </span>
             )}
-          </span>
+          </div>
         </div>
 
         {loading ? (

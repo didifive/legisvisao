@@ -19,6 +19,8 @@ import {
   FaFilter,
   FaSearch,
   FaLandmark,
+  FaExclamationTriangle,
+  FaSyncAlt,
 } from "react-icons/fa";
 import {
   getStoredAnswers,
@@ -192,6 +194,35 @@ export default function RevisaoPage() {
         <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
         <span>Carregando suas opiniões salvas...</span>
       </div>
+    );
+  }
+
+  if (projects.length === 0) {
+    return (
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10 space-y-6">
+        <div className="p-8 sm:p-10 rounded-2xl bg-card border border-border text-center space-y-5 shadow-soft max-w-2xl mx-auto my-6 animate-fade-in">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border border-amber-500/20">
+            <FaExclamationTriangle className="w-7 h-7" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold text-foreground">
+              Base de dados legislativos indisponível
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-md mx-auto">
+              Nenhuma proposição oficial foi carregada no banco de dados. Os dados precisam ser sincronizados com as bases oficiais da Câmara dos Deputados e do Senado Federal.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            <Button variant="hero" href="/faq">
+              <FaSyncAlt className="w-3.5 h-3.5 mr-1.5" />
+              Consultar Fontes & FAQ
+            </Button>
+            <Button variant="outline" href="/">
+              Voltar ao Início
+            </Button>
+          </div>
+        </div>
+      </main>
     );
   }
 

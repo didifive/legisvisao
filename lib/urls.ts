@@ -7,5 +7,5 @@ export const urls = {
 
 export const appConfig = {
   name: "LegisVisão",
-  url: "https://legisvisao.zancanela.dev.br",
+  url: "https://legisvisao.com.br",
 };

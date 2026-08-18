@@ -4,6 +4,7 @@ import { defaultMetadata } from "@/lib/metadata";
 import { Header } from "@/app/components/Header";
 import { Footer } from "@/app/components/Footer";
 import { ThemeProvider } from "@/app/components/ThemeProvider";
+import { SystemStatusProvider } from "@/app/components/SystemStatusProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,9 +36,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange={false}
         >
-          <Header />
-          <div className="flex-1 pt-16 flex flex-col">{children}</div>
-          <Footer />
+          <SystemStatusProvider>
+            <Header />
+            <div className="flex-1 pt-16 flex flex-col">{children}</div>
+            <Footer />
+          </SystemStatusProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -15,6 +15,7 @@ import {
 } from "react-icons/fa";
 import { Button } from "./ui/Button";
 import { ThemeToggle } from "./ThemeToggle";
+import { useSystemStatus } from "./SystemStatusProvider";
 import { urls } from "@/lib/urls";
 import {
   exportAnswersToJson,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/storage";
 
 export const Header = () => {
+  const { isReady } = useSystemStatus();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [opinionsCount, setOpinionsCount] = useState(0);
@@ -106,13 +108,17 @@ export const Header = () => {
     }
   };
 
-  const navItems = [
+  const allNavItems = [
     { label: "Início", href: "/" },
     { label: "Analisar Propostas", href: "/opiniao" },
     { label: "Minhas Opiniões", href: "/opiniao/revisao" },
     { label: "Afinidade", href: "/afinidade" },
     { label: "Fontes & FAQ", href: "/faq" },
   ];
+
+  const navItems = isReady
+    ? allNavItems
+    : allNavItems.filter((item) => item.href === "/" || item.href === "/faq");
 
   return (
     <>
@@ -174,42 +180,44 @@ export const Header = () => {
 
             {/* Actions: Import, Export, Clear, Theme, Social */}
             <div className="hidden md:flex items-center space-x-1 lg:space-x-2">
-              <div className="flex items-center bg-muted/60 p-1 rounded-lg border border-border space-x-1 text-xs">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  accept=".json"
-                  className="hidden"
-                />
-                <button
-                  onClick={handleImportClick}
-                  className="px-2 lg:px-2.5 py-1 rounded hover:bg-background transition-smooth flex items-center gap-1.5 text-muted-foreground hover:text-foreground font-medium cursor-pointer"
-                  title="Importar opiniões salvas em JSON"
-                >
-                  <FaUpload className="w-3 h-3 text-primary" />
-                  <span className="hidden xl:inline">Importar</span>
-                </button>
+              {isReady && (
+                <div className="flex items-center bg-muted/60 p-1 rounded-lg border border-border space-x-1 text-xs">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept=".json"
+                    className="hidden"
+                  />
+                  <button
+                    onClick={handleImportClick}
+                    className="px-2 lg:px-2.5 py-1 rounded hover:bg-background transition-smooth flex items-center gap-1.5 text-muted-foreground hover:text-foreground font-medium cursor-pointer"
+                    title="Importar opiniões salvas em JSON"
+                  >
+                    <FaUpload className="w-3 h-3 text-primary" />
+                    <span className="hidden xl:inline">Importar</span>
+                  </button>
 
-                <button
-                  onClick={handleExport}
-                  className="px-2 lg:px-2.5 py-1 rounded hover:bg-background transition-smooth flex items-center gap-1.5 text-muted-foreground hover:text-foreground font-medium cursor-pointer"
-                  title="Exportar opiniões atuais como JSON"
-                >
-                  <FaDownload className="w-3 h-3 text-secondary" />
-                  <span className="hidden xl:inline">Exportar</span>
-                </button>
+                  <button
+                    onClick={handleExport}
+                    className="px-2 lg:px-2.5 py-1 rounded hover:bg-background transition-smooth flex items-center gap-1.5 text-muted-foreground hover:text-foreground font-medium cursor-pointer"
+                    title="Exportar opiniões atuais como JSON"
+                  >
+                    <FaDownload className="w-3 h-3 text-secondary" />
+                    <span className="hidden xl:inline">Exportar</span>
+                  </button>
 
-                <button
-                  onClick={handleClear}
-                  className="px-2 lg:px-2.5 py-1 rounded hover:bg-background hover:text-destructive transition-smooth flex items-center gap-1 text-muted-foreground font-medium cursor-pointer"
-                  title="Limpar opiniões salvas neste navegador"
-                >
-                  <FaTrashAlt className="w-3 h-3" />
-                </button>
-              </div>
+                  <button
+                    onClick={handleClear}
+                    className="px-2 lg:px-2.5 py-1 rounded hover:bg-background hover:text-destructive transition-smooth flex items-center gap-1 text-muted-foreground font-medium cursor-pointer"
+                    title="Limpar opiniões salvas neste navegador"
+                  >
+                    <FaTrashAlt className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
 
-              <div className="w-px h-5 bg-border mx-0.5 lg:mx-1" />
+              {isReady && <div className="w-px h-5 bg-border mx-0.5 lg:mx-1" />}
 
               <ThemeToggle />
 
@@ -280,40 +288,42 @@ export const Header = () => {
               })}
             </div>
 
-            <div className="pt-3 border-t border-border space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
-                Gerenciar Opiniões Locais
-              </p>
-              <div className="grid grid-cols-3 gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleImportClick}
-                  className="w-full text-xs flex items-center justify-center gap-1"
-                >
-                  <FaUpload className="w-3 h-3 text-primary" />
-                  Importar
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExport}
-                  className="w-full text-xs flex items-center justify-center gap-1"
-                >
-                  <FaDownload className="w-3 h-3 text-secondary" />
-                  Exportar
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleClear}
-                  className="w-full text-xs text-destructive hover:bg-destructive/10 flex items-center justify-center gap-1"
-                >
-                  <FaTrashAlt className="w-3 h-3" />
-                  Limpar
-                </Button>
+            {isReady && (
+              <div className="pt-3 border-t border-border space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
+                  Gerenciar Opiniões Locais
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleImportClick}
+                    className="w-full text-xs flex items-center justify-center gap-1"
+                  >
+                    <FaUpload className="w-3 h-3 text-primary" />
+                    Importar
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleExport}
+                    className="w-full text-xs flex items-center justify-center gap-1"
+                  >
+                    <FaDownload className="w-3 h-3 text-secondary" />
+                    Exportar
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleClear}
+                    className="w-full text-xs text-destructive hover:bg-destructive/10 flex items-center justify-center gap-1"
+                  >
+                    <FaTrashAlt className="w-3 h-3" />
+                    Limpar
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="pt-2 flex items-center justify-between border-t border-border">
               <span className="text-xs text-muted-foreground">

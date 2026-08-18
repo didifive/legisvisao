@@ -6,7 +6,7 @@ const SENADO_API_BASE = "https://legis.senado.leg.br/dadosabertos";
 
 const HEADERS = {
   Accept: "application/json",
-  "User-Agent": "LegisVisao/1.0 (https://legisvisao.zancanela.dev.br; contato@zancanela.dev.br)",
+  "User-Agent": "LegisVisao/1.0 (https://legisvisao.com.br; luis@zancanela.dev.br)",
 };
 
 async function fetchJson(url: string) {
