@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { SQLParam } from "@/types/db";
+import { SQLParam, ProjectWithLastVote, StateRow } from "@/types/db";
 import { NextRequest, NextResponse } from "next/server";
 import { withServerCache } from "@/lib/server-cache";
 
@@ -75,10 +75,10 @@ export async function GET(request: NextRequest) {
 
       sqlQuery += ` ORDER BY COALESCE(vs.last_vote_date, p.last_updated_at, '1900-01-01') ${sort.toUpperCase()}`;
 
-      const projects = await db.unsafe<any[]>(sqlQuery, params);
+      const projects = await db.unsafe<ProjectWithLastVote[]>(sqlQuery, params);
 
       // Estados de parlamentares ativos para os filtros
-      const statesResult = await db`
+      const statesResult = await db<StateRow[]>`
         SELECT DISTINCT state 
         FROM politicians 
         WHERE is_active = TRUE

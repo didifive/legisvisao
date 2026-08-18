@@ -113,10 +113,11 @@ export default async function PoliticianPage(
     ORDER BY pph.start_date DESC;
   `;
 
-  // 4. Histórico de votos nominais registrados (com partido na data da votação)
+  // 4. Histórico de votos nominais registrados (com partido no momento da votação)
   const votes = await db<PoliticianVoteRow[]>`
     SELECT 
       pv.id AS vote_id,
+      pv.party_id,
       pv.vote_original,
       vs.date AS vote_date,
       vs.description AS vote_description,
@@ -127,7 +128,7 @@ export default async function PoliticianPage(
       lp.description AS project_description,
       phr.house,
       phr.official_url,
-      party_info.party_sigla AS party_sigla
+      part.sigla AS party_sigla
     FROM politician_votes pv
     JOIN vote_sessions vs
       ON vs.id = pv.vote_session_id
@@ -135,19 +136,8 @@ export default async function PoliticianPage(
       ON phr.id = vs.house_record_id
     JOIN legislative_projects lp
       ON lp.id = phr.project_id
-    LEFT JOIN LATERAL (
-      SELECT part.sigla AS party_sigla
-      FROM politician_party_history pph
-      JOIN political_parties part ON part.id = pph.party_id
-      WHERE pph.politician_id = pv.politician_id
-      ORDER BY 
-        CASE 
-          WHEN pph.start_date <= vs.date::date AND (pph.end_date IS NULL OR pph.end_date >= vs.date::date) THEN 0 
-          ELSE 1 
-        END,
-        pph.start_date DESC
-      LIMIT 1
-    ) party_info ON true
+    LEFT JOIN political_parties part
+      ON part.id = pv.party_id
     WHERE pv.politician_id = ${politicianId}
     ORDER BY vs.date DESC;
   `;

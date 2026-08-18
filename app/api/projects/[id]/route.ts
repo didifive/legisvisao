@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { VoteDetailRow } from "@/types/db";
+import { VoteDetailRow, LegislativePhase, ProjectVoteSessionRow, ProjectHouseRecord, LegislativeProject } from "@/types/db";
 import { NextRequest, NextResponse } from "next/server";
 import { withServerCache } from "@/lib/server-cache";
 
@@ -22,7 +22,7 @@ export async function GET(
 
     const data = await withServerCache(cacheKey, async () => {
       // 1. Buscar projeto canônico
-      const projectsResult = await db`
+      const projectsResult = await db<LegislativeProject[]>`
         SELECT * FROM legislative_projects WHERE id = ${projectId} LIMIT 1;
       `;
 
@@ -33,7 +33,7 @@ export async function GET(
       const project = projectsResult[0];
 
       // 2. Buscar registros por casa legislativa (Câmara / Senado)
-      const houseRecords = await db`
+      const houseRecords = await db<ProjectHouseRecord[]>`
         SELECT * FROM project_house_records
         WHERE project_id = ${projectId}
         ORDER BY house ASC;
@@ -42,9 +42,9 @@ export async function GET(
       const houseRecordIds = houseRecords.map((r) => r.id);
 
       // 3. Buscar fases legislativas
-      let phases: any[] = [];
+      let phases: LegislativePhase[] = [];
       if (houseRecordIds.length > 0) {
-        phases = await db`
+        phases = await db<LegislativePhase[]>`
           SELECT * FROM legislative_phases
           WHERE house_record_id = ANY(${houseRecordIds})
           ORDER BY phase_order ASC;
@@ -52,11 +52,11 @@ export async function GET(
       }
 
       // 4. Buscar sessões de votação
-      let sessions: any[] = [];
+      let sessions: ProjectVoteSessionRow[] = [];
       let votes: VoteDetailRow[] = [];
 
       if (houseRecordIds.length > 0) {
-        sessions = await db`
+        sessions = await db<ProjectVoteSessionRow[]>`
           SELECT 
             vs.id,
             vs.house_record_id,
@@ -77,35 +77,25 @@ export async function GET(
         if (sessions.length > 0) {
           const sessionIds = sessions.map((s) => s.id);
 
-          // 5. Buscar votos nominais com valor original e partido vigente na data da votação
+          // 5. Buscar votos nominais com valor original e filiação direta no momento da votação
           votes = await db<VoteDetailRow[]>`
             SELECT 
               pv.id,
               pv.vote_session_id,
               pv.politician_id,
+              pv.party_id,
               pv.vote_original,
               p.name AS politician_name,
               p.type AS politician_type,
               p.state AS politician_state,
-              party_info.party_sigla AS party_sigla
+              part.sigla AS party_sigla
             FROM politician_votes pv
             JOIN vote_sessions vs
               ON vs.id = pv.vote_session_id
             JOIN politicians p 
               ON pv.politician_id = p.id
-            LEFT JOIN LATERAL (
-              SELECT part.sigla AS party_sigla
-              FROM politician_party_history pph
-              JOIN political_parties part ON part.id = pph.party_id
-              WHERE pph.politician_id = p.id
-              ORDER BY 
-                CASE 
-                  WHEN pph.start_date <= vs.date::date AND (pph.end_date IS NULL OR pph.end_date >= vs.date::date) THEN 0 
-                  ELSE 1 
-                END,
-                pph.start_date DESC
-              LIMIT 1
-            ) party_info ON true
+            LEFT JOIN political_parties part
+              ON part.id = pv.party_id
             WHERE pv.vote_session_id = ANY(${sessionIds})
             ORDER BY p.name ASC;
           `;

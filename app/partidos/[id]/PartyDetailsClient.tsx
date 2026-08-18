@@ -11,38 +11,16 @@ import {
   FaCheck,
   FaTimes,
   FaLandmark,
+  FaCheckCircle,
+  FaInfoCircle,
 } from "react-icons/fa";
 import { Button } from "@/app/components/ui/Button";
+import type { PoliticalParty, PartyPoliticianMember, PartyPoliticianVoteDetail } from "@/types/db";
 
 interface Props {
-  party: {
-    id: number;
-    sigla: string;
-    nome: string;
-  };
-  politicians: Array<{
-    id: number;
-    name: string;
-    type: string;
-    state: string;
-    photo_url: string | null;
-    email: string | null;
-    source: string;
-    mandate_office?: string;
-  }>;
-  politicianVotes: Array<{
-    vote_id: number;
-    politician_id: number;
-    politician_name: string;
-    vote_original: string;
-    session_date: string;
-    session_description: string;
-    project_id: number;
-    project_title: string;
-    project_description: string;
-    house: string;
-    official_url: string;
-  }>;
+  party: PoliticalParty;
+  politicians: PartyPoliticianMember[];
+  politicianVotes: PartyPoliticianVoteDetail[];
 }
 
 export default function PartyDetailsClient({
@@ -51,6 +29,7 @@ export default function PartyDetailsClient({
   politicianVotes = [],
 }: Props) {
   const [activeTab, setActiveTab] = useState<"all" | "deputies" | "senators">("all");
+  const isInactive = (party.situacao || "").toUpperCase() === "INATIVO";
 
   const deputies = politicians.filter((p) =>
     (p.type || p.mandate_office || "").toUpperCase().includes("DEPUT")
@@ -70,9 +49,9 @@ export default function PartyDetailsClient({
   const projectMap = new Map<number, {
     project_id: number;
     project_title: string;
-    project_description: string;
+    project_description: string | null;
     house: string;
-    official_url: string;
+    official_url: string | null;
     votes: Array<{ politician_name: string; vote_original: string }>;
   }>();
 
@@ -80,7 +59,7 @@ export default function PartyDetailsClient({
     if (!projectMap.has(pv.project_id)) {
       projectMap.set(pv.project_id, {
         project_id: pv.project_id,
-        project_title: pv.project_title,
+        project_title: pv.project_title ?? "Sem título",
         project_description: pv.project_description,
         house: pv.house,
         official_url: pv.official_url,
@@ -112,22 +91,51 @@ export default function PartyDetailsClient({
 
       {/* Header do Partido */}
       <div className="p-6 sm:p-8 rounded-2xl bg-card border border-border shadow-soft flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-bold">
-            <FaLandmark className="w-3 h-3" />
-            Partido Político Registrado
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5">
+          {party.logo_url && (
+            <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white p-2 border border-border shrink-0 flex items-center justify-center shadow-soft">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={party.logo_url}
+                alt={party.sigla}
+                className="max-h-full max-w-full object-contain"
+              />
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              {isInactive ? (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-muted text-muted-foreground border border-border text-xs font-bold">
+                  <FaInfoCircle className="w-3 h-3" />
+                  Legenda Inativa / Histórica na Câmara
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-xs font-bold">
+                  <FaCheckCircle className="w-3 h-3" />
+                  Partido Ativo no Congresso Nacional
+                </span>
+              )}
+
+              {party.numero_eleitoral && (
+                <span className="px-2.5 py-0.5 rounded bg-muted text-foreground text-xs font-bold">
+                  Nº {party.numero_eleitoral}
+                </span>
+              )}
+            </div>
+
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
+              {party.nome}{" "}
+              <span className="text-gradient">({party.sigla})</span>
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Bancada com <strong>{deputies.length}</strong> deputados federais e{" "}
+              <strong>{senators.length}</strong> senadores com mandatos ativos.
+            </p>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
-            {party.nome}{" "}
-            <span className="text-gradient">({party.sigla})</span>
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Bancada com <strong>{deputies.length}</strong> deputados federais e{" "}
-            <strong>{senators.length}</strong> senadores com mandatos ativos.
-          </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 shrink-0">
           <Button variant="outline" size="sm" href="/afinidade">
             Voltar à Afinidade
           </Button>
@@ -136,6 +144,19 @@ export default function PartyDetailsClient({
           </Button>
         </div>
       </div>
+
+      {/* Alerta de Contexto para Partido Inativo */}
+      {isInactive && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 dark:bg-amber-950/20 border border-amber-500/30 text-xs text-foreground space-y-1.5 shadow-soft">
+          <div className="font-bold text-amber-900 dark:text-amber-300 flex items-center gap-2">
+            <FaInfoCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            <span>Registro de Legenda Inativa / Extinta:</span>
+          </div>
+          <p className="text-muted-foreground leading-relaxed">
+            Este partido consta como <strong>inativo</strong> na Câmara dos Deputados (tendo sido extinto, incorporado ou fundido a outra agremiação). As votações nominais e dados aqui apresentados refletem fielmente as deliberações registradas pelos parlamentares durante o período oficial de exercício da legenda.
+          </p>
+        </div>
+      )}
 
       {/* 1. SEÇÃO DE PROPOSTAS E VOTOS DA BANCADA */}
       <section className="space-y-4">

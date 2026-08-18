@@ -68,13 +68,15 @@ function sortRankingEntities<T extends {
   const adhB = b.adherence ?? b.match?.adherence ?? -1;
   if (adhB !== adhA) return adhB - adhA;
 
-  const matchesA = a.matches_count ?? a.match?.matches_count ?? 0;
-  const matchesB = b.matches_count ?? b.match?.matches_count ?? 0;
-  if (matchesB !== matchesA) return matchesB - matchesA;
-
+  // Critério de desempate 1: Maior volume de votos considerados (maior amostragem/relevância estatística)
   const compA = a.comparable_count ?? a.match?.comparable_count ?? 0;
   const compB = b.comparable_count ?? b.match?.comparable_count ?? 0;
   if (compB !== compA) return compB - compA;
+
+  // Critério de desempate 2: Maior número de concordâncias absolutas
+  const matchesA = a.matches_count ?? a.match?.matches_count ?? 0;
+  const matchesB = b.matches_count ?? b.match?.matches_count ?? 0;
+  if (matchesB !== matchesA) return matchesB - matchesA;
 
   const labelA = (a.sigla || a.name || "").toString();
   const labelB = (b.sigla || b.name || "").toString();
@@ -116,32 +118,45 @@ interface PartyCardProps {
 function PartyCard({ party, rank }: PartyCardProps) {
   const pct = party.adherence === null ? null : Math.round(party.adherence * 100);
   const isTop3 = rank <= 3 && pct !== null && pct > 0;
+  const isInactive = (party.situacao || "").toUpperCase() === "INATIVO";
+  const totalComp = party.match?.comparable_count ?? 0;
+  const totalMatches = party.match?.matches_count ?? 0;
 
   return (
     <Link
       href={`/partidos/${party.id}`}
-      className="group block p-4 sm:p-5 rounded-xl bg-card border border-border hover:border-primary/50 shadow-soft hover:shadow-medium transition-smooth"
+      className={`group block p-4 sm:p-5 rounded-xl bg-card border ${
+        isInactive ? "border-border/60 opacity-90" : "border-border hover:border-primary/50"
+      } shadow-soft hover:shadow-medium transition-smooth`}
     >
       <div className="flex items-center justify-between gap-4 mb-2.5">
         <div className="flex items-center gap-3">
           <span
-            className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-              isTop3 ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+              isTop3 && !isInactive
+                ? "bg-primary text-white shadow-soft"
+                : "bg-muted text-muted-foreground"
             }`}
           >
-            {rank}
+            #{rank}
           </span>
           <div>
-            <h3 className="font-bold text-foreground text-base group-hover:text-primary transition-smooth">
-              {party.nome}{" "}
-              <span className="text-xs font-semibold text-muted-foreground">
-                ({party.sigla})
+            <h3 className="font-bold text-foreground text-base group-hover:text-primary transition-smooth flex items-center gap-2 flex-wrap">
+              <span>{party.nome}</span>
+              <span className="text-xs font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                {party.sigla}
               </span>
+              {isInactive && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                  Legenda Inativa / Histórica
+                </span>
+              )}
             </h3>
-            <span className="text-xs text-muted-foreground block">
-              {party.match?.comparable_count ? (
+            <span className="text-xs text-muted-foreground block mt-0.5">
+              {totalComp > 0 ? (
                 <>
-                  Baseado em <strong>{party.match.comparable_count}</strong> {party.match.comparable_count === 1 ? "voto de parlamentar filiado" : "votos de parlamentares filiados"}
+                  Baseado em <strong>{totalComp}</strong> {totalComp === 1 ? "voto de filiado" : "votos de filiados"}{" "}
+                  <span className="text-primary font-semibold">({totalMatches} {totalMatches === 1 ? "concordância" : "concordâncias"})</span>
                 </>
               ) : (
                 "Sem votos nominais registrados pelos filiados nestas propostas"
@@ -158,7 +173,7 @@ function PartyCard({ party, rank }: PartyCardProps) {
         </div>
       </div>
 
-      <div className="w-full bg-muted h-3.5 rounded-full overflow-hidden p-0.5 border border-border/50">
+      <div className="w-full bg-muted h-3 rounded-full overflow-hidden p-0.5 border border-border/50">
         <div
           className={`h-full rounded-full transition-all duration-500 ${getProgressGradientClass(pct)}`}
           style={{ width: `${pct ?? 0}%` }}
@@ -176,6 +191,8 @@ interface PoliticianCardProps {
 function PoliticianCard({ politician, isSenator = false }: PoliticianCardProps) {
   const pct = politician.adherence === null ? null : Math.round(politician.adherence * 100);
   const progressBg = isSenator ? "bg-secondary" : "bg-primary";
+  const compCount = politician.comparable_count ?? 0;
+  const matchCount = politician.matches_count ?? 0;
 
   return (
     <Link
@@ -189,13 +206,13 @@ function PoliticianCard({ politician, isSenator = false }: PoliticianCardProps) 
           </h3>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mt-0.5">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground mt-1">
           <span className="font-semibold text-primary">{politician.state}</span>
           <span>•</span>
           <span>{isSenator ? "Senador" : politician.party_sigla || "Dep. Federal"}</span>
           <span>•</span>
-          <span className="text-[11px]">
-            {politician.comparable_count} {politician.comparable_count === 1 ? "votação comparável" : "votações comparáveis"}
+          <span className="text-[11px] text-muted-foreground">
+            <strong>{compCount}</strong> {compCount === 1 ? "voto considerado" : "votos considerados"} ({matchCount} {matchCount === 1 ? "concordância" : "concordâncias"})
           </span>
         </div>
       </div>

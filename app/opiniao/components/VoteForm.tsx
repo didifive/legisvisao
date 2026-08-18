@@ -180,7 +180,7 @@ export default function VoteForm() {
     if (!shuffle) {
       list.sort((a, b) => {
         const da = (p: ProjectWithLastVote) => {
-          const dateStr = (p as any).last_vote_date || p.last_event_date || (p as any).last_updated_at;
+          const dateStr = p.last_vote_date || p.last_event_date || p.last_updated_at;
           return dateStr ? new Date(dateStr).getTime() : 0;
         };
         return da(b) - da(a);
@@ -421,10 +421,10 @@ export default function VoteForm() {
         <div className="space-y-4">
           {filtered.map((p) => {
             const situacaoAtual = p.current_status || "Em Tramitação";
-            const lastVoteDate = (p as any).last_vote_date
-              ? new Date((p as any).last_vote_date).toLocaleDateString("pt-BR")
+            const lastVoteDate = p.last_vote_date
+              ? new Date(p.last_vote_date).toLocaleDateString("pt-BR")
               : null;
-            const houses = (p as any).houses || "Congresso Nacional";
+            const houses = p.houses || "Congresso Nacional";
             const isAprovado = situacaoAtual.toLowerCase().includes("aprovad") || situacaoAtual.toLowerCase().includes("lei") || situacaoAtual.toLowerCase().includes("norma");
             const isEncerrado = situacaoAtual.toLowerCase().includes("arquivad") || situacaoAtual.toLowerCase().includes("rejeitad") || situacaoAtual.toLowerCase().includes("encerrad");
 

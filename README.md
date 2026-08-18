@@ -33,16 +33,84 @@ A ferramenta é orientada pela **privacidade absoluta (*Local-First*)**: nenhuma
 
 ## 🎯 Princípios Fundamentais
 
-1. **Fonte de Verdade Pública**: Os dados provêm exclusivamente das APIs abertas da Câmara dos Deputados e do Senado Federal. O banco de dados local funciona estritamente como cache persistente de leitura.
+1. **Fonte de Verdade Pública**: Os dados provêm exclusivamente das APIs abertas da Câmara dos Deputados e do Senado Federal. O banco de dados relacional funciona estritamente como cache persistente de leitura e normalização.
 2. **Cálculo Determinístico e Aberto**: O índice de afinidade é uma divisão aritmética direta (`Concordâncias / Comparações Válidas × 100`). Não há inteligência artificial no cálculo, pesos ocultos ou algoritmos opacos.
 3. **Privacidade Local-First**: O armazenamento de respostas ocorre 100% no `localStorage` do navegador do visitante.
 4. **Neutralidade Cívica**: A plataforma não emite juízo de valor, não ranqueia representantes por mérito e não faz recomendação eleitoral.
 
 ---
 
-## 🔄 Fluxos de Uso da Aplicação
+## 🏗️ Arquitetura do Sistema (C4 Model)
 
-### 1. Diagrama de Sequência: Jornada do Usuário (Caminho Feliz)
+A arquitetura do **LegisVisão** é documentada seguindo o modelo **C4 (Context & Containers)**, priorizando clareza estrutural e desacoplamento:
+
+### 1. Nível 1: Diagrama de Contexto do Sistema (C1)
+Apresenta o ecossistema geral, os usuários e as interações com os sistemas externos de dados abertos governamentais.
+
+```mermaid
+C4Context
+    title Nível 1 (C1): Diagrama de Contexto do Sistema - LegisVisão
+
+    Person(cidadao, "Cidadão", "Usuário que deseja comparar suas opiniões legislativas com os votos reais do Congresso.")
+    
+    System(legisvisao, "LegisVisão", "Plataforma cívica web Local-First para análise de afinidade político-partidária e transparência legislativa.")
+    
+    System_Ext(camara, "API da Câmara dos Deputados", "dadosabertos.camara.leg.br<br/>Fornece proposições, votações nominais e parlamentares.")
+    System_Ext(senado, "API do Senado Federal", "legis.senado.leg.br/dadosabertos<br/>Fornece senadores em exercício, mandatos e legislaturas.")
+
+    Rel(cidadao, legisvisao, "Opina em propostas, consulta afinidade e perfis", "HTTPS / Web Browser")
+    Rel(legisvisao, camara, "Ingere proposições e votos nominais", "HTTPS / REST JSON")
+    Rel(legisvisao, senado, "Ingere senadores e mandatos", "HTTPS / REST JSON")
+```
+
+---
+
+### 2. Nível 2: Diagrama de Contêineres (C2)
+Detalha as aplicações, serviços, orquestradores de dados e armazenamentos que compõem a solução do LegisVisão.
+
+```mermaid
+flowchart TB
+    %% Estilos no padrão visual C4
+    classDef person fill:#08427b,stroke:#073b6f,color:#ffffff;
+    classDef ext fill:#999999,stroke:#666666,color:#ffffff;
+    classDef container fill:#1168bd,stroke:#0b4884,color:#ffffff;
+    classDef db fill:#1168bd,stroke:#0b4884,color:#ffffff;
+
+    cidadao["👤 <b>Cidadão</b><br/><i>[Pessoa]</i><br/>Usuário no navegador web"]:::person
+
+    subgraph ExtSystems ["🌐 Sistemas Externos (Dados Abertos)"]
+        camara["🏛️ <b>API Câmara dos Deputados</b><br/><i>[Sistema Externo / REST]</i><br/>Proposições, votações e deputados"]:::ext
+        senado["🏛️ <b>API Senado Federal</b><br/><i>[Sistema Externo / REST]</i><br/>Senadores e mandatos"]:::ext
+    end
+
+    subgraph LegisBoundary ["🏛️ LegisVisão (Container Boundary)"]
+        spa["💻 <b>Single-Page / Web App</b><br/><i>[Next.js 16 / React 19 / Tailwind]</i><br/>Interface Local-First responsiva onde o cálculo ocorre 100% no cliente"]:::container
+        storage[("💾 <b>Armazenamento Local</b><br/><i>[localStorage]</i><br/>Armazena opiniões do cidadão de forma estritamente local e privada")]:::db
+        bff["⚙️ <b>Backend / BFF & APIs</b><br/><i>[Next.js Route Handlers]</i><br/>Serve catálogo canônico, metadados e histórico com cache em memória (TTL)"]:::container
+        db[("🗄️ <b>Banco de Dados Relacional</b><br/><i>[PostgreSQL / Supabase]</i><br/>Cache persistente de proposições, votos, parlamentares e mandatos")]:::db
+        sync["⚡ <b>Sync Engine (ETL)</b><br/><i>[TSX / Node.js Scripts]</i><br/>Pipeline de ingestão, normalização e carga periódica de dados oficiais"]:::container
+    end
+
+    %% Fluxos do Usuário e Frontend
+    cidadao -->|"1. Opina e consulta afinidade<br/>[HTTPS]"| spa
+    spa <-->|"2. Grava/Lê respostas locais<br/>[Web Storage API]"| storage
+    spa -->|"3. Requisita catálogo canônico e votos<br/>[HTTPS / JSON]"| bff
+
+    %% Fluxos de Backend e Persistência
+    bff -->|"4. Consulta dados e metadados<br/>[SQL / Connection Pool]"| db
+
+    %% Fluxos da Engine de Ingestão (ETL)
+    sync -->|"5. Extrai dados governamentais<br/>[HTTPS / REST]"| camara
+    sync -->|"6. Extrai dados governamentais<br/>[HTTPS / REST]"| senado
+    sync -->|"7. Persiste dados oficiais normalizados<br/>[SQL / Postgres.js]"| db
+```
+
+---
+
+## 🔄 Fluxos de Execução e Sequência
+
+### 1. Jornada do Cidadão (Votação e Afinidade Local-First)
+Demonstra o ciclo de vida da navegação, gravação estritamente local e cálculo determinístico no cliente:
 
 ```mermaid
 sequenceDiagram
@@ -97,58 +165,115 @@ sequenceDiagram
 
 ---
 
-## 🏗️ Arquitetura do Sistema (C4 Model)
-
-A arquitetura do **LegisVisão** é documentada seguindo o modelo **C4 (Context & Containers)**:
-
-### 1. Nível 1: Diagrama de Contexto do Sistema (C1)
-Apresenta o ecossistema geral, os usuários e as interações com os sistemas externos de dados abertos governamentais.
+### 2. Pipeline de Ingestão e Sincronização Governamental (ETL)
+Demonstra como o orquestrador de sincronização consome os dados abertos, normaliza as votações e controla a versão do dataset:
 
 ```mermaid
-C4Context
-    title Nível 1 (C1): Diagrama de Contexto do Sistema - LegisVisão
+sequenceDiagram
+    autonumber
+    participant Cron as GitHub Actions / Agendamento
+    participant Engine as Sync Engine (scripts/sync)
+    participant Camara as API Câmara dos Deputados
+    participant Senado as API Senado Federal
+    participant DB as PostgreSQL (Supabase)
 
-    Person(cidadao, "Cidadão", "Usuário que deseja comparar suas opiniões legislativas com os votos reais do Congresso.")
-    
-    System(legisvisao, "LegisVisão", "Plataforma cívica web Local-First para análise de afinidade político-partidária e transparência legislativa.")
-    
-    System_Ext(camara, "API da Câmara dos Deputados", "dadosabertos.camara.leg.br<br/>Fornece proposições, votações nominais e parlamentares.")
-    System_Ext(senado, "API do Senado Federal", "legis.senado.leg.br/dadosabertos<br/>Fornece senadores em exercício, mandatos e legislaturas.")
+    Cron->>Engine: Dispara sincronização (npx tsx scripts/sync/index.ts)
 
-    Rel(cidadao, legisvisao, "Opina em propostas, consulta afinidade e perfis", "HTTPS / Web Browser")
-    Rel(legisvisao, camara, "Ingere proposições e votos nominais", "HTTPS / REST JSON")
-    Rel(legisvisao, senado, "Ingere senadores e mandatos", "HTTPS / REST JSON")
+    par Fase 1: Partidos e Proposições Canônicas
+        Engine->>Camara: GET /partidos e GET /proposicoes
+        Engine->>Senado: GET /materia/pesquisa/lista
+        Engine->>DB: Upsert em political_parties e legislative_projects
+    end
+
+    par Fase 2: Parlamentares, Mandatos e Sessões
+        Engine->>Camara: GET /deputados e GET /votacoes
+        Engine->>Senado: GET /senadores e GET /votacao
+        Engine->>DB: Upsert em politicians, mandates e vote_sessions
+    end
+
+    Note over Engine,DB: Fase 3: Votações Nominais e Versionamento
+    Engine->>Camara: GET /votacoes/{id}/votos
+    Engine->>Senado: GET /votacao/{id}/votos
+    Engine->>DB: Upsert em politician_votes com party_id histórico
+    Engine->>DB: Atualiza sync_control e renova dataset_version
+    Engine-->>Cron: Pipeline finalizado com integridade garantida
 ```
 
 ---
 
-### 2. Nível 2: Diagrama de Contêineres (C2)
-Detalha as aplicações, serviços, orquestradores de dados e armazenamentos que compõem a solução do LegisVisão.
+## 🗄️ Modelo de Dados Relacional (DER)
+
+O esquema relacional é projetado para garantir integridade referencial, rastreabilidade temporal de mandatos e fidelidade partidária no exato momento do voto:
 
 ```mermaid
-C4Container
-    title Nível 2 (C2): Diagrama de Contêineres - LegisVisão
-
-    Person(cidadao, "Cidadão", "Usuário no navegador web")
-
-    System_Ext(camara, "API Câmara dos Deputados", "API REST pública de dados abertos")
-    System_Ext(senado, "API Senado Federal", "API REST pública de dados abertos")
-
-    Container_Boundary(c1, "LegisVisão") {
-        Container(spa, "Single-Page / Web App", "Next.js 16 (React 19), Tailwind CSS 4", "Interface Local-First responsiva onde o usuário opina e os cálculos de afinidade são executados 100% no cliente.")
-        ContainerDb(browser_storage, "Armazenamento Local", "Navegador Web (localStorage)", "Armazena as opiniões do cidadão de forma estritamente local e privada.")
-        Container(bff, "Backend / BFF & API Routes", "Next.js Route Handlers (Node.js / Edge)", "Serve catálogo canônico, metadados e histórico com cache em memória (TTL).")
-        ContainerDb(db, "Banco de Dados Relacional", "PostgreSQL (Supabase)", "Cache persistente das proposições, sessões de voto, parlamentares e histórico partidário.")
-        Container(sync_engine, "Sync Engine (ETL)", "TSX / Node.js Scripts (scripts/sync)", "Pipeline de ingestão, normalização e carga periódica de dados governamentais.")
+erDiagram
+    POLITICAL_PARTIES ||--o{ POLITICIAN_PARTY_HISTORY : "registra histórico"
+    POLITICAL_PARTIES ||--o{ POLITICIAN_VOTES : "vincula à época da votação"
+    POLITICIANS ||--o{ POLITICIAN_PARTY_HISTORY : "possui"
+    POLITICIANS ||--o{ MANDATES : "exerce"
+    POLITICIANS ||--o{ POLITICIAN_VOTES : "registra"
+    
+    LEGISLATIVE_PROJECTS ||--|{ PROJECT_HOUSE_RECORDS : "tramita em"
+    PROJECT_HOUSE_RECORDS ||--o{ VOTE_SESSIONS : "deliberado em"
+    VOTE_SESSIONS ||--o{ POLITICIAN_VOTES : "contém votos nominais"
+    
+    POLITICAL_PARTIES {
+        int id PK
+        string sigla
+        string nome
+        string situacao
+        string logo_url
     }
 
-    Rel(cidadao, spa, "Navega, opina em propostas e visualiza gráficos", "HTTPS")
-    Rel(spa, browser_storage, "Lê/Grava opiniões do usuário", "Web Storage API")
-    Rel(spa, bff, "Requisita catálogo de propostas e parlamentares", "HTTPS / JSON")
-    Rel(bff, db, "Consulta dados cacheados e metadados", "SQL (Postgres.js / Pool)")
-    Rel(sync_engine, camara, "Extrai proposições, votações e deputados", "HTTPS / JSON")
-    Rel(sync_engine, senado, "Extrai senadores e mandatos", "HTTPS / JSON")
-    Rel(sync_engine, db, "Persiste dados oficiais normalizados", "SQL (Postgres.js)")
+    POLITICIANS {
+        int id PK
+        string source
+        string external_id
+        string name
+        string type
+        string state
+        boolean is_active
+    }
+
+    LEGISLATIVE_PROJECTS {
+        int id PK
+        string canonical_id UK
+        string type
+        string number
+        int year
+        string title
+        string current_status
+    }
+
+    PROJECT_HOUSE_RECORDS {
+        int id PK
+        int project_id FK
+        string house
+        string official_url
+    }
+
+    VOTE_SESSIONS {
+        int id PK
+        int house_record_id FK
+        timestamp date
+        string description
+        string result
+    }
+
+    POLITICIAN_VOTES {
+        int id PK
+        int vote_session_id FK
+        int politician_id FK
+        int party_id FK
+        string vote_original
+    }
+
+    SYNC_CONTROL {
+        string source PK
+        string status
+        timestamp last_sync
+        string dataset_version
+    }
 ```
 
 ---
@@ -164,10 +289,14 @@ Apenas votos com posicionamento expresso de mérito entram no cômputo:
 ### 2. Afinidade Individual do Parlamentar
 $$\text{Índice Individual (\%)} = \left( \frac{\text{Total de Concordâncias}}{\text{Total de Deliberações Válidas Comparáveis}} \right) \times 100$$
 
-### 3. Afinidade Partidária (com Fidelidade Temporal)
+### 3. Afinidade Partidária (com Fidelidade Direta no Voto)
 $$\text{Índice do Partido (\%)} = \left( \frac{\text{Total de Concordâncias dos Parlamentares Filiados}}{\text{Total de Votos Comparáveis dos Filiados}} \right) \times 100$$
 
-> **Fidelidade Histórica de Filiação**: Cada voto nominal é atribuído à legenda em que o parlamentar estava filiado na data da sessão de deliberação (cruzamento temporal de `vote_sessions.date` com `politician_party_history.start_date` e `end_date`). Se um político trocou de partido, seus votos passados permanecem com o partido da época, e os novos votos são computados para o partido atual.
+> **Fidelidade Histórica de Filiação**: Cada voto nominal é atribuído diretamente à legenda partidária em que o parlamentar estava registrado no momento da sessão de deliberação (`politician_votes.party_id`, extraído do painel oficial de votações). Se um político trocou de legenda, seus votos anteriores permanecem vinculados ao partido em que atuava na data do voto, e os novos votos são computados para a sua legenda atual.
+>
+> **Efeito em Partidos Recentes**: Partidos criados recentemente ou resultantes de fusões, como União Brasil (DEM + PSL) e PRD (PTB + Patriota), são considerados apenas a partir de sua constituição formal. Assim, votos registrados antes da criação da nova legenda permanecem atribuídos aos partidos existentes à época da votação e não são transferidos retroativamente para o partido sucessor. Por exemplo, votos anteriores continuam vinculados a legendas como DEM, PSL, PTB e Patriota.
+>
+> **Critério de Desempate no Ranking**: Em caso de empate no percentual de afinidade entre legendas ou parlamentares, o primeiro critério de desempate é o maior número de votos comparáveis considerados, privilegiando resultados baseados em uma amostra mais ampla e estatisticamente mais robusta.
 
 ---
 
@@ -303,4 +432,4 @@ Desenvolvido por **Luis Zancanela**.
 - 🌐 Website: [zancanela.dev.br](https://zancanela.dev.br)
 - 💼 LinkedIn: [linkedin.com/in/luis-zancanela](https://www.linkedin.com/in/luis-zancanela)
 - 🐙 GitHub: [@didifive](https://github.com/didifive)
-- 📧 Contato: [contato@zancanela.dev.br](mailto:contato@zancanela.dev.br)
+- 📧 Contato: [luis@zancanela.dev.br](mailto:luis@zancanela.dev.br)

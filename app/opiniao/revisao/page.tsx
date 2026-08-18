@@ -159,7 +159,7 @@ export default function RevisaoPage() {
     // Ordenação mais recente primeiro
     list.sort((a, b) => {
       const da = (p: ProjectWithLastVote) => {
-        const dateStr = (p as any).last_vote_date || p.last_event_date || (p as any).last_updated_at;
+        const dateStr = p.last_vote_date || p.last_event_date || p.last_updated_at;
         return dateStr ? new Date(dateStr).getTime() : 0;
       };
       return da(b.project) - da(a.project);
@@ -415,10 +415,10 @@ export default function RevisaoPage() {
               {filteredList.map(({ project, answer }) => {
                 const isConcordo = answer === "CONCORDO";
                 const situacaoAtual = project.current_status || "Em Tramitação";
-                const lastVoteDate = (project as any).last_vote_date
-                  ? new Date((project as any).last_vote_date).toLocaleDateString("pt-BR")
+                const lastVoteDate = project.last_vote_date
+                  ? new Date(project.last_vote_date).toLocaleDateString("pt-BR")
                   : null;
-                const houses = (project as any).houses || "Congresso Nacional";
+                const houses = project.houses || "Congresso Nacional";
                 const isAprovado = situacaoAtual.toLowerCase().includes("aprovad") || situacaoAtual.toLowerCase().includes("lei") || situacaoAtual.toLowerCase().includes("norma");
                 const isEncerrado = situacaoAtual.toLowerCase().includes("arquivad") || situacaoAtual.toLowerCase().includes("rejeitad") || situacaoAtual.toLowerCase().includes("encerrad");
 

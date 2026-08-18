@@ -19,8 +19,14 @@ DROP TABLE IF EXISTS bill_vote_sessions CASCADE;
 -- 1. Partidos Políticos
 CREATE TABLE IF NOT EXISTS political_parties (
     id SERIAL PRIMARY KEY,
-    sigla VARCHAR(20) UNIQUE NOT NULL,
-    nome VARCHAR(255) NOT NULL
+    sigla VARCHAR(50) UNIQUE NOT NULL,
+    nome VARCHAR(255) NOT NULL,
+    uri VARCHAR(255),
+    situacao VARCHAR(50) DEFAULT 'Ativo', -- 'Ativo' ou 'Inativo' (oficial da API da Câmara)
+    total_membros INTEGER DEFAULT 0,
+    total_posse INTEGER DEFAULT 0,
+    numero_eleitoral INTEGER,
+    logo_url TEXT
 );
 
 -- 2. Políticos (Deputados Federais e Senadores)
@@ -115,11 +121,12 @@ CREATE TABLE IF NOT EXISTS vote_sessions (
     CONSTRAINT unique_house_vote_session UNIQUE(house_record_id, external_vote_id)
 );
 
--- 9. Votos Nominais dos Parlamentares (com valor original da API)
+-- 9. Votos Nominais dos Parlamentares (com valor original da API e partido no momento da votação)
 CREATE TABLE IF NOT EXISTS politician_votes (
     id SERIAL PRIMARY KEY,
     vote_session_id INTEGER NOT NULL REFERENCES vote_sessions(id) ON DELETE CASCADE,
     politician_id INTEGER NOT NULL REFERENCES politicians(id) ON DELETE CASCADE,
+    party_id INTEGER REFERENCES political_parties(id) ON DELETE SET NULL,
     vote_original VARCHAR(100) NOT NULL,
     CONSTRAINT unique_vote_session_politician UNIQUE(vote_session_id, politician_id)
 );
@@ -146,6 +153,7 @@ CREATE INDEX IF NOT EXISTS idx_politicians_active ON politicians(is_active);
 CREATE INDEX IF NOT EXISTS idx_mandates_politician_id ON mandates(politician_id);
 CREATE INDEX IF NOT EXISTS idx_mandates_house ON mandates(house);
 CREATE INDEX IF NOT EXISTS idx_politician_party_history_lookup ON politician_party_history(politician_id, party_id);
+CREATE INDEX IF NOT EXISTS idx_politician_party_history_politician ON politician_party_history(politician_id, start_date DESC);
 CREATE INDEX IF NOT EXISTS idx_legislative_projects_canonical ON legislative_projects(canonical_id);
 CREATE INDEX IF NOT EXISTS idx_legislative_projects_year ON legislative_projects(year);
 CREATE INDEX IF NOT EXISTS idx_project_house_records_project ON project_house_records(project_id);
@@ -156,6 +164,7 @@ CREATE INDEX IF NOT EXISTS idx_vote_sessions_phase ON vote_sessions(phase_id);
 CREATE INDEX IF NOT EXISTS idx_vote_sessions_date ON vote_sessions(date);
 CREATE INDEX IF NOT EXISTS idx_politician_votes_session ON politician_votes(vote_session_id);
 CREATE INDEX IF NOT EXISTS idx_politician_votes_politician ON politician_votes(politician_id);
+CREATE INDEX IF NOT EXISTS idx_politician_votes_party ON politician_votes(party_id);
 
 -- 12. Seed Inicial de Controle das Fontes Oficiais (Apenas Câmara e Senado)
 INSERT INTO sync_control (source, name, official_url, last_sync, status) VALUES

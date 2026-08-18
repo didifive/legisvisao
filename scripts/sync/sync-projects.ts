@@ -47,24 +47,45 @@ interface PropositionDetail {
   };
 }
 
+interface ExistingProjectRow {
+  id: number;
+  canonical_id: string;
+  type: string;
+  number: string;
+  year: number;
+  title: string;
+  description: string;
+  current_status: string;
+}
+
+interface ExistingHouseRecordRow {
+  id: number;
+  project_id: number;
+  house: string;
+  external_id: string;
+}
+
 /**
  * 1. Carrega dados existentes do banco de dados (projetos canônicos e registros de casa).
  */
-async function loadExistingProjectsData() {
-  const existingProjects = await sql`
+async function loadExistingProjectsData(): Promise<{
+  projectMap: Map<string, ExistingProjectRow>;
+  recordMap: Map<string, ExistingHouseRecordRow>;
+}> {
+  const existingProjects = await sql<ExistingProjectRow[]>`
     SELECT id, canonical_id, type, number, year, title, description, current_status
     FROM legislative_projects
   `;
-  const projectMap = new Map<string, any>();
+  const projectMap = new Map<string, ExistingProjectRow>();
   for (const p of existingProjects) {
     projectMap.set(p.canonical_id, p);
   }
 
-  const existingRecords = await sql`
+  const existingRecords = await sql<ExistingHouseRecordRow[]>`
     SELECT id, project_id, house, external_id
     FROM project_house_records
   `;
-  const recordMap = new Map<string, any>();
+  const recordMap = new Map<string, ExistingHouseRecordRow>();
   for (const r of existingRecords) {
     recordMap.set(`${r.house}_${r.external_id}`, r);
   }
@@ -163,7 +184,7 @@ async function upsertCanonicalProject(
   title: string,
   description: string,
   currentStatus: string,
-  projectMap: Map<string, any>
+  projectMap: Map<string, ExistingProjectRow>
 ): Promise<{ projectDbId: number; wasInserted: boolean; wasUpdated: boolean }> {
   const existing = projectMap.get(canonicalId);
 
@@ -182,7 +203,7 @@ async function upsertCanonicalProject(
       RETURNING id;
     `;
     const projectDbId = insertedP.id;
-    projectMap.set(canonicalId, { id: projectDbId, canonical_id: canonicalId, type, number, year, title, current_status: currentStatus });
+    projectMap.set(canonicalId, { id: projectDbId, canonical_id: canonicalId, type, number, year, title, description, current_status: currentStatus });
     return { projectDbId, wasInserted: true, wasUpdated: false };
   }
 
@@ -209,7 +230,7 @@ async function upsertHouseRecord(
   extId: string,
   det: PropositionDetail,
   authorName: string | null,
-  recordMap: Map<string, any>
+  recordMap: Map<string, ExistingHouseRecordRow>
 ): Promise<{ recordDbId: number; wasInserted: boolean; wasUpdated: boolean }> {
   const recordKey = `CAMARA_${extId}`;
   const existing = recordMap.get(recordKey);

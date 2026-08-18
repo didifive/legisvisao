@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import PartyDetailsClient from "./PartyDetailsClient";
 import { db } from "@/lib/db";
 import type { Metadata } from "next";
+import type { PoliticalParty, PartyPoliticianMember, PartyPoliticianVoteDetail } from "@/types/db";
 
 export async function generateMetadata(
   props: { params: Promise<{ id: string }> }
@@ -31,7 +32,7 @@ export default async function PartyPage(
   }
 
   // 1. Dados do Partido
-  const partyRes = await db`
+  const partyRes = await db<PoliticalParty[]>`
     SELECT * FROM political_parties WHERE id = ${partyId} LIMIT 1;
   `;
   if (!partyRes || partyRes.length === 0) {
@@ -40,7 +41,7 @@ export default async function PartyPage(
   const party = partyRes[0];
 
   // 2. Parlamentares Ativos
-  const politicians = await db`
+  const politicians = await db<PartyPoliticianMember[]>`
     SELECT 
       p.id,
       p.name,
@@ -62,11 +63,12 @@ export default async function PartyPage(
     ORDER BY p.type ASC, p.name ASC;
   `;
 
-  // 3. Votos Nominais dos Parlamentares Filiados nos Projetos (vigentes na data da votação)
-  const politicianVotes = await db`
+  // 3. Votos Nominais dos Parlamentares Filiados nos Projetos (atribuídos diretamente à legenda)
+  const politicianVotes = await db<PartyPoliticianVoteDetail[]>`
     SELECT 
       pv.id as vote_id,
       pv.politician_id,
+      pv.party_id,
       pv.vote_original,
       p.name as politician_name,
       vs.id as vote_session_id,
@@ -86,19 +88,15 @@ export default async function PartyPage(
     JOIN vote_sessions vs ON vs.id = pv.vote_session_id
     JOIN project_house_records phr ON phr.id = vs.house_record_id
     JOIN legislative_projects lp ON lp.id = phr.project_id
-    JOIN politician_party_history pph 
-      ON pph.politician_id = p.id 
-     AND pph.party_id = ${partyId}
-     AND pph.start_date <= vs.date::date
-     AND (pph.end_date IS NULL OR pph.end_date >= vs.date::date)
+    WHERE pv.party_id = ${partyId}
     ORDER BY vs.date DESC;
   `;
 
   return (
     <PartyDetailsClient
-      party={{ id: party.id, sigla: party.sigla, nome: party.nome }}
-      politicians={politicians as any}
-      politicianVotes={politicianVotes as any}
+      party={party}
+      politicians={politicians}
+      politicianVotes={politicianVotes}
     />
   );
 }

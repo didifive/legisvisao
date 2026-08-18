@@ -2,8 +2,8 @@ name: Sincronização de Bases Oficiais
 
 on:
   schedule:
-    # Executa todo domingo às 03:00 UTC (madrugada)
-    - cron: '0 3 * * 0'
+    # Executa a cada 3 dias às 03:00 UTC (madrugada)
+    - cron: '0 3 */3 * *'
   workflow_dispatch: # Permite disparo manual via interface do GitHub
 
 jobs:

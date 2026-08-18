@@ -52,11 +52,12 @@ export async function GET(
         ORDER BY p.type ASC, p.name ASC;
       `;
 
-      // 3. Votos Nominais dos Parlamentares Filiados nos Projetos (vigentes na data da votação)
+      // 3. Votos Nominais dos Parlamentares Filiados nos Projetos (atribuídos diretamente à legenda)
       const politicianVotes = await db`
         SELECT 
           pv.id as vote_id,
           pv.politician_id,
+          pv.party_id,
           pv.vote_original,
           p.name as politician_name,
           vs.id as vote_session_id,
@@ -76,11 +77,7 @@ export async function GET(
         JOIN vote_sessions vs ON vs.id = pv.vote_session_id
         JOIN project_house_records phr ON phr.id = vs.house_record_id
         JOIN legislative_projects lp ON lp.id = phr.project_id
-        JOIN politician_party_history pph 
-          ON pph.politician_id = p.id 
-         AND pph.party_id = ${partyId}
-         AND pph.start_date <= vs.date::date
-         AND (pph.end_date IS NULL OR pph.end_date >= vs.date::date)
+        WHERE pv.party_id = ${partyId}
         ORDER BY vs.date DESC;
       `;
 

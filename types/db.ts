@@ -6,6 +6,12 @@ export interface PoliticalParty {
   id: number;
   sigla: string;
   nome: string;
+  uri?: string | null;
+  situacao?: string | null; // 'Ativo' | 'Inativo'
+  total_membros?: number | null;
+  total_posse?: number | null;
+  numero_eleitoral?: number | null;
+  logo_url?: string | null;
 }
 
 export interface Politician {
@@ -92,6 +98,7 @@ export interface PoliticianVote {
   id: number;
   vote_session_id: number;
   politician_id: number;
+  party_id?: number | null;
   vote_original: string;
 }
 
@@ -185,6 +192,7 @@ export interface PartyHistoryRow {
 
 export interface PoliticianVoteRow {
   vote_id: number;
+  party_id?: number | null;
   vote_original: string;
   vote_date: string;
   vote_description: string | null;
@@ -202,11 +210,48 @@ export interface VoteDetailRow {
   id: number;
   vote_session_id: number;
   politician_id: number;
+  party_id?: number | null;
   vote_original: string;
   politician_name: string;
   politician_type: string;
   politician_state: string;
   party_sigla: string | null;
+}
+
+export interface PartyPoliticianMember {
+  id: number;
+  name: string;
+  type: string;
+  state: string;
+  photo_url: string | null;
+  email: string | null;
+  source: string;
+  mandate_office?: string | null;
+}
+
+export interface PartyPoliticianVoteDetail {
+  vote_id: number;
+  politician_id: number;
+  party_id: number | null;
+  vote_original: string;
+  politician_name: string;
+  vote_session_id: number;
+  session_date: string;
+  session_description: string | null;
+  project_id: number;
+  canonical_id: string;
+  project_number: string;
+  project_year: number;
+  project_type: string;
+  project_title: string;
+  project_description: string | null;
+  house: string;
+  official_url: string | null;
+}
+
+export interface ProjectVoteSessionRow extends VoteSession {
+  house: string;
+  phase_name?: string | null;
 }
 
 export type SQLParam = string | number | boolean | null;

@@ -30,7 +30,8 @@ async function main() {
     console.log("\n⚡ [Fase 3] Sincronizando Votos Nominais...");
     const votesResult = await syncVotes(
       sessionsResult.sessionsToSyncVotes,
-      politiciansResult.politicianMap
+      politiciansResult.politicianMap,
+      partiesResult.partyMap
     );
 
     // Controle Inteligente de dataset_version

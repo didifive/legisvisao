@@ -9,13 +9,14 @@ export interface SyncVotesResult {
 interface RawVoteNominalItem {
   tipoVoto?: string;
   voto?: string;
-  deputado_?: { id?: number | string };
-  deputado?: { id?: number | string };
+  deputado_?: { id?: number | string; siglaPartido?: string };
+  deputado?: { id?: number | string; siglaPartido?: string };
 }
 
 interface PoliticianVoteToInsert {
   vote_session_id: number;
   politician_id: number;
+  party_id: number | null;
   vote_original: string;
 }
 
@@ -45,13 +46,19 @@ async function fetchNominalVotesFromCamara(externalVoteId: string): Promise<RawV
   return votosData.dados || [];
 }
 
+export interface PoliticianSummary {
+  id: number;
+  name: string;
+}
+
 /**
- * 3. Mapeia e filtra votos válidos da sessão comparando com o catálogo de parlamentares.
+ * 3. Mapeia e filtra votos válidos da sessão comparando com o catálogo de parlamentares e partidos.
  */
 function buildVotesToInsert(
   sessionId: number,
   rawVotes: RawVoteNominalItem[],
-  politicianMap: Map<string, any>,
+  politicianMap: Map<string, PoliticianSummary>,
+  partyMap: Map<string, number>,
   existingVoteSet: Set<string>
 ): PoliticianVoteToInsert[] {
   const rows: PoliticianVoteToInsert[] = [];
@@ -68,10 +75,13 @@ function buildVotesToInsert(
     if (existingVoteSet.has(voteKey)) continue;
 
     const rawVote = (item.tipoVoto || item.voto || "Outros").trim();
+    const rawPartySigla = (item.deputado_?.siglaPartido || item.deputado?.siglaPartido || "").trim().toUpperCase();
+    const partyId = rawPartySigla ? partyMap.get(rawPartySigla) || null : null;
 
     rows.push({
       vote_session_id: sessionId,
       politician_id: pol.id,
+      party_id: partyId,
       vote_original: rawVote,
     });
     existingVoteSet.add(voteKey);
@@ -90,8 +100,9 @@ async function insertVotesBatches(allRows: PoliticianVoteToInsert[]): Promise<vo
   for (let i = 0; i < allRows.length; i += BATCH_SIZE) {
     const chunk = allRows.slice(i, i + BATCH_SIZE);
     await sql`
-      INSERT INTO politician_votes ${sql(chunk as any, 'vote_session_id', 'politician_id', 'vote_original')}
+      INSERT INTO politician_votes ${sql(chunk, 'vote_session_id', 'politician_id', 'party_id', 'vote_original')}
       ON CONFLICT (vote_session_id, politician_id) DO UPDATE SET
+        party_id = EXCLUDED.party_id,
         vote_original = EXCLUDED.vote_original;
     `;
   }
@@ -102,9 +113,10 @@ async function insertVotesBatches(allRows: PoliticianVoteToInsert[]): Promise<vo
  */
 export async function syncVotes(
   sessions: SessionToSyncVotes[],
-  politicianMap: Map<string, any>
+  politicianMap: Map<string, PoliticianSummary>,
+  partyMap: Map<string, number>
 ): Promise<SyncVotesResult> {
-  console.log("-> [Votos Nominais] Sincronizando votos parlamentares com valor original das APIs...");
+  console.log("-> [Votos Nominais] Sincronizando votos parlamentares com valor original das APIs e filiação direta...");
 
   const existingVoteSet = await loadExistingVoteKeys();
   const camaraSessions = sessions.filter((s) => s.house === "CAMARA");
@@ -114,7 +126,7 @@ export async function syncVotes(
   await mapConcurrent(camaraSessions, 8, async (session) => {
     try {
       const rawVotes = await fetchNominalVotesFromCamara(session.external_vote_id);
-      const rows = buildVotesToInsert(session.id, rawVotes, politicianMap, existingVoteSet);
+      const rows = buildVotesToInsert(session.id, rawVotes, politicianMap, partyMap, existingVoteSet);
       if (rows.length > 0) {
         allRowsToInsert.push(...rows);
       }

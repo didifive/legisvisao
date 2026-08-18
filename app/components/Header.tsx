@@ -173,7 +173,7 @@ export const Header = () => {
             </nav>
 
             {/* Actions: Import, Export, Clear, Theme, Social */}
-            <div className="hidden lg:flex items-center space-x-2">
+            <div className="hidden md:flex items-center space-x-1 lg:space-x-2">
               <div className="flex items-center bg-muted/60 p-1 rounded-lg border border-border space-x-1 text-xs">
                 <input
                   type="file"
@@ -184,32 +184,32 @@ export const Header = () => {
                 />
                 <button
                   onClick={handleImportClick}
-                  className="px-2.5 py-1 rounded hover:bg-background transition-smooth flex items-center gap-1.5 text-muted-foreground hover:text-foreground font-medium cursor-pointer"
+                  className="px-2 lg:px-2.5 py-1 rounded hover:bg-background transition-smooth flex items-center gap-1.5 text-muted-foreground hover:text-foreground font-medium cursor-pointer"
                   title="Importar opiniões salvas em JSON"
                 >
                   <FaUpload className="w-3 h-3 text-primary" />
-                  Importar
+                  <span className="hidden xl:inline">Importar</span>
                 </button>
 
                 <button
                   onClick={handleExport}
-                  className="px-2.5 py-1 rounded hover:bg-background transition-smooth flex items-center gap-1.5 text-muted-foreground hover:text-foreground font-medium cursor-pointer"
+                  className="px-2 lg:px-2.5 py-1 rounded hover:bg-background transition-smooth flex items-center gap-1.5 text-muted-foreground hover:text-foreground font-medium cursor-pointer"
                   title="Exportar opiniões atuais como JSON"
                 >
                   <FaDownload className="w-3 h-3 text-secondary" />
-                  Exportar
+                  <span className="hidden xl:inline">Exportar</span>
                 </button>
 
                 <button
                   onClick={handleClear}
-                  className="px-2.5 py-1 rounded hover:bg-background hover:text-destructive transition-smooth flex items-center gap-1 text-muted-foreground font-medium cursor-pointer"
+                  className="px-2 lg:px-2.5 py-1 rounded hover:bg-background hover:text-destructive transition-smooth flex items-center gap-1 text-muted-foreground font-medium cursor-pointer"
                   title="Limpar opiniões salvas neste navegador"
                 >
                   <FaTrashAlt className="w-3 h-3" />
                 </button>
               </div>
 
-              <div className="w-px h-5 bg-border mx-1" />
+              <div className="w-px h-5 bg-border mx-0.5 lg:mx-1" />
 
               <ThemeToggle />
 

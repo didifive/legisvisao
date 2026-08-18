@@ -151,7 +151,7 @@ export default function AfinidadePage() {
       for (const p of currentPoliticians) {
         polsById[p.id] = {
           ...p,
-          type: normalizePoliticianType((p as any).type, "DEPUTADO"),
+          type: normalizePoliticianType(p.type, "DEPUTADO"),
         };
       }
 

@@ -312,10 +312,10 @@ export default function FAQPage() {
           </div>
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-foreground">
-              Metodologia de Cálculo de Afinidade
+              Metodologia de Cálculo de Afinidade e Fidelidade Partidária
             </h2>
             <span className="text-xs text-muted-foreground">
-              Fórmula determinística oficial
+              Fórmula determinística oficial baseada no registro do plenário
             </span>
           </div>
         </div>
@@ -337,14 +337,32 @@ export default function FAQPage() {
             </div>
 
             <div className="p-4 rounded-xl bg-muted/50 border border-border/80 text-xs text-foreground space-y-2">
-              <span className="font-bold text-primary block">2. Afinidade dos Partidos (com Fidelidade Temporal):</span>
+              <span className="font-bold text-primary block">2. Afinidade dos Partidos (Fidelidade do Voto):</span>
               <code className="text-xs font-mono bg-background px-2 py-1 rounded border border-border inline-block">
                 Índice Partidário = Concordâncias dos Filiados ÷ Votos Válidos dos Filiados
               </code>
               <p className="text-muted-foreground pt-1 text-[11px] leading-relaxed">
-                Calculada pela média dos votos nominais de parlamentares filiados. Cada voto é vinculado à legenda em que o parlamentar estava filiado <strong>na data exata da sessão de votação</strong> (cruzamento temporal de filiação). Caso um político tenha trocado de legenda, seus votos históricos permanecem atribuídos ao partido da época.
+                Calculada pela média dos votos nominais de parlamentares filiados. Cada voto é vinculado à legenda em que o parlamentar estava registrado <strong>no momento exato em que votou no plenário</strong> (extraído diretamente do painel oficial de votações da Câmara e do Senado).
               </p>
             </div>
+          </div>
+
+          {/* Destaque Pedagógico: Partidos Recentes e Critério de Desempate */}
+          <div className="p-4 sm:p-5 rounded-xl bg-primary/5 border border-primary/20 text-xs space-y-3 text-foreground">
+            <div className="font-bold text-primary flex items-center gap-2">
+              <FaHistory className="w-3.5 h-3.5" />
+              <span>Efeito em Partidos Recentes e Fusões:</span>
+            </div>
+            <p className="text-muted-foreground leading-relaxed text-xs">
+              Partidos criados recentemente ou resultantes de fusões, como <strong>União Brasil</strong> (DEM + PSL) e <strong>PRD</strong> (PTB + Patriota), são considerados apenas a partir de sua constituição formal. Assim, votos registrados antes da criação da nova legenda permanecem atribuídos aos partidos existentes à época da votação e não são transferidos retroativamente para o partido sucessor. Por exemplo, votos anteriores continuam vinculados a legendas como <em>DEM</em>, <em>PSL</em>, <em>PTB</em> e <em>Patriota</em>.
+            </p>
+            <div className="font-bold text-primary flex items-center gap-2 pt-1">
+              <FaBalanceScale className="w-3.5 h-3.5" />
+              <span>Critério de Desempate no Ranking:</span>
+            </div>
+            <p className="text-muted-foreground leading-relaxed text-xs">
+              Em caso de empate no percentual de afinidade entre legendas ou parlamentares, o primeiro critério de desempate é o <strong>maior número de votos comparáveis considerados</strong>, privilegiando resultados baseados em uma amostra mais ampla e estatisticamente mais robusta.
+            </p>
           </div>
         </div>
       </section>

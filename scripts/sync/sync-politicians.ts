@@ -1,4 +1,4 @@
-import { sql, CAMARA_API_BASE, SENADO_API_BASE, fetchWithRetry } from "./client";
+import { sql, CAMARA_API_BASE, SENADO_API_BASE, fetchWithRetry, mapConcurrent } from "./client";
 
 export interface SyncPoliticiansResult {
   inserted: number;
@@ -48,15 +48,43 @@ interface SenatorApiItem {
   };
 }
 
+interface PartyHistoryInterval {
+  partySigla: string;
+  startDate: string;
+  endDate: string | null;
+}
+
+interface ExistingPoliticianRow {
+  id: number;
+  source: string;
+  external_id: string;
+  name: string;
+  type: "DEPUTY" | "SENATOR";
+  state: string;
+  photo_url: string | null;
+  email: string | null;
+  is_active: boolean;
+}
+
+interface RawCamaraHistoricoItem {
+  dataHora?: string;
+  siglaPartido?: string;
+  uriPartido?: string;
+  nome?: string;
+}
+
 /**
- * 1. Carrega dados existentes do banco (parlamentares, mandatos e histórico partidário).
+ * 1. Carrega dados existentes do banco (parlamentares e mandatos).
  */
-async function loadExistingPoliticiansData() {
-  const existingRows = await sql`
+async function loadExistingPoliticiansData(): Promise<{
+  politicianMap: Map<string, ExistingPoliticianRow>;
+  mandateSet: Set<string>;
+}> {
+  const existingRows = await sql<ExistingPoliticianRow[]>`
     SELECT id, source, external_id, name, type, state, photo_url, email, is_active
     FROM politicians
   `;
-  const politicianMap = new Map<string, any>();
+  const politicianMap = new Map<string, ExistingPoliticianRow>();
   for (const row of existingRows) {
     politicianMap.set(`${row.source}_${row.external_id}`, row);
   }
@@ -70,17 +98,7 @@ async function loadExistingPoliticiansData() {
     mandateSet.add(`${m.politician_id}_${m.house}_${m.legislature_id || '0'}`);
   }
 
-  const activePartyHistories = await sql`
-    SELECT politician_id, party_id
-    FROM politician_party_history
-    WHERE end_date IS NULL
-  `;
-  const activePartyHistorySet = new Set<string>();
-  for (const h of activePartyHistories) {
-    activePartyHistorySet.add(`${h.politician_id}_${h.party_id}`);
-  }
-
-  return { politicianMap, mandateSet, activePartyHistorySet };
+  return { politicianMap, mandateSet };
 }
 
 /**
@@ -147,7 +165,7 @@ async function upsertPoliticianRecord(
   state: string,
   photoUrl: string | null,
   email: string | null,
-  politicianMap: Map<string, any>
+  politicianMap: Map<string, ExistingPoliticianRow>
 ): Promise<{ polDbId: number; wasInserted: boolean; wasUpdated: boolean }> {
   const key = `${source}_${extId}`;
   const existing = politicianMap.get(key);
@@ -221,38 +239,186 @@ async function registerMandateIfMissing(
 }
 
 /**
- * 7. Registra histórico partidário ativo se ainda não existir.
+ * 7. Resolve ou cria dinamicamente o ID do partido (suporta legendas históricas/extintas).
  */
-async function registerActivePartyHistory(
-  polDbId: number,
-  partySigla: string | undefined,
-  startDate: string | null,
-  partyMap: Map<string, number>,
-  activePartyHistorySet: Set<string>
-): Promise<void> {
-  if (!partySigla || !polDbId || !startDate) return;
-  const partyId = partyMap.get(partySigla.trim().toUpperCase());
-  if (!partyId) return;
+async function resolvePartyId(sigla: string, partyMap: Map<string, number>): Promise<number | null> {
+  const s = sigla.trim().toUpperCase();
+  if (!s || s === "S/PARTIDO" || s === "SEM PARTIDO") return null;
+  let pId = partyMap.get(s);
+  if (pId) return pId;
 
-  const histKey = `${polDbId}_${partyId}`;
-  if (activePartyHistorySet.has(histKey)) return;
+  const [existing] = await sql`SELECT id FROM political_parties WHERE UPPER(sigla) = ${s} LIMIT 1`;
+  if (existing?.id) {
+    partyMap.set(s, existing.id);
+    return existing.id;
+  }
 
-  await sql`
-    INSERT INTO politician_party_history (politician_id, party_id, start_date)
-    VALUES (${polDbId}, ${partyId}, ${startDate});
+  const [inserted] = await sql`
+    INSERT INTO political_parties (sigla, nome)
+    VALUES (${s}, ${s})
+    ON CONFLICT (sigla) DO UPDATE SET sigla = EXCLUDED.sigla
+    RETURNING id;
   `;
-  activePartyHistorySet.add(histKey);
+  if (inserted?.id) {
+    partyMap.set(s, inserted.id);
+    return inserted.id;
+  }
+  return null;
 }
 
 /**
- * Orquestrador da sincronização de Deputados Federais e Senadores.
+ * 8. Consulta e processa o histórico de filiações de um deputado na Câmara.
+ */
+async function fetchDeputyPartyHistory(
+  extId: string,
+  currentPartySigla?: string,
+  defaultStartDate?: string | null
+): Promise<PartyHistoryInterval[]> {
+  try {
+    const res = await fetchWithRetry(`${CAMARA_API_BASE}/deputados/${extId}/historico`, 2, 500);
+    if (res.ok) {
+      const json = await res.json();
+      const rawItems: RawCamaraHistoricoItem[] = json.dados || [];
+
+      if (rawItems.length > 0) {
+        const validItems = rawItems.filter(
+          (item): item is RawCamaraHistoricoItem & { siglaPartido: string } =>
+            Boolean(item.siglaPartido && item.siglaPartido.trim())
+        );
+        const sorted = validItems.sort((a, b) => (a.dataHora || "").localeCompare(b.dataHora || ""));
+
+        const groups: Array<{ sigla: string; dataHora: string }> = [];
+        for (const item of sorted) {
+          const sigla = item.siglaPartido.trim().toUpperCase();
+          if (groups.length === 0 || groups[groups.length - 1].sigla !== sigla) {
+            groups.push({ sigla, dataHora: item.dataHora || defaultStartDate || "2023-02-01" });
+          }
+        }
+
+        if (groups.length > 0) {
+          const intervals: PartyHistoryInterval[] = [];
+          for (let i = 0; i < groups.length; i++) {
+            const current = groups[i];
+            const startDate = current.dataHora.slice(0, 10);
+            const endDate = i === groups.length - 1 ? null : groups[i + 1].dataHora.slice(0, 10);
+            intervals.push({ partySigla: current.sigla, startDate, endDate });
+          }
+          return intervals;
+        }
+      }
+    }
+  } catch (err) {
+    // Silencia e usa fallback
+  }
+
+  if (currentPartySigla) {
+    return [
+      {
+        partySigla: currentPartySigla.trim().toUpperCase(),
+        startDate: (defaultStartDate || "2023-02-01").slice(0, 10),
+        endDate: null,
+      },
+    ];
+  }
+
+  return [];
+}
+
+/**
+ * 9. Consulta e processa o histórico de filiações de um senador no Senado.
+ */
+async function fetchSenatorPartyHistory(
+  extId: string,
+  currentPartySigla?: string,
+  defaultStartDate?: string | null
+): Promise<PartyHistoryInterval[]> {
+  try {
+    const res = await fetchWithRetry(`${SENADO_API_BASE}/senador/${extId}/filiacoes`, 2, 500);
+    if (res.ok) {
+      const json = await res.json();
+      const rawList =
+        json?.FiliacaoParlamentar?.Parlamentar?.Filiacoes?.Filiacao ||
+        json?.Parlamentar?.Filiacoes?.Filiacao ||
+        json?.Filiacoes?.Filiacao;
+
+      const filiacoes = Array.isArray(rawList) ? rawList : rawList ? [rawList] : [];
+
+      if (filiacoes.length > 0) {
+        const intervals: PartyHistoryInterval[] = [];
+        for (const f of filiacoes) {
+          const sigla = (f.Partido?.SiglaPartido || f.SiglaPartido || "").trim().toUpperCase();
+          if (!sigla || sigla === "S/PARTIDO" || sigla === "SEM PARTIDO") continue;
+          const start = f.DataFiliacao ? String(f.DataFiliacao).slice(0, 10) : (defaultStartDate || "2023-02-01").slice(0, 10);
+          const end = f.DataDesfiliacao ? String(f.DataDesfiliacao).slice(0, 10) : null;
+          intervals.push({ partySigla: sigla, startDate: start, endDate: end });
+        }
+        if (intervals.length > 0) {
+          return intervals;
+        }
+      }
+    }
+  } catch (err) {
+    // Silencia e usa fallback
+  }
+
+  if (currentPartySigla) {
+    return [
+      {
+        partySigla: currentPartySigla.trim().toUpperCase(),
+        startDate: (defaultStartDate || "2023-02-01").slice(0, 10),
+        endDate: null,
+      },
+    ];
+  }
+
+  return [];
+}
+
+/**
+ * 10. Persiste os intervalos de histórico partidário de um parlamentar.
+ */
+async function savePoliticianPartyHistory(
+  polDbId: number,
+  intervals: PartyHistoryInterval[],
+  partyMap: Map<string, number>
+): Promise<void> {
+  if (intervals.length === 0) return;
+
+  const validRows: Array<{ politician_id: number; party_id: number; start_date: string; end_date: string | null }> = [];
+  for (const interval of intervals) {
+    const partyId = await resolvePartyId(interval.partySigla, partyMap);
+    if (partyId) {
+      validRows.push({
+        politician_id: polDbId,
+        party_id: partyId,
+        start_date: interval.startDate,
+        end_date: interval.endDate,
+      });
+    }
+  }
+
+  if (validRows.length > 0) {
+    await sql`DELETE FROM politician_party_history WHERE politician_id = ${polDbId};`;
+    for (const r of validRows) {
+      await sql`
+        INSERT INTO politician_party_history (politician_id, party_id, start_date, end_date)
+        VALUES (${r.politician_id}, ${r.party_id}, ${r.start_date}, ${r.end_date});
+      `;
+    }
+  }
+}
+
+/**
+ * Orquestrador da sincronização de Deputados Federais e Senadores com histórico partidário completo.
  */
 export async function syncPoliticians(partyMap: Map<string, number>): Promise<SyncPoliticiansResult> {
   console.log("-> [Parlamentares] Sincronizando Deputados Federais e Senadores...");
   let inserted = 0;
   let updated = 0;
 
-  const { politicianMap, mandateSet, activePartyHistorySet } = await loadExistingPoliticiansData();
+  const { politicianMap, mandateSet } = await loadExistingPoliticiansData();
+  const deputyHistoryTasks: Array<{ polDbId: number; extId: string; currentPartySigla?: string; startDate: string | null }> = [];
+  const senatorHistoryTasks: Array<{ polDbId: number; extId: string; currentPartySigla?: string; startDate: string | null }> = [];
 
   // 1. Sincronizar Deputados Federais (Câmara)
   try {
@@ -278,9 +444,12 @@ export async function syncPoliticians(partyMap: Map<string, number>): Promise<Sy
         polDbId, "Deputado Federal", "CAMARA", currentLeg?.startDate || null, currentLeg?.endDate || null, legId, mandateSet
       );
 
-      await registerActivePartyHistory(
-        polDbId, dep.siglaPartido, currentLeg?.startDate || null, partyMap, activePartyHistorySet
-      );
+      deputyHistoryTasks.push({
+        polDbId,
+        extId,
+        currentPartySigla: dep.siglaPartido,
+        startDate: currentLeg?.startDate || null,
+      });
     }
   } catch (depErr) {
     console.error("-> [Parlamentares] Erro ao sincronizar deputados:", depErr);
@@ -319,15 +488,38 @@ export async function syncPoliticians(partyMap: Map<string, number>): Promise<Sy
         polDbId, "Senador", "SENADO", senMandateStart, senMandateEnd, senLegislatureId, mandateSet
       );
 
-      await registerActivePartyHistory(
-        polDbId, info.SiglaPartidoParlamentar, senMandateStart, partyMap, activePartyHistorySet
-      );
+      senatorHistoryTasks.push({
+        polDbId,
+        extId,
+        currentPartySigla: info.SiglaPartidoParlamentar,
+        startDate: senMandateStart,
+      });
     }
   } catch (senErr) {
     console.error("-> [Parlamentares] Erro ao sincronizar senadores:", senErr);
     throw senErr;
   }
 
-  console.log(`-> [Parlamentares] Concluído: ${politicianMap.size} parlamentares mapeados (${inserted} novos, ${updated} atualizados).`);
+  // 3. Sincronizar Histórico Completo de Filiações Partidárias em Paralelo
+  console.log("-> [Parlamentares] Sincronizando histórico oficial de filiações partidárias...");
+  await mapConcurrent(deputyHistoryTasks, 10, async (task) => {
+    try {
+      const intervals = await fetchDeputyPartyHistory(task.extId, task.currentPartySigla, task.startDate);
+      await savePoliticianPartyHistory(task.polDbId, intervals, partyMap);
+    } catch (err) {
+      console.warn(`[Histórico] Aviso ao sincronizar filiações do deputado ${task.extId}:`, err);
+    }
+  });
+
+  await mapConcurrent(senatorHistoryTasks, 10, async (task) => {
+    try {
+      const intervals = await fetchSenatorPartyHistory(task.extId, task.currentPartySigla, task.startDate);
+      await savePoliticianPartyHistory(task.polDbId, intervals, partyMap);
+    } catch (err) {
+      console.warn(`[Histórico] Aviso ao sincronizar filiações do senador ${task.extId}:`, err);
+    }
+  });
+
+  console.log(`-> [Parlamentares] Concluído: ${politicianMap.size} parlamentares e históricos mapeados (${inserted} novos, ${updated} atualizados).`);
   return { inserted, updated, total: politicianMap.size, politicianMap };
 }
