@@ -128,9 +128,9 @@ async function batchUpsertCanonicalProjects(
     const chunk = projects.slice(i, i + BATCH_SIZE);
     const results = (await sql`
       INSERT INTO legislative_projects ${sql(
-        chunk,
-        'canonical_id', 'type', 'number', 'year', 'title', 'description', 'current_status', 'last_updated_at'
-      )}
+      chunk,
+      'canonical_id', 'type', 'number', 'year', 'title', 'description', 'current_status', 'last_updated_at'
+    )}
       ON CONFLICT (canonical_id) DO UPDATE SET
         title = EXCLUDED.title,
         description = EXCLUDED.description,
@@ -200,12 +200,12 @@ async function batchUpsertHouseRecords(
     const chunk = readyRows.slice(i, i + BATCH_SIZE);
     const results = (await sql`
       INSERT INTO project_house_records ${sql(
-        chunk,
-        'project_id', 'house', 'external_id', 'official_url', 'full_text_url',
-        'presentation_date', 'author_name', 'author_party', 'author_state',
-        'rapporteur_name', 'tramitacao_etapa', 'despacho', 'last_event_date',
-        'source_updated_at', 'source_read_at'
-      )}
+      chunk,
+      'project_id', 'house', 'external_id', 'official_url', 'full_text_url',
+      'presentation_date', 'author_name', 'author_party', 'author_state',
+      'rapporteur_name', 'tramitacao_etapa', 'despacho', 'last_event_date',
+      'source_updated_at', 'source_read_at'
+    )}
       ON CONFLICT (house, external_id) DO UPDATE SET
         official_url = EXCLUDED.official_url,
         full_text_url = EXCLUDED.full_text_url,
@@ -363,8 +363,8 @@ export async function syncProjects(): Promise<SyncProjectsResult> {
   for (const m of senadoProps) {
     const extId = String(m.Codigo);
     const type = (m.Sigla || "PL").toUpperCase();
-    const parsedNum = parseInt(m.Numero, 10);
-    const number = String(isNaN(parsedNum) ? m.Numero : parsedNum);
+    const parsedNum = Number.parseInt(m.Numero, 10);
+    const number = String(Number.isNaN(parsedNum) ? m.Numero : parsedNum);
     const year = Number(m.Ano || 2024);
     const canonicalId = generateCanonicalId(type, number, year);
     const title = `${type} ${number}/${year}`;

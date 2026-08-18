@@ -55,12 +55,12 @@ C4Context
     
     System(legisvisao, "LegisVisão", "Plataforma cívica web Local-First para análise de afinidade político-partidária e transparência legislativa.")
     
-    System_Ext(camara, "API da Câmara dos Deputados", "dadosabertos.camara.leg.br<br/>Fornece proposições, votações nominais e parlamentares.")
-    System_Ext(senado, "API do Senado Federal", "legis.senado.leg.br/dadosabertos<br/>Fornece senadores em exercício, mandatos e legislaturas.")
+    System_Ext(camara, "API da Câmara dos Deputados", "dadosabertos.camara.leg.br<br/>Fornece proposições, votações nominais e deputados.")
+    System_Ext(senado, "API do Senado Federal", "legis.senado.leg.br/dadosabertos<br/>Fornece matérias, votações plenárias, senadores e mandatos.")
 
     Rel(cidadao, legisvisao, "Opina em propostas, consulta afinidade e perfis", "HTTPS / Web Browser")
-    Rel(legisvisao, camara, "Ingere proposições e votos nominais", "HTTPS / REST JSON")
-    Rel(legisvisao, senado, "Ingere senadores e mandatos", "HTTPS / REST JSON")
+    Rel(legisvisao, camara, "Ingere proposições, sessões e votos nominais", "HTTPS / REST JSON")
+    Rel(legisvisao, senado, "Ingere matérias, sessões e votos nominais", "HTTPS / REST JSON")
 ```
 
 ---
@@ -79,8 +79,8 @@ flowchart TB
     cidadao["👤 <b>Cidadão</b><br/><i>[Pessoa]</i><br/>Usuário no navegador web"]:::person
 
     subgraph ExtSystems ["🌐 Sistemas Externos (Dados Abertos)"]
-        camara["🏛️ <b>API Câmara dos Deputados</b><br/><i>[Sistema Externo / REST]</i><br/>Proposições, votações e deputados"]:::ext
-        senado["🏛️ <b>API Senado Federal</b><br/><i>[Sistema Externo / REST]</i><br/>Senadores e mandatos"]:::ext
+        camara["🏛️ <b>API Câmara dos Deputados</b><br/><i>[Sistema Externo / REST]</i><br/>Proposições, votações nominais e deputados"]:::ext
+        senado["🏛️ <b>API Senado Federal</b><br/><i>[Sistema Externo / REST]</i><br/>Matérias, votações nominais e senadores"]:::ext
     end
 
     subgraph LegisBoundary ["🏛️ LegisVisão (Container Boundary)"]
@@ -300,13 +300,37 @@ $$\text{Índice do Partido (\%)} = \left( \frac{\text{Total de Concordâncias do
 
 ---
 
+## 🏛️ Fontes de Dados Oficiais e Rastreabilidade
+
+O **LegisVisão** é alimentado exclusivamente por dados públicos governamentais oficiais de acordo com a **Lei de Acesso à Informação (Lei nº 12.527/2011)**. Todas as proposições, sessões e votos nominais possuem links diretos de auditoria para os portais oficiais de cada Casa Legislativa:
+
+| Casa Legislativa | Portal de Dados Abertos | Endpoints Utilizados | Rastreabilidade no Frontend |
+| :--- | :--- | :--- | :--- |
+| **🏛️ Câmara dos Deputados** | [dadosabertos.camara.leg.br](https://dadosabertos.camara.leg.br/) | `/proposicoes`, `/votacoes`, `/deputados`, `/partidos` | Link direto para a **Ficha de Tramitação Oficial** e PDF do **Inteiro Teor**. |
+| **🏛️ Senado Federal** | [legis.senado.leg.br/dadosabertos](https://legis.senado.leg.br/dadosabertos/) | `/materia/pesquisa/lista`, `/materia/votacoes`, `/senador/lista/atual` | Link direto para a **Página da Matéria no Senado** e resultado de deliberação. |
+
+> 🔗 **Transparência Auditável**: Em cada página de detalhes de proposição (`/projetos/[id]`) e nos cards de votação, o cidadão encontra botões diretos para inspecionar o documento original e as atas oficiais de votação diretamente nos sites da Câmara e do Senado.
+
+---
+
+## 🤖 Engenharia e Desenvolvimento Acelerado por IA
+
+A concepção, arquitetura, design de interface e implementação do **LegisVisão** foram desenvolvidos utilizando práticas modernas de **Engenharia de Software Aumentada por Inteligência Artificial (AI-Assisted Engineering)**, combinando as seguintes ferramentas:
+
+- **🚀 Google Antigravity & Google Gemini**: Utilizados como agente autônomo principal de programação em par (pair programming), estruturação da arquitetura em camadas, implementação do design system (Tailwind CSS e Dark Mode), refatoração modular dos adaptadores de sincronização e otimização de batch upserts no banco de dados.
+- **💻 GitHub Copilot**: Utilizado no ambiente de desenvolvimento para geração contextual de código TypeScript, validação de tipagens estritas, criação de rotas de API e aceleração de testes de componentes React.
+- **📊 Microsoft 365 Copilot**: Utilizado na fase de planejamento estratégico, levantamento de requisitos de transparência pública, refinamento da metodologia de cálculo e elaboração da documentação técnica e cívica.
+
+---
+
 ## 🛠️ Tecnologias Utilizadas
 
 - **Framework**: [Next.js 16 (App Router)](https://nextjs.org/)
 - **Linguagem**: [TypeScript 5](https://www.typescriptlang.org/)
 - **Interface**: [React 19](https://react.dev/), [Tailwind CSS 4](https://tailwindcss.com/) e [React Icons](https://react-icons.github.io/react-icons/)
 - **Banco de Dados**: [PostgreSQL (Supabase)](https://supabase.com/) com driver `postgres` (Postgres.js)
-- **Ingestão e Scripts**: [TSX](https://github.com/privatenumber/tsx)
+- **Ingestão e Batch ETL**: [TSX](https://github.com/privatenumber/tsx)
+- **Assistência de IA**: Google Antigravity, Google Gemini, GitHub Copilot e Microsoft 365 Copilot
 - **Fontes de Dados**:
   - [API da Câmara dos Deputados](https://dadosabertos.camara.leg.br/swagger/api.html)
   - [API do Senado Federal](https://legis.senado.leg.br/dadosabertos/docs/ui/index.html)
@@ -343,8 +367,8 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 npm run migrate:push
 ```
 
-### 5. Sincronizar Dados Oficiais
-Execute o orquestrador completo para ingestão dos dados governamentais:
+### 5. Sincronizar Dados Oficiais (Câmara & Senado)
+Execute o orquestrador completo para ingestão dos dados governamentais com batching de alta performance:
 ```bash
 npx tsx scripts/sync/index.ts
 ```
@@ -382,6 +406,7 @@ npm run start
 │   ├── opiniao/             # Simulador de Votação e Revisão de Opiniões
 │   ├── partidos/            # Páginas de Detalhes dos Partidos
 │   ├── politicos/           # Páginas de Detalhes e Votações Nominais dos Parlamentares
+│   ├── projetos/            # Rota /projetos/[id] (Detalhes da Proposição, Votos Nominais e Selo Bicameral)
 │   ├── globals.css          # Design tokens, tema escuro/claro e utilitários
 │   ├── layout.tsx           # Layout raiz com ThemeProvider
 │   └── page.tsx             # Página inicial institucional
@@ -394,13 +419,16 @@ npm run start
 │   └── useDataVersion.ts    # Hook de invalidação automática de cache
 ├── scripts/
 │   ├── sync/                # Rotinas de ingestão das APIs governamentais
-│   │   ├── client.ts        # Cliente HTTP com retentativas e logger
+│   │   ├── adapters/        # Adaptadores desacoplados de APIs públicas
+│   │   │   ├── camara.ts    # Conector e parsers da API da Câmara dos Deputados
+│   │   │   └── senado.ts    # Conector e parsers da API do Senado Federal
+│   │   ├── client.ts        # Conexão Postgres, retentativas e concorrência
 │   │   ├── index.ts         # Orquestrador geral de sincronização
 │   │   ├── sync-parties.ts  # Ingestão de partidos políticos
-│   │   ├── sync-politicians.ts # Ingestão de deputados federais e senadores
-│   │   ├── sync-projects.ts # Ingestão de proposições canônicas
-│   │   ├── sync-vote-sessions.ts # Ingestão de sessões de deliberação
-│   │   └── sync-votes.ts    # Ingestão de votos nominais brutos
+│   │   ├── sync-politicians.ts # Ingestão de deputados e senadores
+│   │   ├── sync-projects.ts # Ingestão de proposições canônicas e batch upserts
+│   │   ├── sync-vote-sessions.ts # Ingestão de sessões de deliberação em lote
+│   │   └── sync-votes.ts    # Ingestão de votos nominais em lote (batch 500)
 ├── supabase/
 │   └── migrations/          # Migrations SQL versionadas
 └── types/
