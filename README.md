@@ -171,32 +171,90 @@ Demonstra como o orquestrador de sincronização consome os dados abertos, norma
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Cron as GitHub Actions / Agendamento
-    participant Engine as Sync Engine (scripts/sync)
-    participant Camara as API Câmara dos Deputados
-    participant Senado as API Senado Federal
-    participant DB as PostgreSQL (Supabase)
+    participant Cron as ⏰ GitHub Actions / CLI
+    participant Engine as ⚡ Sync Engine<br/>(scripts/sync/index.ts)
+    participant Parties as 🔄 syncParties
+    participant Projects as 🔄 syncProjects
+    participant Politicians as 🔄 syncPoliticians
+    participant Sessions as 🔄 syncVoteSessions
+    participant Votes as 🔄 syncVotes
+    participant Camara as 🏛️ API Câmara
+    participant Senado as 🏛️ API Senado
+    participant DB as 🗄️ PostgreSQL
 
-    Cron->>Engine: Dispara sincronização (npx tsx scripts/sync/index.ts)
+    Cron->>Engine: npx tsx scripts/sync/index.ts
 
-    par Fase 1: Partidos e Proposições Canônicas
-        Engine->>Camara: GET /partidos e GET /proposicoes
-        Engine->>Senado: GET /materia/pesquisa/lista
-        Engine->>DB: Upsert em political_parties e legislative_projects
+    rect rgb(59, 130, 246, 0.08)
+    Note over Engine,DB: ⚡ Fase 1 — Partidos + Proposições (paralelo)
+    par syncParties()
+        Engine->>Parties: Inicia
+        Parties->>Camara: GET /partidos (lista + detalhe)
+        Camara-->>Parties: Siglas, membros, situação
+        Parties->>DB: Upsert political_parties
+        DB-->>Parties: partyMap (sigla → id)
+        Parties-->>Engine: partyMap + contadores
+    and syncProjects()
+        Engine->>Projects: Inicia
+        Projects->>Camara: GET /proposicoes (lista + detalhe + autores)
+        Camara-->>Projects: PLs, PECs, PLPs, MPVs
+        Projects->>Senado: GET /materia/pesquisa/lista
+        Senado-->>Projects: Matérias legislativas
+        Projects->>DB: Upsert legislative_projects + project_house_records
+        DB-->>Projects: houseRecordsToSyncVotes
+        Projects-->>Engine: houseRecords + contadores
+    end
     end
 
-    par Fase 2: Parlamentares, Mandatos e Sessões
-        Engine->>Camara: GET /deputados e GET /votacoes
-        Engine->>Senado: GET /senadores e GET /votacao
-        Engine->>DB: Upsert em politicians, mandates e vote_sessions
+    rect rgb(16, 185, 129, 0.08)
+    Note over Engine,DB: ⚡ Fase 2 — Parlamentares + Sessões de Votação (paralelo)
+    par syncPoliticians(partyMap)
+        Engine->>Politicians: partyMap da Fase 1
+        Politicians->>Camara: GET /deputados + /deputados/{id}
+        Camara-->>Politicians: Deputados, fotos, e-mails
+        Politicians->>Camara: GET /deputados/{id}/orgaos (histórico partidário)
+        Camara-->>Politicians: Filiações e datas
+        Politicians->>Senado: GET /senador/lista/atual + /senador/{cod}/filiacoes
+        Senado-->>Politicians: Senadores, filiações
+        Politicians->>DB: Upsert politicians + mandates + politician_party_history
+        DB-->>Politicians: politicianMap (key → id)
+        Politicians-->>Engine: politicianMap + contadores
+    and syncVoteSessions(houseRecords)
+        Engine->>Sessions: houseRecords da Fase 1
+        Sessions->>Camara: GET /proposicoes/{id}/votacoes
+        Camara-->>Sessions: Sessões de deliberação
+        Sessions->>Senado: GET /materia/{cod}/votacoes
+        Senado-->>Sessions: Sessões plenárias
+        Sessions->>DB: Upsert vote_sessions (com phase_id e external_vote_id)
+        DB-->>Sessions: sessionsToSyncVotes
+        Sessions-->>Engine: sessionsToSync + contadores
+    end
     end
 
-    Note over Engine,DB: Fase 3: Votações Nominais e Versionamento
-    Engine->>Camara: GET /votacoes/{id}/votos
-    Engine->>Senado: GET /votacao/{id}/votos
-    Engine->>DB: Upsert em politician_votes com party_id histórico
-    Engine->>DB: Atualiza sync_control e renova dataset_version
-    Engine-->>Cron: Pipeline finalizado com integridade garantida
+    rect rgb(245, 158, 11, 0.08)
+    Note over Engine,DB: ⚡ Fase 3 — Votos Nominais (sequencial)
+    Engine->>Votes: sessionsToSync + politicianMap + partyMap
+    Votes->>DB: Carrega chaves existentes (vote_session_id, politician_id)
+    DB-->>Votes: existingVoteKeys (dedup)
+    Votes->>Camara: GET /votacoes/{id}/votos (batch concorrente)
+    Camara-->>Votes: Votos nominais dos deputados
+    Votes->>Senado: GET /materia/votacao/{id}/votos (batch concorrente)
+    Senado-->>Votes: Votos nominais dos senadores
+    Votes->>DB: Batch INSERT politician_votes (party_id histórico, lotes de 500)
+    Votes-->>Engine: contadores de votos
+    end
+
+    rect rgb(139, 92, 246, 0.08)
+    Note over Engine,DB: 📦 Fase Final — Versionamento e Controle
+    Engine->>DB: SELECT dataset_version FROM sync_control
+    DB-->>Engine: Versão atual
+    alt Houve inserções ou atualizações
+        Engine->>DB: UPDATE sync_control SET dataset_version, status='SUCCESS'
+    else Sem alterações
+        Engine->>DB: UPDATE sync_control SET status='SUCCESS' (mantém versão)
+    end
+    Engine->>Engine: Gera Painel Analítico de Execução (console)
+    Engine-->>Cron: ✅ Pipeline finalizado com integridade
+    end
 ```
 
 ---
@@ -212,16 +270,22 @@ erDiagram
     POLITICIANS ||--o{ POLITICIAN_PARTY_HISTORY : "possui"
     POLITICIANS ||--o{ MANDATES : "exerce"
     POLITICIANS ||--o{ POLITICIAN_VOTES : "registra"
-    
+
     LEGISLATIVE_PROJECTS ||--|{ PROJECT_HOUSE_RECORDS : "tramita em"
+    PROJECT_HOUSE_RECORDS ||--o{ LEGISLATIVE_PHASES : "possui fases"
     PROJECT_HOUSE_RECORDS ||--o{ VOTE_SESSIONS : "deliberado em"
+    LEGISLATIVE_PHASES ||--o{ VOTE_SESSIONS : "contém sessões"
     VOTE_SESSIONS ||--o{ POLITICIAN_VOTES : "contém votos nominais"
-    
+
     POLITICAL_PARTIES {
         int id PK
-        string sigla
+        string sigla UK
         string nome
+        string uri
         string situacao
+        int total_membros
+        int total_posse
+        int numero_eleitoral
         string logo_url
     }
 
@@ -232,7 +296,27 @@ erDiagram
         string name
         string type
         string state
+        string photo_url
+        string email
         boolean is_active
+    }
+
+    POLITICIAN_PARTY_HISTORY {
+        int id PK
+        int politician_id FK
+        int party_id FK
+        date start_date
+        date end_date
+    }
+
+    MANDATES {
+        int id PK
+        int politician_id FK
+        string office
+        string house
+        date start_date
+        date end_date
+        int legislature_id
     }
 
     LEGISLATIVE_PROJECTS {
@@ -242,19 +326,44 @@ erDiagram
         string number
         int year
         string title
+        string description
         string current_status
+        timestamp last_updated_at
     }
 
     PROJECT_HOUSE_RECORDS {
         int id PK
         int project_id FK
         string house
+        string external_id
         string official_url
+        string full_text_url
+        date presentation_date
+        string author_name
+        string author_party
+        string author_state
+        string rapporteur_name
+        string tramitacao_etapa
+        string despacho
+        date last_event_date
+        timestamp source_updated_at
+        timestamp source_read_at
+    }
+
+    LEGISLATIVE_PHASES {
+        int id PK
+        int house_record_id FK
+        string phase_name
+        int phase_order
+        timestamp started_at
+        timestamp completed_at
     }
 
     VOTE_SESSIONS {
         int id PK
         int house_record_id FK
+        int phase_id FK
+        string external_vote_id
         timestamp date
         string description
         string result
@@ -270,9 +379,16 @@ erDiagram
 
     SYNC_CONTROL {
         string source PK
-        string status
+        string name
+        string official_url
         timestamp last_sync
+        timestamp last_successful_sync
+        string status
+        int records_count
+        int records_updated
+        int records_inserted
         string dataset_version
+        string last_error
     }
 ```
 

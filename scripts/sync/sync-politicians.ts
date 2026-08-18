@@ -16,6 +16,15 @@ export interface SyncPoliticiansResult {
   inserted: number;
   updated: number;
   total: number;
+  existingCount: number;
+  deputiesInserted: number;
+  deputiesUpdated: number;
+  deputiesTotal: number;
+  senatorsInserted: number;
+  senatorsUpdated: number;
+  senatorsTotal: number;
+  mandatesInserted: number;
+  partyHistoriesUpdated: number;
   politicianMap: Map<string, { id: number; source: string; external_id: string; name: string; type: string; state: string }>;
 }
 
@@ -137,16 +146,17 @@ async function registerMandateIfMissing(
   endDate: string | null,
   legislatureId: number | null,
   mandateSet: Set<string>
-): Promise<void> {
-  if (!startDate) return;
+): Promise<boolean> {
+  if (!startDate) return false;
   const mandateKey = `${polDbId}_${house}_${legislatureId || '0'}`;
-  if (mandateSet.has(mandateKey)) return;
+  if (mandateSet.has(mandateKey)) return false;
 
   await sql`
     INSERT INTO mandates (politician_id, office, house, start_date, end_date, legislature_id)
     VALUES (${polDbId}, ${office}, ${house}, ${startDate}, ${endDate}, ${legislatureId});
   `;
   mandateSet.add(mandateKey);
+  return true;
 }
 
 /**
@@ -184,8 +194,8 @@ async function savePoliticianPartyHistory(
   polDbId: number,
   intervals: PartyHistoryInterval[],
   partyMap: Map<string, number>
-): Promise<void> {
-  if (intervals.length === 0) return;
+): Promise<boolean> {
+  if (intervals.length === 0) return false;
 
   const validRows: Array<{ politician_id: number; party_id: number; start_date: string; end_date: string | null }> = [];
   for (const interval of intervals) {
@@ -208,26 +218,38 @@ async function savePoliticianPartyHistory(
         VALUES (${r.politician_id}, ${r.party_id}, ${r.start_date}, ${r.end_date});
       `;
     }
+    return true;
   }
+  return false;
 }
 
 /**
  * Orquestrador da sincronização de Deputados Federais e Senadores com histórico partidário completo.
  */
 export async function syncPoliticians(partyMap: Map<string, number>): Promise<SyncPoliticiansResult> {
-  console.log("-> [Parlamentares] Sincronizando Deputados Federais e Senadores...");
+  console.log("-> [Parlamentares] Sincronizando Deputados Federais e Senadores da República...");
   let inserted = 0;
   let updated = 0;
+  let deputiesInserted = 0;
+  let deputiesUpdated = 0;
+  let senatorsInserted = 0;
+  let senatorsUpdated = 0;
+  let mandatesInserted = 0;
+  let partyHistoriesUpdated = 0;
 
   const { politicianMap, mandateSet } = await loadExistingPoliticiansData();
+  const initialCount = politicianMap.size;
+
   const deputyHistoryTasks: Array<{ polDbId: number; extId: string; currentPartySigla?: string; startDate: string | null }> = [];
   const senatorHistoryTasks: Array<{ polDbId: number; extId: string; currentPartySigla?: string; startDate: string | null }> = [];
 
   // 1. Sincronizar Deputados Federais (Câmara)
+  let deputadosCount = 0;
   try {
     const currentLeg = await fetchCurrentCamaraLegislature();
     const deputados = await fetchDeputiesFromApi(currentLeg?.id);
-    console.log(`-> [Parlamentares] Consultando Câmara dos Deputados (${currentLeg?.id ? `Legislatura: ${currentLeg.id}` : 'Atual'})...`);
+    deputadosCount = deputados.length;
+    console.log(`   • Câmara dos Deputados: ${deputados.length} deputados identificados na API (${currentLeg?.id ? `Legislatura ${currentLeg.id}` : 'Atual'}).`);
 
     for (const dep of deputados) {
       const extId = String(dep.id);
@@ -240,12 +262,19 @@ export async function syncPoliticians(partyMap: Map<string, number>): Promise<Sy
       const { polDbId, wasInserted, wasUpdated } = await upsertPoliticianRecord(
         "CAMARA", extId, name, "DEPUTY", state, photoUrl, email, politicianMap
       );
-      if (wasInserted) inserted++;
-      if (wasUpdated) updated++;
+      if (wasInserted) {
+        inserted++;
+        deputiesInserted++;
+      }
+      if (wasUpdated) {
+        updated++;
+        deputiesUpdated++;
+      }
 
-      await registerMandateIfMissing(
+      const mandateAdded = await registerMandateIfMissing(
         polDbId, "Deputado Federal", "CAMARA", currentLeg?.startDate || null, currentLeg?.endDate || null, legId, mandateSet
       );
+      if (mandateAdded) mandatesInserted++;
 
       deputyHistoryTasks.push({
         polDbId,
@@ -260,9 +289,11 @@ export async function syncPoliticians(partyMap: Map<string, number>): Promise<Sy
   }
 
   // 2. Sincronizar Senadores da República (Senado)
+  let senadoresCount = 0;
   try {
     const senadores = await fetchSenatorsFromApi();
-    console.log(`-> [Parlamentares] Consultando Senado Federal (${senadores.length} senadores em exercício)...`);
+    senadoresCount = senadores.length;
+    console.log(`   • Senado Federal: ${senadores.length} senadores em exercício identificados na API.`);
 
     for (const sen of senadores) {
       const info = sen.IdentificacaoParlamentar;
@@ -277,8 +308,14 @@ export async function syncPoliticians(partyMap: Map<string, number>): Promise<Sy
       const { polDbId, wasInserted, wasUpdated } = await upsertPoliticianRecord(
         "SENADO", extId, name, "SENATOR", state, photoUrl, email, politicianMap
       );
-      if (wasInserted) inserted++;
-      if (wasUpdated) updated++;
+      if (wasInserted) {
+        inserted++;
+        senatorsInserted++;
+      }
+      if (wasUpdated) {
+        updated++;
+        senatorsUpdated++;
+      }
 
       const mandate = sen.Mandato;
       const firstLeg = mandate?.PrimeiraLegislaturaDoMandato;
@@ -287,9 +324,10 @@ export async function syncPoliticians(partyMap: Map<string, number>): Promise<Sy
       const senMandateEnd = secondLeg?.DataFim ? String(secondLeg.DataFim).slice(0, 10) : firstLeg?.DataFim ? String(firstLeg.DataFim).slice(0, 10) : null;
       const senLegislatureId = firstLeg?.NumeroLegislatura ? Number(firstLeg.NumeroLegislatura) : null;
 
-      await registerMandateIfMissing(
+      const mandateAdded = await registerMandateIfMissing(
         polDbId, "Senador", "SENADO", senMandateStart, senMandateEnd, senLegislatureId, mandateSet
       );
+      if (mandateAdded) mandatesInserted++;
 
       senatorHistoryTasks.push({
         polDbId,
@@ -304,11 +342,12 @@ export async function syncPoliticians(partyMap: Map<string, number>): Promise<Sy
   }
 
   // 3. Sincronizar Histórico Completo de Filiações Partidárias em Paralelo
-  console.log("-> [Parlamentares] Sincronizando histórico oficial de filiações partidárias...");
+  console.log("   • Sincronizando linha do tempo e filiações partidárias em paralelo...");
   await mapConcurrent(deputyHistoryTasks, 10, async (task) => {
     try {
       const intervals = await fetchDeputyPartyHistory(task.extId, task.currentPartySigla, task.startDate);
-      await savePoliticianPartyHistory(task.polDbId, intervals, partyMap);
+      const saved = await savePoliticianPartyHistory(task.polDbId, intervals, partyMap);
+      if (saved) partyHistoriesUpdated++;
     } catch (err) {
       console.warn(`[Histórico] Aviso ao sincronizar filiações do deputado ${task.extId}:`, err);
     }
@@ -317,12 +356,34 @@ export async function syncPoliticians(partyMap: Map<string, number>): Promise<Sy
   await mapConcurrent(senatorHistoryTasks, 10, async (task) => {
     try {
       const intervals = await fetchSenatorPartyHistory(task.extId, task.currentPartySigla, task.startDate);
-      await savePoliticianPartyHistory(task.polDbId, intervals, partyMap);
+      const saved = await savePoliticianPartyHistory(task.polDbId, intervals, partyMap);
+      if (saved) partyHistoriesUpdated++;
     } catch (err) {
       console.warn(`[Histórico] Aviso ao sincronizar filiações do senador ${task.extId}:`, err);
     }
   });
 
-  console.log(`-> [Parlamentares] Concluído: ${politicianMap.size} parlamentares e históricos mapeados (${inserted} novos, ${updated} atualizados).`);
-  return { inserted, updated, total: politicianMap.size, politicianMap };
+  // Relatório Analítico
+  console.log(`-> [Parlamentares] Análise Detalhada:`);
+  console.log(`   • Deputados Federais: ${deputadosCount} na API (${deputiesInserted} novos, ${deputiesUpdated} atualizados, ${deputadosCount - deputiesInserted - deputiesUpdated} inalterados)`);
+  console.log(`   • Senadores da República: ${senadoresCount} na API (${senatorsInserted} novos, ${senatorsUpdated} atualizados, ${senadoresCount - senatorsInserted - senatorsUpdated} inalterados)`);
+  console.log(`   • Mandatos novos vinculados: ${mandatesInserted}`);
+  console.log(`   • Históricos de filiação atualizados: ${partyHistoriesUpdated}`);
+  console.log(`   • Total cadastrado no banco: ${politicianMap.size} parlamentares.`);
+
+  return {
+    inserted,
+    updated,
+    total: politicianMap.size,
+    existingCount: initialCount,
+    deputiesInserted,
+    deputiesUpdated,
+    deputiesTotal: deputadosCount,
+    senatorsInserted,
+    senatorsUpdated,
+    senatorsTotal: senadoresCount,
+    mandatesInserted,
+    partyHistoriesUpdated,
+    politicianMap,
+  };
 }

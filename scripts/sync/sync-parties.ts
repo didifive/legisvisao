@@ -4,7 +4,10 @@ export interface SyncPartiesResult {
   inserted: number;
   updated: number;
   total: number;
+  existingCount: number;
   partyMap: Map<string, number>;
+  insertedSiglas: string[];
+  updatedSiglas: string[];
 }
 
 interface RawPartyApiItem {
@@ -103,7 +106,7 @@ async function fetchPartyDetails(rawParty: RawPartyApiItem): Promise<DetailedPar
         }
       }
     } catch {
-      // Usa valores padrão em caso de timeout
+      // Usa fallback caso a API falhe para um partido específico
     }
   }
 
@@ -121,7 +124,7 @@ async function fetchPartyDetails(rawParty: RawPartyApiItem): Promise<DetailedPar
 }
 
 /**
- * 4. Persiste ou atualiza os dados oficiais do partido no banco de dados.
+ * 4. Insere ou atualiza um partido de forma idempotente.
  */
 async function saveOrUpdateDetailedParty(
   party: DetailedPartyInfo,
@@ -208,10 +211,15 @@ export async function syncParties(): Promise<SyncPartiesResult> {
   console.log("-> [Partidos] Sincronizando partidos políticos oficiais e metadados da Câmara...");
   let inserted = 0;
   let updated = 0;
+  const insertedSiglas: string[] = [];
+  const updatedSiglas: string[] = [];
 
   try {
     const { partyMap, existingMap } = await loadExistingParties();
+    const initialExistingCount = existingMap.size;
     const rawParties = await fetchPartiesFromApi();
+
+    console.log(`   • Partidos identificados na API: ${rawParties.length} | Já cadastrados no banco: ${initialExistingCount}`);
 
     // Consulta detalhes oficiais com 8 workers concorrentes
     const detailedList: DetailedPartyInfo[] = [];
@@ -224,17 +232,36 @@ export async function syncParties(): Promise<SyncPartiesResult> {
 
     for (const detailedParty of detailedList) {
       const { wasInserted, wasUpdated } = await saveOrUpdateDetailedParty(detailedParty, partyMap, existingMap);
-      if (wasInserted) inserted++;
-      if (wasUpdated) updated++;
+      if (wasInserted) {
+        inserted++;
+        insertedSiglas.push(detailedParty.sigla);
+      }
+      if (wasUpdated) {
+        updated++;
+        updatedSiglas.push(detailedParty.sigla);
+      }
     }
 
-    console.log(`-> [Partidos] Concluído: ${partyMap.size} partidos no catálogo (${inserted} novos, ${updated} atualizados).`);
+    if (inserted > 0) {
+      console.log(`   ➕ Novos partidos inseridos (${inserted}): ${insertedSiglas.join(", ")}`);
+    }
+    if (updated > 0) {
+      console.log(`   🔄 Partidos com dados/bancada atualizados (${updated}): ${updatedSiglas.join(", ")}`);
+    }
+    if (inserted === 0 && updated === 0) {
+      console.log(`   🔒 Todos os ${partyMap.size} partidos estão íntegros e atualizados (nenhuma alteração necessária).`);
+    }
+
+    console.log(`-> [Partidos] Concluído: ${partyMap.size} partidos ativos no catálogo.`);
 
     return {
       inserted,
       updated,
       total: partyMap.size,
+      existingCount: initialExistingCount,
       partyMap,
+      insertedSiglas,
+      updatedSiglas,
     };
   } catch (err) {
     console.error("-> [Partidos] Erro ao sincronizar partidos:", err);

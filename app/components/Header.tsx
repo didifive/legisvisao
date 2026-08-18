@@ -12,6 +12,8 @@ import {
   FaTrashAlt,
   FaBalanceScale,
   FaCheckCircle,
+  FaExclamationTriangle,
+  FaInfoCircle,
 } from "react-icons/fa";
 import { Button } from "./ui/Button";
 import { ThemeToggle } from "./ThemeToggle";
@@ -19,23 +21,48 @@ import { useSystemStatus } from "./SystemStatusProvider";
 import { urls } from "@/lib/urls";
 import {
   exportAnswersToJson,
-  importAnswersFromJson,
+  parseAndValidateAnswersFile,
+  saveStoredAnswers,
   clearStoredAnswers,
   getStoredAnswers,
+  getStoredAnswersCount,
+  type StoredAnswers,
 } from "@/lib/storage";
+import { ConfirmationModal } from "./ui/ConfirmationModal";
 
 export const Header = () => {
   const { isReady } = useSystemStatus();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [opinionsCount, setOpinionsCount] = useState(0);
-  const [notification, setNotification] = useState<string | null>(null);
+
+  // Estados dos Modais de Confirmação
+  const [isClearModalOpen, setIsClearModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [pendingImport, setPendingImport] = useState<{
+    answers: StoredAnswers;
+    total: number;
+    fileName: string;
+  } | null>(null);
+
+  // Toast Notification
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error" | "info";
+  } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pathname = usePathname();
 
   const updateOpinionsCount = () => {
-    const answers = getStoredAnswers();
-    setOpinionsCount(Object.keys(answers).length);
+    setOpinionsCount(getStoredAnswersCount());
+  };
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 4000);
   };
 
   useEffect(() => {
@@ -49,23 +76,22 @@ export const Header = () => {
       updateOpinionsCount();
     };
 
+    const handleRequestClear = () => {
+      handleClear();
+    };
+
     window.addEventListener("scroll", handleScroll);
     window.addEventListener("storage-answers-updated", handleStorageUpdate);
     window.addEventListener("storage", handleStorageUpdate);
+    window.addEventListener("request-clear-opinions", handleRequestClear);
 
     return () => {
       window.removeEventListener("scroll", handleScroll);
       window.removeEventListener("storage-answers-updated", handleStorageUpdate);
       window.removeEventListener("storage", handleStorageUpdate);
+      window.removeEventListener("request-clear-opinions", handleRequestClear);
     };
   }, []);
-
-  const showToast = (msg: string) => {
-    setNotification(msg);
-    setTimeout(() => {
-      setNotification(null);
-    }, 4000);
-  };
 
   const handleExport = () => {
     exportAnswersToJson();
@@ -75,37 +101,65 @@ export const Header = () => {
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  /**
+   * Processa o arquivo selecionado:
+   * 1. Valida internamente o arquivo (lança erro e avisa se inválido, sem abrir modal).
+   * 2. Se válido e NÃO houver escolhas salvas -> importa direto.
+   * 3. Se válido e HOUVER escolhas salvas -> abre modal de confirmação de substituição.
+   */
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    importAnswersFromJson(
-      file,
-      (total) => {
-        showToast(`${total} opinião(ões) importada(s) com sucesso!`);
-        updateOpinionsCount();
-      },
-      (err) => {
-        alert(err);
-      }
-    );
-
     if (e.target) e.target.value = "";
+
+    try {
+      const { answers, total } = await parseAndValidateAnswersFile(file);
+      const currentCount = getStoredAnswersCount();
+
+      if (currentCount === 0) {
+        saveStoredAnswers(answers);
+        showToast(`${total} opinião(ões) importada(s) com sucesso!`, "success");
+        updateOpinionsCount();
+      } else {
+        setPendingImport({ answers, total, fileName: file.name });
+        setIsImportModalOpen(true);
+      }
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : "Erro ao validar o arquivo de opiniões.";
+      showToast(msg, "error");
+    }
   };
 
+  const handleConfirmImport = () => {
+    if (!pendingImport) return;
+    saveStoredAnswers(pendingImport.answers);
+    showToast(`${pendingImport.total} opinião(ões) importada(s) com sucesso!`, "success");
+    updateOpinionsCount();
+    setIsImportModalOpen(false);
+    setPendingImport(null);
+  };
+
+  /**
+   * Limpeza de dados:
+   * Se NÃO houver registros salvos -> não precisa de modal.
+   * Se HOUVER registros salvos -> abre modal de confirmação.
+   */
   const handleClear = () => {
-    if (opinionsCount === 0) {
-      alert("Nenhuma opinião salva localmente.");
+    const currentCount = getStoredAnswersCount();
+    if (currentCount === 0) {
+      showToast("Nenhuma opinião salva para apagar.", "info");
       return;
     }
-    const confirmed = window.confirm(
-      "Tem certeza que deseja apagar todas as suas opiniões salvas localmente? Esta ação não pode ser desfeita."
-    );
-    if (confirmed) {
-      clearStoredAnswers();
-      showToast("Todas as opiniões foram apagadas.");
-      updateOpinionsCount();
-    }
+    setIsClearModalOpen(true);
+  };
+
+  const handleConfirmClear = () => {
+    clearStoredAnswers();
+    setIsClearModalOpen(false);
+    showToast("Todas as opiniões foram apagadas do dispositivo.", "success");
+    updateOpinionsCount();
   };
 
   const allNavItems = [
@@ -140,17 +194,17 @@ export const Header = () => {
                 <FaBalanceScale className="w-5 h-5" />
               </div>
               <div className="flex flex-col">
-                <span className="font-extrabold text-lg sm:text-xl tracking-tight text-foreground group-hover:text-primary transition-smooth">
+                <span className="font-extrabold text-foreground tracking-tight text-lg leading-none group-hover:text-primary transition-smooth">
                   LegisVisão
                 </span>
-                <span className="text-[10px] text-muted-foreground -mt-1 font-medium">
-                  Afinidade Legislativa
+                <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                  Congresso Nacional
                 </span>
               </div>
             </Link>
 
-            {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center space-x-1 lg:space-x-2">
+            {/* Desktop Navigation Links */}
+            <nav className="hidden md:flex items-center space-x-1">
               {navItems.map((item) => {
                 const isActive =
                   item.href === "/"
@@ -161,15 +215,15 @@ export const Header = () => {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium transition-smooth relative ${
+                    className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-smooth relative ${
                       isActive
-                        ? "text-primary dark:text-emerald-400 bg-primary/10 font-semibold"
-                        : "text-foreground/80 hover:text-primary hover:bg-muted"
+                        ? "text-primary dark:text-emerald-400 bg-primary/10"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
                     }`}
                   >
-                    {item.label}
+                    <span>{item.label}</span>
                     {item.href === "/opiniao/revisao" && opinionsCount > 0 && (
-                      <span className="ml-1.5 px-1.5 py-0.5 text-[10px] rounded-full bg-primary/20 text-primary font-bold">
+                      <span className="ml-1.5 px-1.5 py-0.2 text-[10px] rounded-full bg-primary text-white font-bold">
                         {opinionsCount}
                       </span>
                     )}
@@ -345,12 +399,69 @@ export const Header = () => {
         )}
       </header>
 
-      {notification && (
-        <div className="fixed bottom-5 right-5 z-50 bg-card border border-border text-foreground px-4 py-3 rounded-lg shadow-strong flex items-center gap-2 animate-bounce transition-smooth text-sm">
-          <FaCheckCircle className="text-primary w-4 h-4" />
-          <span>{notification}</span>
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          role="status"
+          className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl shadow-large border flex items-center gap-2.5 animate-bounce transition-smooth text-sm font-medium ${
+            toast.type === "error"
+              ? "bg-card border-rose-500/30 text-rose-600 dark:text-rose-400"
+              : toast.type === "info"
+              ? "bg-card border-primary/30 text-primary"
+              : "bg-card border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+          }`}
+        >
+          {toast.type === "error" && <FaExclamationTriangle className="w-4 h-4 shrink-0" />}
+          {toast.type === "info" && <FaInfoCircle className="w-4 h-4 shrink-0" />}
+          {toast.type === "success" && <FaCheckCircle className="w-4 h-4 shrink-0" />}
+          <span>{toast.message}</span>
         </div>
       )}
+
+      {/* Modal de Confirmação para Limpeza de Dados */}
+      <ConfirmationModal
+        isOpen={isClearModalOpen}
+        onClose={() => setIsClearModalOpen(false)}
+        onConfirm={handleConfirmClear}
+        title="Apagar todas as opiniões salvas?"
+        description={
+          <p>
+            Você possui <strong className="text-foreground">{opinionsCount} opinião(ões)</strong> salva(s) neste navegador. Ao confirmar, todas as suas escolhas serão apagadas permanentemente do seu dispositivo.
+          </p>
+        }
+        confirmLabel="Apagar Tudo"
+        cancelLabel="Cancelar"
+        variant="destructive"
+        icon="trash"
+      />
+
+      {/* Modal de Confirmação para Importação com Substituição */}
+      <ConfirmationModal
+        isOpen={isImportModalOpen}
+        onClose={() => {
+          setIsImportModalOpen(false);
+          setPendingImport(null);
+        }}
+        onConfirm={handleConfirmImport}
+        title="Substituir opiniões existentes?"
+        description={
+          <div className="space-y-2">
+            <p>
+              Você já possui <strong className="text-foreground">{opinionsCount} opinião(ões)</strong> salva(s) neste navegador.
+            </p>
+            <p>
+              A importação do arquivo <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded text-foreground">{pendingImport?.fileName}</span> substituirá todas as suas respostas atuais pelas <strong className="text-foreground">{pendingImport?.total} opinião(ões)</strong> contidas no arquivo.
+            </p>
+            <p className="text-xs text-muted-foreground pt-1">
+              Deseja prosseguir com a substituição?
+            </p>
+          </div>
+        }
+        confirmLabel="Substituir e Importar"
+        cancelLabel="Cancelar"
+        variant="primary"
+        icon="upload"
+      />
     </>
   );
 };

@@ -27,8 +27,14 @@ export interface HouseRecordToSync {
 export interface SyncProjectsResult {
   insertedProjects: number;
   updatedProjects: number;
+  totalProjects: number;
+  existingProjectsCount: number;
   insertedRecords: number;
   updatedRecords: number;
+  totalRecords: number;
+  camaraRecordsCount: number;
+  senadoRecordsCount: number;
+  bicameralProjectsCount: number;
   houseRecordsToSyncVotes: HouseRecordToSync[];
 }
 
@@ -128,9 +134,9 @@ async function batchUpsertCanonicalProjects(
     const chunk = projects.slice(i, i + BATCH_SIZE);
     const results = (await sql`
       INSERT INTO legislative_projects ${sql(
-      chunk,
-      'canonical_id', 'type', 'number', 'year', 'title', 'description', 'current_status', 'last_updated_at'
-    )}
+        chunk,
+        'canonical_id', 'type', 'number', 'year', 'title', 'description', 'current_status', 'last_updated_at'
+      )}
       ON CONFLICT (canonical_id) DO UPDATE SET
         title = EXCLUDED.title,
         description = EXCLUDED.description,
@@ -159,11 +165,21 @@ async function batchUpsertHouseRecords(
   records: HouseRecordToUpsert[],
   projectMap: Map<string, number>,
   recordMap: Map<string, number>
-): Promise<{ insertedCount: number; updatedCount: number; houseRecordsToSyncVotes: HouseRecordToSync[] }> {
-  if (records.length === 0) return { insertedCount: 0, updatedCount: 0, houseRecordsToSyncVotes: [] };
+): Promise<{
+  insertedCount: number;
+  updatedCount: number;
+  camaraCount: number;
+  senadoCount: number;
+  houseRecordsToSyncVotes: HouseRecordToSync[];
+}> {
+  if (records.length === 0) {
+    return { insertedCount: 0, updatedCount: 0, camaraCount: 0, senadoCount: 0, houseRecordsToSyncVotes: [] };
+  }
 
   let insertedCount = 0;
   let updatedCount = 0;
+  let camaraCount = 0;
+  let senadoCount = 0;
   const houseRecordsToSyncVotes: HouseRecordToSync[] = [];
   const BATCH_SIZE = 500;
 
@@ -173,6 +189,9 @@ async function batchUpsertHouseRecords(
     if (!project_id) {
       throw new Error(`Projeto canônico não encontrado no mapa: ${r.project_canonical_id}`);
     }
+    if (r.house === "CAMARA") camaraCount++;
+    if (r.house === "SENADO") senadoCount++;
+
     return {
       project_id,
       house: r.house,
@@ -200,12 +219,12 @@ async function batchUpsertHouseRecords(
     const chunk = readyRows.slice(i, i + BATCH_SIZE);
     const results = (await sql`
       INSERT INTO project_house_records ${sql(
-      chunk,
-      'project_id', 'house', 'external_id', 'official_url', 'full_text_url',
-      'presentation_date', 'author_name', 'author_party', 'author_state',
-      'rapporteur_name', 'tramitacao_etapa', 'despacho', 'last_event_date',
-      'source_updated_at', 'source_read_at'
-    )}
+        chunk,
+        'project_id', 'house', 'external_id', 'official_url', 'full_text_url',
+        'presentation_date', 'author_name', 'author_party', 'author_state',
+        'rapporteur_name', 'tramitacao_etapa', 'despacho', 'last_event_date',
+        'source_updated_at', 'source_read_at'
+      )}
       ON CONFLICT (house, external_id) DO UPDATE SET
         official_url = EXCLUDED.official_url,
         full_text_url = EXCLUDED.full_text_url,
@@ -251,7 +270,7 @@ async function batchUpsertHouseRecords(
     }
   }
 
-  return { insertedCount, updatedCount, houseRecordsToSyncVotes };
+  return { insertedCount, updatedCount, camaraCount, senadoCount, houseRecordsToSyncVotes };
 }
 
 /**
@@ -284,6 +303,8 @@ export async function syncProjects(): Promise<SyncProjectsResult> {
   console.log("-> [Projetos] Sincronizando proposições deliberadas da Câmara e do Senado (2018 em diante)...");
 
   const { projectMap, recordMap } = await loadExistingProjectsData();
+  const initialProjectsCount = projectMap.size;
+  const initialRecordsCount = recordMap.size;
 
   // 1. Consulta catálogos em paralelo
   const [camaraProps, senadoProps] = await Promise.all([
@@ -291,10 +312,11 @@ export async function syncProjects(): Promise<SyncProjectsResult> {
     fetchSenadoPropositionsList(),
   ]);
 
-  console.log(`-> [Projetos] ${camaraProps.length} proposições da Câmara e ${senadoProps.length} matérias do Senado coletadas.`);
+  console.log(`   • Proposições brutas coletadas: Câmara = ${camaraProps.length} | Senado = ${senadoProps.length}`);
 
   const canonicalProjectsMap = new Map<string, CanonicalProjectToUpsert>();
   const houseRecordsToUpsert: HouseRecordToUpsert[] = [];
+  const projectHousesPresence = new Map<string, Set<string>>();
 
   // 2. Extrai dados da Câmara com workers paralelos
   await mapConcurrent(camaraProps, 8, async (p) => {
@@ -323,6 +345,11 @@ export async function syncProjects(): Promise<SyncProjectsResult> {
         current_status: situacao,
         last_updated_at: new Date(),
       });
+
+      if (!projectHousesPresence.has(canonicalId)) {
+        projectHousesPresence.set(canonicalId, new Set());
+      }
+      projectHousesPresence.get(canonicalId)?.add("CAMARA");
 
       const authorName = await fetchCamaraFirstAuthorName(det.uriAutores);
       const officialUrl = `https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao=${extId}`;
@@ -385,6 +412,11 @@ export async function syncProjects(): Promise<SyncProjectsResult> {
       });
     }
 
+    if (!projectHousesPresence.has(canonicalId)) {
+      projectHousesPresence.set(canonicalId, new Set());
+    }
+    projectHousesPresence.get(canonicalId)?.add("SENADO");
+
     const officialUrl = m.UrlDetalheMateria || `https://www25.senado.leg.br/web/atividade/materias/-/materia/${extId}`;
     const authorName = m.Autor || "Senado Federal";
     const presentationDate = m.Data ? m.Data.slice(0, 10) : null;
@@ -411,29 +443,50 @@ export async function syncProjects(): Promise<SyncProjectsResult> {
     });
   }
 
-  // 4. Gravação em Lote no Banco de Dados (Instantâneo e Livre de Timeouts)
-  console.log(`-> [Projetos] Gravando ${canonicalProjectsMap.size} projetos canônicos em lote no banco...`);
+  // Calcula proposições bicamerais
+  let bicameralProjectsCount = 0;
+  for (const [, housesSet] of projectHousesPresence) {
+    if (housesSet.has("CAMARA") && housesSet.has("SENADO")) {
+      bicameralProjectsCount++;
+    }
+  }
+
+  // 4. Gravação em Lote no Banco de Dados
+  console.log(`   • Gravando ${canonicalProjectsMap.size} projetos canônicos em lote...`);
   const { insertedCount: insProj, updatedCount: updProj } = await batchUpsertCanonicalProjects(
     Array.from(canonicalProjectsMap.values()),
     projectMap
   );
 
-  console.log(`-> [Projetos] Gravando ${houseRecordsToUpsert.length} registros de Casa em lote no banco...`);
+  console.log(`   • Gravando ${houseRecordsToUpsert.length} registros de Casa em lote...`);
   const {
     insertedCount: insRec,
     updatedCount: updRec,
+    camaraCount,
+    senadoCount,
     houseRecordsToSyncVotes,
   } = await batchUpsertHouseRecords(houseRecordsToUpsert, projectMap, recordMap);
 
   await batchEnsurePhases(houseRecordsToSyncVotes);
 
-  console.log(`-> [Projetos] Concluído: ${projectMap.size} projetos canônicos (${insProj} novos), ${recordMap.size} registros de casa (${insRec} novos).`);
+  // Relatório Analítico
+  console.log(`-> [Projetos] Análise Detalhada:`);
+  console.log(`   • Projetos Canônicos: ${projectMap.size} no catálogo (${insProj} novos, ${updProj} atualizados, ${projectMap.size - insProj} já existentes)`);
+  console.log(`   • Registros de Tramitação: ${recordMap.size} no total (Câmara: ${camaraCount} | Senado: ${senadoCount})`);
+  console.log(`   • Proposições Bicamerais identificadas (presentes em ambas as Casas): ${bicameralProjectsCount}`);
+  console.log(`   • Registros de Casa inseridos: ${insRec} novos | Atualizados: ${updRec}`);
 
   return {
     insertedProjects: insProj,
     updatedProjects: updProj,
+    totalProjects: projectMap.size,
+    existingProjectsCount: initialProjectsCount,
     insertedRecords: insRec,
     updatedRecords: updRec,
+    totalRecords: recordMap.size,
+    camaraRecordsCount: camaraCount,
+    senadoRecordsCount: senadoCount,
+    bicameralProjectsCount,
     houseRecordsToSyncVotes,
   };
 }

@@ -15,6 +15,9 @@ import {
 export interface SyncVotesResult {
   insertedVotes: number;
   totalVotes: number;
+  existingVotesCount: number;
+  camaraVotesInserted: number;
+  senadoVotesInserted: number;
 }
 
 export interface PoliticianSummary {
@@ -27,6 +30,7 @@ interface PoliticianVoteToInsert {
   politician_id: number;
   party_id: number | null;
   vote_original: string;
+  house?: string;
 }
 
 /**
@@ -88,6 +92,7 @@ function buildCamaraVotesToInsert(
       politician_id: pol.id,
       party_id: partyId,
       vote_original: rawVote,
+      house: "CAMARA",
     });
     existingVoteSet.add(voteKey);
   }
@@ -127,6 +132,7 @@ function buildSenadoVotesToInsert(
       politician_id: pol.id,
       party_id: partyId,
       vote_original: rawVote,
+      house: "SENADO",
     });
     existingVoteSet.add(voteKey);
   }
@@ -163,11 +169,19 @@ export async function syncVotes(
   console.log("-> [Votos Nominais] Sincronizando votos parlamentares nominais (Câmara & Senado)...");
 
   const existingVoteSet = await loadExistingVoteKeys();
+  const initialVotesCount = existingVoteSet.size;
+
   const camaraSessions = sessions.filter((s) => s.house === "CAMARA");
   const senadoSessions = sessions.filter((s) => s.house === "SENADO");
   const allRowsToInsert: PoliticianVoteToInsert[] = [];
 
+  let camaraVotesCount = 0;
+  let senadoVotesCount = 0;
+  let camaraProcessed = 0;
+  let senadoProcessed = 0;
+
   // 1. Processa Votos Nominais da Câmara dos Deputados
+  console.log(`   • Processando votos nominais de ${camaraSessions.length} sessões da Câmara...`);
   await mapConcurrent(camaraSessions, 8, async (session) => {
     try {
       const rawVotes = await fetchCamaraNominalVotes(session.external_vote_id);
@@ -180,19 +194,27 @@ export async function syncVotes(
       );
       if (rows.length > 0) {
         allRowsToInsert.push(...rows);
+        camaraVotesCount += rows.length;
       }
     } catch (err) {
       console.warn(`[Votos] Erro ao sincronizar votos da Câmara na sessão ${session.external_vote_id}:`, err);
+    } finally {
+      camaraProcessed++;
+      if (camaraProcessed % 50 === 0 || camaraProcessed === camaraSessions.length) {
+        console.log(`     -> [Votos Câmara] ${camaraProcessed}/${camaraSessions.length} sessões processadas (${camaraVotesCount} novos votos coletados)...`);
+      }
     }
   });
 
-  // 2. Processa Votos Nominais do Senado Federal
+  // 2. Processa Votos Nominais do Senado Federal (reaproveitando o payload obtido na Fase 2)
+  console.log(`   • Processando votos nominais de ${senadoSessions.length} sessões do Senado...`);
   await mapConcurrent(senadoSessions, 8, async (session) => {
     try {
-      const rawVotes = await fetchSenadoNominalVotes(
-        session.materia_external_id,
-        session.external_vote_id
-      );
+      const rawVotes =
+        session.senado_raw_votes && session.senado_raw_votes.length > 0
+          ? session.senado_raw_votes
+          : await fetchSenadoNominalVotes(session.materia_external_id, session.external_vote_id);
+
       const rows = buildSenadoVotesToInsert(
         session.id,
         rawVotes,
@@ -202,20 +224,35 @@ export async function syncVotes(
       );
       if (rows.length > 0) {
         allRowsToInsert.push(...rows);
+        senadoVotesCount += rows.length;
       }
     } catch (err) {
       console.warn(`[Votos] Erro ao sincronizar votos do Senado na sessão ${session.external_vote_id}:`, err);
+    } finally {
+      senadoProcessed++;
+      if (senadoProcessed % 50 === 0 || senadoProcessed === senadoSessions.length) {
+        console.log(`     -> [Votos Senado] ${senadoProcessed}/${senadoSessions.length} sessões processadas (${senadoVotesCount} novos votos coletados)...`);
+      }
     }
   });
 
   if (allRowsToInsert.length > 0) {
+    console.log(`   • Gravando ${allRowsToInsert.length} novos votos nominais em lote no banco...`);
     await insertVotesBatches(allRowsToInsert);
   }
 
-  console.log(`-> [Votos Nominais] Concluído: ${existingVoteSet.size} votos registrados no total (${allRowsToInsert.length} novos inseridos).`);
+  // Relatório Analítico
+  console.log(`-> [Votos Nominais] Análise Detalhada:`);
+  console.log(`   • Votos da Câmara dos Deputados: ${camaraVotesCount} novos inseridos`);
+  console.log(`   • Votos do Senado Federal: ${senadoVotesCount} novos inseridos`);
+  console.log(`   • Votos já persistidos anteriormente (preservados): ${initialVotesCount}`);
+  console.log(`   • Total consolidado no banco: ${existingVoteSet.size} votos nominais.`);
 
   return {
     insertedVotes: allRowsToInsert.length,
     totalVotes: existingVoteSet.size,
+    existingVotesCount: initialVotesCount,
+    camaraVotesInserted: camaraVotesCount,
+    senadoVotesInserted: senadoVotesCount,
   };
 }

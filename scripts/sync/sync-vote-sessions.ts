@@ -9,6 +9,7 @@ import {
 } from "./adapters/camara";
 import {
   fetchSenadoVoteSessions,
+  type RawSenadoVoteItem,
 } from "./adapters/senado";
 
 export interface SessionToSyncVotes {
@@ -18,11 +19,17 @@ export interface SessionToSyncVotes {
   house: string;
   date?: string | null;
   materia_external_id?: string;
+  senado_raw_votes?: RawSenadoVoteItem[];
 }
 
 export interface SyncVoteSessionsResult {
   insertedSessions: number;
   totalSessions: number;
+  existingSessionsCount: number;
+  camaraSessionsTotal: number;
+  camaraSessionsInserted: number;
+  senadoSessionsTotal: number;
+  senadoSessionsInserted: number;
   sessionsToSyncVotes: SessionToSyncVotes[];
 }
 
@@ -35,6 +42,7 @@ interface RawSessionCollected {
   result: string;
   house: "CAMARA" | "SENADO";
   materia_external_id?: string;
+  senado_raw_votes?: RawSenadoVoteItem[];
 }
 
 /**
@@ -85,8 +93,15 @@ function deriveCamaraSessionResult(vr: CamaraVoteSessionApiItem): string {
 async function batchUpsertSessions(
   collected: RawSessionCollected[],
   sessionMap: Map<string, number>
-): Promise<{ insertedCount: number; sessionsToSyncVotes: SessionToSyncVotes[] }> {
-  if (collected.length === 0) return { insertedCount: 0, sessionsToSyncVotes: [] };
+): Promise<{
+  insertedCount: number;
+  camaraInserted: number;
+  senadoInserted: number;
+  sessionsToSyncVotes: SessionToSyncVotes[];
+}> {
+  if (collected.length === 0) {
+    return { insertedCount: 0, camaraInserted: 0, senadoInserted: 0, sessionsToSyncVotes: [] };
+  }
 
   // Filtra itens já presentes e deduplica
   const uniqueItemsMap = new Map<string, RawSessionCollected>();
@@ -100,6 +115,8 @@ async function batchUpsertSessions(
   const allItems = Array.from(uniqueItemsMap.values());
   const toInsert = allItems.filter((it) => !sessionMap.has(`${it.house_record_id}_${it.external_vote_id}`));
   let insertedCount = 0;
+  let camaraInserted = 0;
+  let senadoInserted = 0;
   const BATCH_SIZE = 500;
 
   for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
@@ -122,6 +139,12 @@ async function batchUpsertSessions(
     }
   }
 
+  // Contabiliza inserções por casa
+  for (const it of toInsert) {
+    if (it.house === "CAMARA") camaraInserted++;
+    if (it.house === "SENADO") senadoInserted++;
+  }
+
   const sessionsToSyncVotes: SessionToSyncVotes[] = [];
   for (const item of allItems) {
     const sessionId = sessionMap.get(`${item.house_record_id}_${item.external_vote_id}`);
@@ -133,11 +156,12 @@ async function batchUpsertSessions(
         house: item.house,
         date: item.date,
         materia_external_id: item.materia_external_id,
+        senado_raw_votes: item.senado_raw_votes,
       });
     }
   }
 
-  return { insertedCount, sessionsToSyncVotes };
+  return { insertedCount, camaraInserted, senadoInserted, sessionsToSyncVotes };
 }
 
 /**
@@ -153,9 +177,15 @@ export async function syncVoteSessions(
     loadDefaultPhases(),
   ]);
 
+  const initialSessionsCount = sessionMap.size;
   const camaraRecords = houseRecords.filter((hr) => hr.house === "CAMARA");
   const senadoRecords = houseRecords.filter((hr) => hr.house === "SENADO");
   const collectedSessions: RawSessionCollected[] = [];
+
+  let camaraProcessed = 0;
+  let senadoProcessed = 0;
+  let camaraSessionsFound = 0;
+  let senadoSessionsFound = 0;
 
   // 1. Coleta Sessões da Câmara dos Deputados
   await mapConcurrent(camaraRecords, 8, async (hr) => {
@@ -180,9 +210,15 @@ export async function syncVoteSessions(
           result: resultado,
           house: "CAMARA",
         });
+        camaraSessionsFound++;
       }
     } catch (err) {
       console.warn(`[Sessões] Aviso ao consultar votações da Câmara na proposição ${hr.external_id}:`, err);
+    } finally {
+      camaraProcessed++;
+      if (camaraProcessed % 500 === 0 || camaraProcessed === camaraRecords.length) {
+        console.log(`   • [Câmara] ${camaraProcessed}/${camaraRecords.length} proposições consultadas (${camaraSessionsFound} sessões encontradas)...`);
+      }
     }
   });
 
@@ -200,6 +236,9 @@ export async function syncVoteSessions(
         const descricao = vr.DescricaoVotacao || `Deliberação no Plenário do Senado sobre ${hr.siglaTipo} ${hr.numero}/${hr.ano}`;
         const resultado = vr.DescricaoResultado || vr.Resultado || "CONCLUÍDO";
 
+        const rawVotes = vr.Votos?.VotoParlamentar;
+        const senadoVotes: RawSenadoVoteItem[] = Array.isArray(rawVotes) ? rawVotes : rawVotes ? [rawVotes] : [];
+
         collectedSessions.push({
           house_record_id: hr.id,
           phase_id: phaseId,
@@ -209,22 +248,38 @@ export async function syncVoteSessions(
           result: resultado,
           house: "SENADO",
           materia_external_id: hr.external_id,
+          senado_raw_votes: senadoVotes,
         });
+        senadoSessionsFound++;
       }
     } catch (err) {
       console.warn(`[Sessões] Aviso ao consultar votações do Senado na matéria ${hr.external_id}:`, err);
+    } finally {
+      senadoProcessed++;
+      if (senadoProcessed % 1000 === 0 || senadoProcessed === senadoRecords.length) {
+        console.log(`   • [Senado] ${senadoProcessed}/${senadoRecords.length} matérias consultadas (${senadoSessionsFound} sessões encontradas)...`);
+      }
     }
   });
 
   // 3. Persistência em Lote de Alta Performance
-  console.log(`-> [Sessões de Votação] Gravando ${collectedSessions.length} sessões identificadas em lote no banco...`);
-  const { insertedCount, sessionsToSyncVotes } = await batchUpsertSessions(collectedSessions, sessionMap);
+  console.log(`   • Gravando ${collectedSessions.length} sessões identificadas em lote no banco...`);
+  const { insertedCount, camaraInserted, senadoInserted, sessionsToSyncVotes } = await batchUpsertSessions(collectedSessions, sessionMap);
 
-  console.log(`-> [Sessões de Votação] Concluído: ${sessionMap.size} sessões no banco (${insertedCount} novas inseridas).`);
+  // Relatório Analítico
+  console.log(`-> [Sessões de Votação] Análise Detalhada:`);
+  console.log(`   • Câmara dos Deputados: ${camaraSessionsFound} sessões (${camaraInserted} novas, ${camaraSessionsFound - camaraInserted} já existentes)`);
+  console.log(`   • Senado Federal: ${senadoSessionsFound} sessões (${senadoInserted} novas, ${senadoSessionsFound - senadoInserted} já existentes)`);
+  console.log(`   • Total consolidado no banco: ${sessionMap.size} sessões oficiais.`);
 
   return {
     insertedSessions: insertedCount,
     totalSessions: sessionMap.size,
+    existingSessionsCount: initialSessionsCount,
+    camaraSessionsTotal: camaraSessionsFound,
+    camaraSessionsInserted: camaraInserted,
+    senadoSessionsTotal: senadoSessionsFound,
+    senadoSessionsInserted: senadoInserted,
     sessionsToSyncVotes,
   };
 }

@@ -307,10 +307,7 @@ export default function Home() {
                   variant="ghost"
                   size="sm"
                   onClick={() => {
-                    if (opinionsCount === 0) return alert("Nenhuma opinião salva.");
-                    if (confirm("Apagar todas as opiniões salvas neste navegador?")) {
-                      clearStoredAnswers();
-                    }
+                    window.dispatchEvent(new Event("request-clear-opinions"));
                   }}
                   className="w-full justify-start text-xs gap-2 text-destructive hover:bg-destructive/10"
                 >
