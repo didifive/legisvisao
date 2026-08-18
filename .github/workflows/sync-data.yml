@@ -1,0 +1,35 @@
+name: Sincronização de Bases Oficiais
+
+on:
+  schedule:
+    # Executa todo domingo às 03:00 UTC (madrugada)
+    - cron: '0 3 * * 0'
+  workflow_dispatch: # Permite disparo manual via interface do GitHub
+
+jobs:
+  sync-official-data:
+    name: Sincronizar Dados (Câmara, Senado, TSE)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    
+    environment: prd
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Instalar Dependências
+        run: npm ci
+
+      - name: Executar Pipeline de Sincronização
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx tsx scripts/sync/index.ts
