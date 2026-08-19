@@ -96,6 +96,22 @@ const newVersion = calculateNextVersion(currentVersion, bumpType);
 pkg.version = newVersion;
 fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
 
+// Atualiza o package-lock.json se existir
+const packageLockPath = path.resolve(__dirname, '../../package-lock.json');
+if (fs.existsSync(packageLockPath)) {
+  try {
+    const lock = JSON.parse(fs.readFileSync(packageLockPath, 'utf8'));
+    lock.version = newVersion;
+    if (lock.packages?.['']) {
+      lock.packages[''].version = newVersion;
+    }
+    fs.writeFileSync(packageLockPath, JSON.stringify(lock, null, 2) + '\n', 'utf8');
+    console.log(`🔒 package-lock.json sincronizado com a versão: ${newVersion}`);
+  } catch (err) {
+    console.warn('⚠️  Aviso ao atualizar package-lock.json:', err);
+  }
+}
+
 console.log(`📦 Versão atual: ${currentVersion}`);
 console.log(`🏷️  Tipo de bump identificado: ${bumpType.toUpperCase()}`);
 console.log(`🚀 Nova versão gerada: ${newVersion}`);

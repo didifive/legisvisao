@@ -19,6 +19,7 @@ import {
   attachPropositionIdToVotes,
   calculatePoliticianMatch,
   calculatePartyMatch,
+  sortVoteSessionsDeterministic,
 } from "@/lib/match";
 import { getStoredAnswers } from "@/lib/storage";
 
@@ -124,18 +125,57 @@ export default function AfinidadePage() {
       for (const pd of propsData) {
         if (!pd) continue;
         const pId = pd.proposition?.id || pd.project?.id;
-        if (typeof pId === "number" && Array.isArray(pd.sessions)) {
+        if (typeof pId !== "number") continue;
+
+        // Contabiliza votos nominais por sessão para permitir desempate correto na classificação
+        const votesBySessionId = new Map<string, number>();
+        if (Array.isArray(pd.votes)) {
+          for (const v of pd.votes) {
+            const sId = String(v.votacao_id || v.vote_session_id || "");
+            if (sId) {
+              votesBySessionId.set(sId, (votesBySessionId.get(sId) || 0) + 1);
+            }
+          }
+        }
+
+        // Identifica a sessão principal de deliberação (mérito / texto-base)
+        let primarySessionId: string | null = null;
+        if (Array.isArray(pd.sessions) && pd.sessions.length > 0) {
+          const sessionsWithVotes = pd.sessions
+            .map((s: { id: string | number; data_hora?: string; descricao?: string }) => ({
+              ...s,
+              total_votos: votesBySessionId.get(String(s.id)) || 0,
+            }))
+            .filter((s: { total_votos: number }) => (votesBySessionId.size === 0 ? true : s.total_votos > 0));
+
+          const sortedSessions = sortVoteSessionsDeterministic(
+            sessionsWithVotes.length > 0 ? sessionsWithVotes : pd.sessions
+          );
+          primarySessionId = sortedSessions[0]?.id ? String(sortedSessions[0].id) : null;
+        }
+
+        // Se uma sessão principal for identificada, vincula apenas ela. Caso contrário, faz fallback para todas.
+        if (primarySessionId) {
+          voteSessionToProposition[primarySessionId] = pId;
+        } else if (Array.isArray(pd.sessions)) {
           for (const s of pd.sessions) {
             if (s.id) {
               voteSessionToProposition[String(s.id)] = pId;
             }
           }
         }
+
         if (pd.votes && Array.isArray(pd.votes)) {
           for (const v of pd.votes) {
+            const vSessionId = String(v.votacao_id || v.vote_session_id || "");
+            // Filtra exclusivamente os votos da sessão de mérito principal para não inflar múltiplos turnos/emendas
+            if (primarySessionId && vSessionId !== primarySessionId) {
+              continue;
+            }
+
             rawVotes.push({
               deputado_id: v.deputado_id || v.politician_id,
-              votacao_id: String(v.votacao_id || v.vote_session_id),
+              votacao_id: vSessionId,
               voto_original: v.voto_original,
               sigla_partido: v.sigla_partido || v.party_sigla,
             });
