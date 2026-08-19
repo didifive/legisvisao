@@ -405,6 +405,17 @@ Esta seção detalha as principais decisões de design de software e infraestrut
 - **Justificativa de Negócio:**
   - **Neutralidade Inquestionável e Auditabilidade:** Em ferramentas cívicas, algoritmos estatísticos ou modelos de linguagem (LLMs) geram desconfiança pública devido a possíveis alucinações ou vieses. A abordagem determinística garante que o mesmo voto sempre produza o mesmo resultado exato e auditável.
 
+### 6. Pipeline de Versionamento Semântico e Release Automática (CI/CD)
+- **Implementação Técnica:**
+  - Script autônomo em Node.js (`scripts/release/bump-version.js`) e workflow do GitHub Actions (`.github/workflows/auto-release.yml`) disparados exclusivamente no fechamento e mesclagem de Pull Requests na branch `main`.
+  - Classificação inteligente baseada em metadados da PR (branch, título e corpo):
+    - **MAJOR (`+1.0.0`)**: Mudanças estruturantes (`breaking change`, `mudanças que quebram`, `nova versão`, `feat!:`).
+    - **PATCH (`0.0.+1`)**: Correções e manutenções (`fix:`, `hotfix:`, `docs:`, `chore:`, `[patch]`, `[docs]`, `[chore]`).
+    - **MINOR (`0.+1.0`)**: Padrão para novas funcionalidades e telas (`feature/*`, `feat:`, `refactor:*`).
+  - Utilização do secret `RELEASE_TOKEN` no ambiente `prd` para atualizar o `package.json` na `main` protegida, criar a Git Tag (`vX.Y.Z`) e gerar a GitHub Release oficial com changelog automático.
+- **Justificativa de Negócio:**
+  - Ciclo de entrega contínua (CD) profissional e sem atrito humano. Histórico de versões 100% auditável, rastreabilidade total de quais PRs originaram cada release e eliminação de falhas manuais de versionamento.
+
 ---
 
 ### ⚖️ Matriz de Tradeoffs de Arquitetura
@@ -416,6 +427,7 @@ Esta seção detalha as principais decisões de design de software e infraestrut
 | **Cache em Memória no BFF** | Redução massiva de queries ao PostgreSQL; latência quase nula para rotas públicas. | O cache local reside na memória do processo e requer sincronia entre instâncias. | Invalidação automática e verificação leve a cada 15 minutos via `sync_control.dataset_version`. |
 | **Classificador Determinístico por Regras** | 100% auditável, transparente e sem custos de inferência de IA em produção. | Necessidade de cobrir variações de redação das atas e termos regimentais da Câmara. | Mapeamento extensivo das expressões oficiais da Câmara com testes automatizados para casos complexos. |
 | **Mapeamento de Prefixos no ETL** | Eliminação de 18.000 requisições HTTP no pipeline; execução ordens de grandeza mais rápida. | Dependência do padrão de nomenclatura de IDs da API da Câmara (`{propId}-{seq}`). | Verificação e tratamento de fallback para garantir integridade caso surjam IDs fora do padrão. |
+| **Release Semântico Automatizado via PR** | Governança estrita; changelog rastreável; eliminação de intervenção manual no deploy. | Exige padronização dos títulos de PR ou nomes de branch pela equipe. | Regras flexíveis com suporte a múltiplos sinônimos em português, conventional commits e tags explícitas. |
 
 ---
 
