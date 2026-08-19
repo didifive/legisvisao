@@ -92,75 +92,99 @@ export async function syncVotes(
     is_active: boolean;
   }>();
 
-  // Função auxiliar para descarregar o lote no PostgreSQL
-  async function flushBuffer() {
-    if (voteBuffer.length === 0) return;
+  let flushQueue: Promise<void> = Promise.resolve();
 
-    // 1. Inserir partidos novos se houver
-    if (pendingParties.size > 0) {
+  // Função auxiliar para descarregar o lote no PostgreSQL com fila sequencial e retry automático
+  async function flushBuffer(): Promise<void> {
+    flushQueue = flushQueue.then(async () => {
+      if (voteBuffer.length === 0 && pendingParties.size === 0 && pendingDeputies.size === 0) return;
+
+      const currentVotes = [...voteBuffer];
+      voteBuffer = [];
+
       const partiesList = Array.from(pendingParties.values());
       pendingParties.clear();
-      for (const chunk of chunkArray(partiesList, 50)) {
-        await sql`
-          INSERT INTO parties ${sql(chunk, "id", "sigla", "nome")}
-          ON CONFLICT (sigla) DO NOTHING;
-        `;
-      }
-    }
 
-    // 2. Inserir deputados novos se houver
-    if (pendingDeputies.size > 0) {
       const depList = Array.from(pendingDeputies.values());
       pendingDeputies.clear();
-      for (const chunk of chunkArray(depList, 100)) {
-        await sql`
-          INSERT INTO deputies ${sql(
-            chunk,
-            "id",
-            "nome",
-            "nome_eleitoral",
-            "sigla_partido",
-            "sigla_uf",
-            "url_foto",
-            "situacao",
-            "legislatura",
-            "is_active"
-          )}
-          ON CONFLICT (id) DO UPDATE SET
-            sigla_partido = EXCLUDED.sigla_partido;
-        `;
+
+      // Retry com backoff exponencial para lidar com ECONNRESET ou reinício de conexão do Supabase
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          // 1. Inserir partidos novos se houver
+          if (partiesList.length > 0) {
+            for (const chunk of chunkArray(partiesList, 50)) {
+              await sql`
+                INSERT INTO parties ${sql(chunk, "id", "sigla", "nome")}
+                ON CONFLICT (sigla) DO NOTHING;
+              `;
+            }
+          }
+
+          // 2. Inserir deputados novos se houver
+          if (depList.length > 0) {
+            for (const chunk of chunkArray(depList, 100)) {
+              await sql`
+                INSERT INTO deputies ${sql(
+                  chunk,
+                  "id",
+                  "nome",
+                  "nome_eleitoral",
+                  "sigla_partido",
+                  "sigla_uf",
+                  "url_foto",
+                  "situacao",
+                  "legislatura",
+                  "is_active"
+                )}
+                ON CONFLICT (id) DO UPDATE SET
+                  sigla_partido = EXCLUDED.sigla_partido;
+              `;
+            }
+          }
+
+          // 3. Inserir votos em lotes de 1000 registros com deduplicação por chave composta
+          if (currentVotes.length > 0) {
+            const deduplicatedVotesMap = new Map<string, typeof currentVotes[0]>();
+            for (const v of currentVotes) {
+              deduplicatedVotesMap.set(`${v.votacao_id}_${v.deputado_id}`, v);
+            }
+            const deduplicatedVotes = Array.from(deduplicatedVotesMap.values());
+
+            for (const chunk of chunkArray(deduplicatedVotes, 1000)) {
+              const result = await sql`
+                INSERT INTO deputy_votes ${sql(
+                  chunk,
+                  "votacao_id",
+                  "deputado_id",
+                  "sigla_partido",
+                  "voto_original"
+                )}
+                ON CONFLICT (votacao_id, deputado_id) DO UPDATE SET
+                  sigla_partido = EXCLUDED.sigla_partido,
+                  voto_original = EXCLUDED.voto_original
+                RETURNING (xmax = 0) AS is_insert;
+              `;
+
+              const newInserts = result.filter((r) => r.is_insert).length;
+              insertedVotes += newInserts;
+            }
+          }
+
+          return;
+        } catch (err) {
+          if (attempt === 3) {
+            console.error("❌ [Votos] Falha persistente ao descarregar lote no banco:", err);
+            voteBuffer.push(...currentVotes);
+            throw err;
+          }
+          console.warn(`⚠️ [Votos] Conexão com banco oscilou (${(err as Error).message}). Reconectando (tentativa ${attempt}/3 em ${attempt * 1000}ms)...`);
+          await new Promise((r) => setTimeout(r, attempt * 1000));
+        }
       }
-    }
+    });
 
-    // 3. Inserir votos em lotes de 1000 registros com deduplicação por chave composta
-    const currentBatch = [...voteBuffer];
-    voteBuffer = [];
-
-    // Deduplica por chave composta (votacao_id, deputado_id) para evitar erro 21000 do Postgres
-    const deduplicatedVotesMap = new Map<string, typeof currentBatch[0]>();
-    for (const v of currentBatch) {
-      deduplicatedVotesMap.set(`${v.votacao_id}_${v.deputado_id}`, v);
-    }
-    const deduplicatedVotes = Array.from(deduplicatedVotesMap.values());
-
-    for (const chunk of chunkArray(deduplicatedVotes, 1000)) {
-      const result = await sql`
-        INSERT INTO deputy_votes ${sql(
-          chunk,
-          "votacao_id",
-          "deputado_id",
-          "sigla_partido",
-          "voto_original"
-        )}
-        ON CONFLICT (votacao_id, deputado_id) DO UPDATE SET
-          sigla_partido = EXCLUDED.sigla_partido,
-          voto_original = EXCLUDED.voto_original
-        RETURNING (xmax = 0) AS is_insert;
-      `;
-
-      const newInserts = result.filter((r) => r.is_insert).length;
-      insertedVotes += newInserts;
-    }
+    return flushQueue;
   }
 
   // 2. Processar sessões pendentes com concorrência e bufferização
