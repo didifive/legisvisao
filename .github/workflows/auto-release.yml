@@ -44,8 +44,8 @@ jobs:
 
       - name: 💾 Commit Version Bump & Create Git Tag
         run: |
-          git add package.json
-          git commit -m "chore(release): v${{ steps.bump.outputs.new_version }} [skip ci]"
+          git add package.json package-lock.json
+          git commit -m "chore(release): v${{ steps.bump.outputs.new_version }}"
           git tag -a "v${{ steps.bump.outputs.new_version }}" -m "Release v${{ steps.bump.outputs.new_version }}"
           git push origin main
           git push origin "v${{ steps.bump.outputs.new_version }}"
