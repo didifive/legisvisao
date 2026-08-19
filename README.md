@@ -33,6 +33,14 @@ A ferramenta opera sob o modelo **Local-First (Privacidade Absoluta)**: nenhuma 
 
 ---
 
+## 💡 Diferenciais do LegisVisão
+
+1. **O ponto de partida é você:** Em vez de exigir que você pesquise números de leis ou nomes de políticos, você apenas responde como votaria nas principais propostas do país.
+2. **Afinidade baseada em fatos reais:** Comparamos sua posição diretamente com o registro oficial do painel eletrônico da Câmara dos Deputados, revelando a atuação real de cada parlamentar sem depender de discursos de campanha ou redes sociais.
+3. **Privacidade absoluta (Local-First):** Suas opiniões políticas ficam salvas exclusivamente no seu próprio navegador e nunca são enviadas para nenhum servidor ou banco de dados.
+
+---
+
 ## 🎯 Princípios Fundamentais
 
 1. **Fonte de Verdade Pública Oficial**: Os dados legislativos provêm diretamente da API de Dados Abertos da **Câmara dos Deputados** (`https://dadosabertos.camara.leg.br/api/v2`). O banco de dados PostgreSQL atua estritamente como um cache persistente e camada de indexação de alta velocidade.
@@ -340,10 +348,74 @@ $$\text{Afinidade}(\%) = \left( \frac{\sum \text{Concordâncias}}{\text{Total de
 - **Afinidade Partidária**: Média aritmética dos índices de convergência de todos os deputados filiados à legenda nas matérias avaliadas.
 
 ### 2. Hierarquia Determinística de Eleição da Votação Principal (`classifyVoteSession`)
-Para proposições com múltiplas deliberações (Texto-Base, Destaques, Emendas e Requerimentos), o sistema elege a sessão principal com base em 3 níveis de desempate estrito:
-1. **Nível 1 (Mérito Substantivo)**: Prioridade 1 (Texto-Base, Substitutivos, Projetos de Lei de Conversão, Redação Final) $>$ Prioridade 2 (Emendas) $>$ Prioridade 3 (Destaques / DTQ / DVS) $>$ Prioridade 4 (Requerimentos de Pauta).
-2. **Nível 2 (Atualidade Temporal)**: `data_hora DESC` (deliberação mais recente que consolidou a decisão da Câmara).
-3. **Nível 3 (Desempate Alfanumérico)**: `ID da Sessão` (`localeCompare` determinístico).
+Para proposições com múltiplas deliberações (Texto-Base, Destaques, Emendas e Requerimentos), o sistema elege a sessão principal com base em 4 níveis de desempate estrito:
+1. **Nível 1 (Mérito Substantivo):** Prioridade 1 (Texto-Base, Substitutivos, Projetos de Lei de Conversão) $>$ Prioridade 2 (Emendas) $>$ Prioridade 3 (Destaques / DTQ / DVS) $>$ Prioridade 4 (Requerimentos de Pauta).
+2. **Nível 2 (Presença de Votos Nominais):** Prioriza deliberações com votos nominais registrados sobre redações finais meramente simbólicas (0 votos nominais).
+3. **Nível 3 (Atualidade Temporal):** `data_hora DESC` (deliberação mais recente que consolidou a decisão final da Câmara, como o 2º turno sobre o 1º turno).
+4. **Nível 4 (Desempate Alfanumérico):** `ID da Sessão` (`localeCompare` determinístico).
+
+### 3. Heurística de Relevância Cívica das Proposições (`sortPropositionsByRelevance`)
+No Simulador de Votação (`/opiniao`), as matérias são apresentadas por padrão ordenadas por impacto e representatividade no Plenário:
+1. **Maior Quórum Total (`total_sim + total_nao + total_outros` decrescente):** Prioriza grandes deliberações de plenário (480 a 505 deputados presentes).
+2. **Menor Abstenção e Outros Votos (`total_outros` crescente):** Prioriza votações com posicionamento categórico dos parlamentares em Sim ou Não.
+3. **Menor Margem de Votos (`|total_sim - total_nao|` crescente):** Destaca matérias mais disputadas voto a voto e politicamente acirradas.
+4. **Desempate:** Data da deliberação mais recente e ID da proposição decrescente.
+
+---
+
+## 🧠 Destaques de Engenharia Backend, Arquitetura e Tradeoffs
+
+Esta seção detalha as principais decisões de design de software e infraestrutura adotadas no LegisVisão, acompanhadas de suas respectivas motivações de negócio e da matriz de compensações técnicas (tradeoffs).
+
+### 1. Estratégia de Cache Multi-Camadas (Client-Side + BFF + PostgreSQL Indexado)
+- **Implementação Técnica:**
+  - **Camada 1 (Client-Side):** `sessionStorage` no navegador com TTL de 3 minutos para catálogo de deputados, propostas e legendas, evitando requisições repetidas na mesma navegação.
+  - **Camada 2 (Server-Side / BFF):** Cache em memória nas rotas de API do Next.js com invalidação inteligente orientada a eventos. O servidor monitora a coluna `dataset_version` da tabela `sync_control` a cada 15 minutos; se o dataset não foi modificado, as consultas são resolvidas em memória (sub-5ms) sem onerar o PostgreSQL.
+  - **Camada 3 (Database):** PostgreSQL atua como repositório persistente indexado com driver `postgres.js` configurado em modo direto (`prepare: false`) para operação ideal com poolers de transação.
+- **Justificativa de Negócio:**
+  - Custo operacional de infraestrutura próximo de zero, permitindo manter o projeto 100% no free-tier.
+  - Latência imperceptível para o cidadão e proteção contra bloqueios por rate-limit da API governamental da Câmara.
+
+### 2. Pipeline de Ingestão e Sincronização de Alto Rendimento (ETL)
+- **Implementação Técnica:**
+  - **Extração de Prefixo em Memória:** As sessões da Câmara utilizam o padrão `{propId}-{seq}` (ex: `2618177-71`). O script mapeia os IDs de proposição diretamente em memória, eliminando mais de 18.000 requisições HTTP redundantes que seriam necessárias para descobrir a qual projeto cada votação pertence.
+  - **Workers Concorrentes e Rate Limiting:** Pool de 25 workers paralelos com controle de vazão e logs em tempo real de taxa de transferência (requisições/segundo).
+  - **Fila Serializada com Mutex e Resiliência TCP:** Inserções de votos nominais em lotes de 1.000 a 2.000 registros gerenciadas por uma fila com promessa encadeada (`flushQueue`), acompanhada de 3 tentativas automáticas com backoff exponencial para absorver quedas transitórias de socket (`ECONNRESET`) em poolers de nuvem.
+- **Justificativa de Negócio:**
+  - Capacidade de processar e normalizar quase meio milhão de votos nominais em minutos, viabilizando execuções confiáveis em esteiras de automação (GitHub Actions) sem estourar limites de tempo de execução.
+
+### 3. Arquitetura Local-First e Anonimato Absoluto do Usuário
+- **Implementação Técnica:**
+  - As preferências e respostas do cidadão são gravadas exclusivamente no `localStorage` do navegador (`lib/storage.ts`).
+  - O motor de cálculo de afinidade (`lib/match/calculatePoliticianMatch.ts` e `calculatePartyMatch.ts`) executa integralmente no cliente via JavaScript puro, consumindo zero ciclos de CPU do servidor para comparar votos.
+- **Justificativa de Negócio:**
+  - **Imunidade Regulatória Total (LGPD / GDPR):** Nenhum dado pessoal sensível (posicionamento político, ideológico ou identificador de eleitor) transita pela rede ou é gravado em servidores. Não há risco de vazamento de dados de usuários.
+  - **Escalabilidade Extrema:** Como o processamento pesado de cálculo é distribuído na ponta (dispositivo do usuário), a aplicação pode atender milhões de usuários simultâneos sem aumento proporcional de custos de servidor.
+
+### 4. Portabilidade de Dados e Retrocompatibilidade Resiliente (Import/Export JSON)
+- **Implementação Técnica:**
+  - Mecanismo nativo de exportação e importação de arquivo JSON estruturado.
+  - O parser de importação possui tolerância retrocompatível automática: reconhece tanto formatos legados (dicionário plano de IDs) quanto esquemas modernos versionados (`{ version: "1.0", answers: { ... } }`), aplicando coerção segura de tipos numéricos e strings.
+- **Justificativa de Negócio:**
+  - Soberania e liberdade para o cidadão manter seu histórico de análises cívicas entre diferentes computadores ou celulares sem a necessidade de criar contas, cadastrar e-mails ou fornecer senhas.
+
+### 5. Motor de Classificação Determinística (Sem Dependência de IA em Tempo de Execução)
+- **Implementação Técnica:**
+  - Árvore de decisão estrita baseada em regras textuais dos atos regimentais da Câmara dos Deputados (`classifyVoteSession.ts`), categorizando deliberações em 4 tiers bem definidos (Mérito, Emendas, Destaques e Requerimentos).
+- **Justificativa de Negócio:**
+  - **Neutralidade Inquestionável e Auditabilidade:** Em ferramentas cívicas, algoritmos estatísticos ou modelos de linguagem (LLMs) geram desconfiança pública devido a possíveis alucinações ou vieses. A abordagem determinística garante que o mesmo voto sempre produza o mesmo resultado exato e auditável.
+
+---
+
+### ⚖️ Matriz de Tradeoffs de Arquitetura
+
+| Decisão de Arquitetura | Ganhos e Vantagens (Prós) | Tradeoffs e Limitações (Contras) | Mitigação Adotada |
+| :--- | :--- | :--- | :--- |
+| **Local-First (Cálculo no Cliente)** | Privacidade máxima; conformidade total com a LGPD; custo de processamento no servidor reduzido a zero. | Impossibilidade de gerar métricas globais agregadas no backend (ex: ranking de propostas mais apoiadas). | Usuário possui controle total e pode exportar/importar seu arquivo de votos livremente. |
+| **PostgreSQL como Cache Persistente** | Consultas sub-milissegundo; integridade relacional; imunidade a instabilidades na API da Câmara. | Necessidade de pipeline periódico de sincronização para manter a base atualizada. | Pipeline automatizado via GitHub Actions com detecção inteligente de atualizações pendentes. |
+| **Cache em Memória no BFF** | Redução massiva de queries ao PostgreSQL; latência quase nula para rotas públicas. | O cache local reside na memória do processo e requer sincronia entre instâncias. | Invalidação automática e verificação leve a cada 15 minutos via `sync_control.dataset_version`. |
+| **Classificador Determinístico por Regras** | 100% auditável, transparente e sem custos de inferência de IA em produção. | Necessidade de cobrir variações de redação das atas e termos regimentais da Câmara. | Mapeamento extensivo das expressões oficiais da Câmara com testes automatizados para casos complexos. |
+| **Mapeamento de Prefixos no ETL** | Eliminação de 18.000 requisições HTTP no pipeline; execução ordens de grandeza mais rápida. | Dependência do padrão de nomenclatura de IDs da API da Câmara (`{propId}-{seq}`). | Verificação e tratamento de fallback para garantir integridade caso surjam IDs fora do padrão. |
 
 ---
 

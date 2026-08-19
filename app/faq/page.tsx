@@ -485,7 +485,7 @@ export default function FAQPage() {
             <div className="pt-1 p-3.5 rounded-lg bg-background/80 border border-border/70 space-y-1.5">
               <span className="font-semibold text-foreground text-xs block">💡 E as nuances ideológicas em Destaques e Emendas?</span>
               <p className="text-muted-foreground text-xs leading-relaxed">
-                Nem sempre a deliberação mais polarizada é o texto-base — em muitas leis, o texto geral é aprovado por consenso e a verdadeira disputa ideológica ocorre em um <strong>Destaque para Votação em Separado (DVS)</strong> para retirar ou manter um artigo polêmico. Por essa razão, o LegisVisão <strong>não oculta nenhuma votação</strong>: na página de cada projeto e no perfil de cada deputado, todo o histórico de emendas e destaques é exibido com crachás visuais explicativos, garantindo total transparência para análises avançadas.
+                Nem sempre a deliberação mais polarizada é o texto-base: em muitas leis, o texto geral é aprovado por consenso e a verdadeira disputa ideológica ocorre em um <strong>Destaque para Votação em Separado (DVS)</strong> para retirar ou manter um artigo polêmico. Por essa razão, o LegisVisão <strong>não oculta nenhuma votação</strong>: na página de cada projeto e no perfil de cada deputado, todo o histórico de emendas e destaques é exibido com crachás visuais explicativos, garantindo total transparência para análises avançadas.
               </p>
             </div>
           </div>
@@ -497,17 +497,20 @@ export default function FAQPage() {
               <span>Hierarquia Determinística de Eleição da Votação Principal:</span>
             </div>
             <p className="text-muted-foreground leading-relaxed text-xs">
-              Para garantir que o cálculo e a exibição sejam <strong>100% determinísticos, auditáveis e reproduzíveis</strong> em qualquer dispositivo, a seleção da votação principal segue rigorosamente três níveis de critérios ordenados:
+              Para garantir que o cálculo e a exibição sejam <strong>100% determinísticos, auditáveis e reproduzíveis</strong> em qualquer dispositivo, a seleção da votação principal segue rigorosamente quatro níveis de critérios ordenados:
             </p>
             <ol className="list-decimal pl-4 space-y-1.5 text-muted-foreground text-xs leading-relaxed">
               <li>
-                <strong>Nível 1 (Relevância de Mérito):</strong> Prioridade máxima para deliberações de Texto-Base, Substitutivos, Projetos de Lei de Conversão e Pareceres de Mérito da Comissão sobre Emendas, Destaques ou Requerimentos.
+                <strong>Nível 1 (Relevância de Mérito):</strong> Prioridade máxima para deliberações de Mérito e Texto-Base (1º e 2º turnos de PECs, Substitutivos, Projetos de Lei de Conversão e Pareceres de Mérito) sobre Emendas, Destaques ou Requerimentos.
               </li>
               <li>
-                <strong>Nível 2 (Atualidade):</strong> Em caso de mais de uma deliberação de mérito, seleciona-se a data e hora mais recente (a sessão que consolidou a versão final da matéria na Câmara).
+                <strong>Nível 2 (Presença de Votos Nominais):</strong> Prioriza sessões com votos nominais válidos registrados no painel eletrônico sobre redações finais meramente simbólicas (0 votos nominais).
               </li>
               <li>
-                <strong>Nível 3 (Desempate Alfanumérico Estrito):</strong> Em caso de empate temporal no mesmo segundo, o identificador oficial único da sessão na Câmara dos Deputados (<code>ID da Votação</code>) é utilizado como critério de desempate determinístico.
+                <strong>Nível 3 (Atualidade e Turno Definitivo):</strong> Em caso de mais de uma deliberação de mérito (como em PECs), seleciona-se a data e hora mais recente (o 2º turno, que consolida a manifestação definitiva da Casa).
+              </li>
+              <li>
+                <strong>Nível 4 (Desempate Alfanumérico Estrito):</strong> Em caso de empate temporal no mesmo segundo, o identificador oficial único da sessão na Câmara dos Deputados (<code>ID da Votação</code>) é utilizado como critério de desempate determinístico.
               </li>
             </ol>
           </div>

@@ -22,6 +22,7 @@ import {
   FaSyncAlt,
 } from "react-icons/fa";
 import { saveStoredAnswers, getStoredAnswers, StoredAnswers } from "@/lib/storage";
+import { sortPropositionsByRelevance } from "@/lib/match/classifyVoteSession";
 
 function mulberry32(seed: number) {
   return function () {
@@ -50,6 +51,7 @@ export default function VoteForm() {
   const [answers, setAnswers] = useState<StoredAnswers>({});
   const [search, setSearch] = useState("");
   const [limit, setLimit] = useState(10);
+  const [sortBy, setSortBy] = useState<"relevance" | "recent" | "oldest">("relevance");
   const [shuffle, setShuffle] = useState(false);
   const [seed, setSeed] = useState<number | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
@@ -180,17 +182,25 @@ export default function VoteForm() {
     }
 
     if (!shuffle) {
-      list.sort((a, b) => {
-        const da = (p: PropositionWithVoteSession) => {
-          const dateStr = p.vote_session_date || p.data_apresentacao;
-          return dateStr ? new Date(dateStr).getTime() : 0;
-        };
-        return da(b) - da(a);
-      });
+      if (sortBy === "relevance") {
+        list = sortPropositionsByRelevance(list);
+      } else if (sortBy === "recent") {
+        list.sort((a, b) => {
+          const timeA = a.vote_session_date ? new Date(a.vote_session_date).getTime() : 0;
+          const timeB = b.vote_session_date ? new Date(b.vote_session_date).getTime() : 0;
+          return timeB - timeA || b.id - a.id;
+        });
+      } else if (sortBy === "oldest") {
+        list.sort((a, b) => {
+          const timeA = a.vote_session_date ? new Date(a.vote_session_date).getTime() : 0;
+          const timeB = b.vote_session_date ? new Date(b.vote_session_date).getTime() : 0;
+          return timeA - timeB || a.id - b.id;
+        });
+      }
     }
 
     return list.slice(0, limit);
-  }, [unvotedPropositions, search, limit, shuffle, selectedStatus, selectedYears]);
+  }, [unvotedPropositions, search, limit, sortBy, shuffle, selectedStatus, selectedYears]);
 
   function handleVote(propId: number, opinion: "CONCORDO" | "DISCORDO") {
     const newAnswers = { ...answers, [propId]: opinion };
@@ -254,6 +264,22 @@ export default function VoteForm() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3 text-sm">
+            {/* Ordenação */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground">Ordem:</span>
+              <select
+                value={sortBy}
+                disabled={shuffle}
+                onChange={(e) => setSortBy(e.target.value as "relevance" | "recent" | "oldest")}
+                className="bg-background border border-border rounded-md px-2 py-1 text-xs text-foreground cursor-pointer disabled:opacity-50"
+                title="Critério de ordenação das propostas de lei"
+              >
+                <option value="relevance">Mais Relevantes (Quórum e Disputa)</option>
+                <option value="recent">Mais Recentes</option>
+                <option value="oldest">Mais Antigas</option>
+              </select>
+            </div>
+
             {/* Botão de Toggle do Painel de Filtros */}
             <button
               onClick={() => setShowFilterDrawer(!showFilterDrawer)}
@@ -512,6 +538,27 @@ export default function VoteForm() {
                 <p className="text-sm text-foreground/90 leading-relaxed font-normal">
                   {p.ementa_detalhada || p.ementa}
                 </p>
+
+                {/* Placar e Quórum de Votação Nominal */}
+                {(p.total_sim !== undefined && p.total_sim !== null && (Number(p.total_sim || 0) > 0 || Number(p.total_nao || 0) > 0)) && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs py-1.5 px-3 rounded-xl bg-muted/50 border border-border/70">
+                    <span className="text-muted-foreground font-semibold">Placar no Plenário:</span>
+                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/20">
+                      {Number(p.total_sim || 0)} Sim
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 font-bold border border-rose-500/20">
+                      {Number(p.total_nao || 0)} Não
+                    </span>
+                    {Number(p.total_outros || 0) > 0 && (
+                      <span className="px-2 py-0.5 rounded bg-muted text-muted-foreground font-medium border border-border">
+                        {Number(p.total_outros || 0)} Outros
+                      </span>
+                    )}
+                    <span className="text-muted-foreground text-[11px] ml-auto font-medium">
+                      Quórum: {Number(p.total_sim || 0) + Number(p.total_nao || 0) + Number(p.total_outros || 0)} deputados
+                    </span>
+                  </div>
+                )}
 
                 {/* Acesso a Detalhes e Fontes Oficiais */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">

@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get("query") || "";
-    const sort = searchParams.get("sort") === "asc" ? "asc" : "desc";
+    const sort = searchParams.get("sort") || "relevance";
 
     const cacheKey = `propositions_${query}_${sort}`;
 
@@ -44,9 +44,9 @@ export async function GET(request: NextRequest) {
             v.data_hora,
             v.descricao,
             v.resultado,
-            COUNT(CASE WHEN dv.voto_original ILIKE 'Sim%' THEN 1 END) as total_sim,
-            COUNT(CASE WHEN dv.voto_original ILIKE 'N%' OR dv.voto_original ILIKE 'Não%' THEN 1 END) as total_nao,
-            COUNT(CASE WHEN dv.voto_original NOT ILIKE 'Sim%' AND dv.voto_original NOT ILIKE 'N%' THEN 1 END) as total_outros
+            COUNT(CASE WHEN dv.voto_original ILIKE 'Sim%' THEN 1 END)::int as total_sim,
+            COUNT(CASE WHEN dv.voto_original ILIKE 'N%' OR dv.voto_original ILIKE 'Não%' THEN 1 END)::int as total_nao,
+            COUNT(CASE WHEN dv.voto_original NOT ILIKE 'Sim%' AND dv.voto_original NOT ILIKE 'N%' THEN 1 END)::int as total_outros
           FROM vote_sessions v
           JOIN deputy_votes dv ON dv.votacao_id = v.id
           GROUP BY v.id, v.proposicao_id, v.data_hora, v.descricao, v.resultado
@@ -65,9 +65,34 @@ export async function GET(request: NextRequest) {
         paramIndex++;
       }
 
-      sqlQuery += ` ORDER BY vs.data_hora ${sort.toUpperCase()}`;
+      const sortParam = searchParams.get("sort");
+      if (sortParam === "data_asc" || sortParam === "asc") {
+        sqlQuery += ` ORDER BY vs.data_hora ASC, p.id ASC`;
+      } else if (sortParam === "data_desc") {
+        sqlQuery += ` ORDER BY vs.data_hora DESC, p.id DESC`;
+      } else {
+        // Ordenação Padrão por Relevância e Impacto Político:
+        // 1. Maior Quórum Total (Sim + Não + Outros)
+        // 2. Menor Abstenção e Outros Votos
+        // 3. Menor Diferença Absoluta entre Sim e Não (mais disputada/polarizada)
+        // 4. Data mais recente e ID
+        sqlQuery += `
+          ORDER BY 
+            (COALESCE(vs.total_sim, 0) + COALESCE(vs.total_nao, 0) + COALESCE(vs.total_outros, 0)) DESC,
+            COALESCE(vs.total_outros, 0) ASC,
+            ABS(COALESCE(vs.total_sim, 0) - COALESCE(vs.total_nao, 0)) ASC,
+            vs.data_hora DESC,
+            p.id DESC
+        `;
+      }
 
-      const propositions = await db.unsafe<PropositionWithVoteSession[]>(sqlQuery, params);
+      const propositionsRaw = await db.unsafe<PropositionWithVoteSession[]>(sqlQuery, params);
+      const propositions: PropositionWithVoteSession[] = propositionsRaw.map((p) => ({
+        ...p,
+        total_sim: Number(p.total_sim || 0),
+        total_nao: Number(p.total_nao || 0),
+        total_outros: Number(p.total_outros || 0),
+      }));
 
       // Estados ativos dos deputados para filtros
       const statesResult = await db<Array<{ sigla_uf: string }>>`

@@ -9,8 +9,15 @@ export const metadata: Metadata = {
 
 export default function OpiniaoPage() {
   return (
-    <main className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-semibold mb-4">Como você votaria?</h1>
+    <main className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4">
+      <div className="space-y-1">
+        <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+          Simulador de Votação
+        </h1>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Leia o resumo das leis reais votadas no Congresso e clique em <strong>CONCORDO</strong> ou <strong>DISCORDO</strong>. Com poucas respostas, você descobre quais deputados federais e partidos pensam como você.
+        </p>
+      </div>
       <VoteForm />
     </main>
   );
