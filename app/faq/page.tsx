@@ -16,6 +16,8 @@ import {
   FaCodeBranch,
   FaHistory,
   FaClock,
+  FaExchangeAlt,
+  FaQuoteLeft,
 } from "react-icons/fa";
 import { Button } from "@/app/components/ui/Button";
 import { useSystemStatus } from "@/app/components/SystemStatusProvider";
@@ -276,20 +278,20 @@ export default function FAQPage() {
         </div>
       </section>
 
-      {/* 4. GUIA CÍVICO: A CÂMARA DOS DEPUTADOS */}
+      {/* 4. GUIA CÍVICO: BICAMERALISMO & MANDATOS */}
       <section className="space-y-6">
         <div className="border-b border-border pb-3">
           <h2 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <FaLandmark className="text-secondary w-5 h-5" />
-            O Papel dos Deputados Federais na Câmara dos Deputados
+            Como Funciona o Poder Legislativo no Brasil? (Bicameralismo)
           </h2>
           <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-            Entenda como a Câmara dos Deputados representa os cidadãos brasileiros na elaboração e votação das leis.
+            O Congresso Nacional é bicameral, composto por duas casas legislativas que representam esferas complementares da federação.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Card 1: Representação Popular */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Card 1: Câmara dos Deputados */}
           <div className="p-6 sm:p-7 rounded-2xl bg-card border border-border shadow-soft flex flex-col justify-between space-y-6">
             <div className="space-y-4">
               <div className="flex items-center gap-3.5">
@@ -298,61 +300,61 @@ export default function FAQPage() {
                 </div>
                 <div>
                   <h3 className="font-bold text-foreground text-xl">
-                    Representação do Povo Brasileiro
+                    Câmara dos Deputados
                   </h3>
                   <span className="text-xs font-semibold text-primary">
-                    513 Deputados Federais • Proporcional à População
+                    Representação do Povo • 513 Deputados Federais
                   </span>
                 </div>
               </div>
 
               <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
                 <p>
-                  Os <strong>Deputados Federais</strong> são os representantes diretos da população brasileira. O número de deputados de cada estado e do Distrito Federal é proporcional ao tamanho da sua população, variando de <strong>8 deputados</strong> (estados menores) a <strong>70 deputados</strong> (São Paulo).
+                  Os <strong>Deputados Federais</strong> representam diretamente a população brasileira. A quantidade de cadeiras de cada estado e do Distrito Federal é proporcional ao tamanho da sua população, variando de <strong>8 deputados</strong> (estados menores como AC, AP, RR) a <strong>70 deputados</strong> (São Paulo).
                 </p>
 
                 <div className="p-3.5 rounded-xl bg-muted/60 border border-border/50 text-xs space-y-2 text-foreground">
                   <div className="flex items-center gap-2 font-bold text-primary">
                     <FaCalendarAlt className="w-3.5 h-3.5" />
-                    <span>57ª Legislatura (2023–2027)</span>
+                    <span>Duração do Mandato: 4 Anos (57ª Legislatura: 2023–2027)</span>
                   </div>
                   <p className="text-muted-foreground leading-relaxed">
-                    Mandato de 4 anos eleito pelo sistema proporcional de votação em cada estado.
+                    A cada 4 anos, a Câmara dos Deputados é <strong>integralmente renovada</strong> através de eleições gerais pelo sistema proporcional em cada estado.
                   </p>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Card 2: Deliberação no Plenário */}
+          {/* Card 2: Senado Federal */}
           <div className="p-6 sm:p-7 rounded-2xl bg-card border border-border shadow-soft flex flex-col justify-between space-y-6">
             <div className="space-y-4">
               <div className="flex items-center gap-3.5">
                 <div className="w-12 h-12 rounded-xl bg-secondary/10 text-secondary flex items-center justify-center font-bold shrink-0">
-                  <FaVoteYea className="w-6 h-6" />
+                  <FaBalanceScale className="w-6 h-6" />
                 </div>
                 <div>
                   <h3 className="font-bold text-foreground text-xl">
-                    Votações Nominais no Plenário
+                    Senado Federal
                   </h3>
                   <span className="text-xs font-semibold text-secondary">
-                    Votos Auditáveis e Públicos
+                    Representação dos Estados e DF • 81 Senadores
                   </span>
                 </div>
               </div>
 
               <div className="space-y-3 text-sm text-muted-foreground leading-relaxed">
                 <p>
-                  Nas votações nominais, o voto individual de cada parlamentar (<strong>SIM</strong>, <strong>NÃO</strong> ou <strong>ABSTENÇÃO</strong>) é registrado eletronicamente no painel e publicado no portal oficial de Dados Abertos da Câmara.
+                  O <strong>Senado Federal</strong> representa o Pacto Federativo com igualdade rigorosa entre as 27 unidades da federação. Independentemente do tamanho da população ou território, cada estado e o DF possuem exatamente <strong>3 senadores</strong>.
                 </p>
 
                 <div className="p-3.5 rounded-xl bg-muted/60 border border-border/50 text-xs space-y-2 text-foreground">
                   <div className="flex items-center gap-2 font-bold text-secondary">
-                    <FaBalanceScale className="w-3.5 h-3.5" />
-                    <span>Transparência Total</span>
+                    <FaExchangeAlt className="w-3.5 h-3.5" />
+                    <span>Duração do Mandato: 8 Anos (Renovação Parcial Alternada)</span>
                   </div>
                   <p className="text-muted-foreground leading-relaxed">
-                    O LegisVisão utiliza exclusivamente essas votações nominais oficiais para aferir sua concordância real com cada deputado.
+                    O mandato do senador dura 8 anos, com renovação alternada a cada 4 anos: <strong>1/3 das cadeiras</strong> (1 senador por UF) em uma eleição e <strong>2/3 das cadeiras</strong> (2 senadores por UF) na eleição seguinte.
                   </p>
                 </div>
               </div>
@@ -569,6 +571,54 @@ export default function FAQPage() {
               <FaExternalLinkAlt className="w-2.5 h-2.5 ml-0.5" />
             </a>
           </p>
+        </div>
+
+        <div className="pt-4 flex flex-wrap gap-3">
+          <Button variant="hero" href="/opiniao">
+            Analisar Propostas
+          </Button>
+          <Button variant="outline" href="/afinidade">
+            Ver Afinidade
+          </Button>
+        </div>
+      </section>
+
+      {/* 8. PENSAMENTOS & REFLEXÕES */}
+      <section className="space-y-4 pt-4">
+        <div className="flex items-center gap-2 border-b border-border pb-3">
+          <FaQuoteLeft className="text-primary w-5 h-5" />
+          <h2 className="text-2xl font-bold text-foreground">
+            Pensamentos & Inspirações
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-5 rounded-2xl bg-card border border-border shadow-soft flex flex-col justify-between space-y-3">
+            <p className="text-sm italic text-foreground leading-relaxed">
+              &ldquo;Julgue um homem pelas suas perguntas, não pelas suas respostas.&rdquo;
+            </p>
+            <span className="text-xs font-semibold text-primary">
+              — Voltaire
+            </span>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-card border border-border shadow-soft flex flex-col justify-between space-y-3">
+            <p className="text-sm italic text-foreground leading-relaxed">
+              &ldquo;A dúvida é o princípio da sabedoria.&rdquo;
+            </p>
+            <span className="text-xs font-semibold text-primary">
+              — Aristóteles
+            </span>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-primary/5 border border-primary/20 shadow-soft flex flex-col justify-between space-y-3">
+            <p className="text-sm italic text-foreground font-medium leading-relaxed">
+              &ldquo;Nenhuma fonte é completa por si só. Busque informações diversas e verificáveis para formar sua opinião.&rdquo;
+            </p>
+            <span className="text-xs font-bold text-primary">
+              — Zancanela, Luis (LegisVisão, 2026)
+            </span>
+          </div>
         </div>
       </section>
     </main>
