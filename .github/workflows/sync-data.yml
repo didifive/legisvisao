@@ -30,6 +30,4 @@ jobs:
         run: npm ci
 
       - name: Executar Pipeline de Sincronização
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: npx tsx scripts/sync/index.ts
