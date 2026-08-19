@@ -140,8 +140,8 @@ export async function syncPropositions(): Promise<{
 
   console.log(`🎯 [Proposições] ${uniquePropIds.size} proposições únicas identificadas a partir de ${validSessionsMap.size} sessões de plenário.`);
 
-  // 3. Enriquecer apenas proposições pendentes de cadastro ou atualização
-  const propIdsToEnrich = Array.from(uniquePropIds);
+  // 3. Enriquecer apenas proposições pendentes de cadastro no banco
+  const propIdsToEnrich = Array.from(uniquePropIds).filter((id) => !existingPropsSet.has(id));
   const propsMapToInsert = new Map<number, {
     id: number;
     sigla_tipo: string;
@@ -157,51 +157,60 @@ export async function syncPropositions(): Promise<{
   }>();
 
   let enrichedCount = 0;
-  console.log(`📝 [Proposições] Consultando detalhes de ${propIdsToEnrich.length} proposições na API da Câmara...`);
+  const totalToEnrich = propIdsToEnrich.length;
+  const enrichStartTime = Date.now();
 
-  await mapConcurrent(propIdsToEnrich, 15, async (propId) => {
-    try {
-      const propRes = await fetchWithRetry(`${CAMARA_API_BASE}/proposicoes/${propId}`, 2, 250);
-      if (propRes.ok) {
-        const pJson = await propRes.json();
-        const pd: CamaraPropositionSummary | undefined = pJson.dados;
+  if (totalToEnrich === 0) {
+    console.log(`⚡ [Proposições] Todas as ${uniquePropIds.size} proposições já estão com dados completos em cache no banco!`);
+  } else {
+    console.log(`📝 [Proposições] Consultando detalhes de ${totalToEnrich} novas proposições na API da Câmara (concorrência: 25 workers)...`);
 
-        if (pd) {
-          const siglaTipo = pd.siglaTipo ? pd.siglaTipo.trim().toUpperCase() : "PROP";
-          const numero = pd.numero ? Number(pd.numero) : 0;
-          const ano = pd.ano ? Number(pd.ano) : 2024;
-          const titulo = numero > 0 ? `${siglaTipo} ${numero}/${ano}` : `Proposição ${propId}`;
-          const ementa = pd.ementa || pd.ementaDetalhada || `Deliberação legislativa sobre ${titulo}`;
-          const urlInteiroTeor = pd.urlInteiroTeor || null;
-          const urlCamara = `https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao=${propId}`;
-          const dataApresentacao = pd.dataApresentacao ? pd.dataApresentacao.substring(0, 10) : null;
-          const ultimoStatus = pd.statusProposicao?.descricaoSituacao || pd.statusProposicao?.descricaoTramitacao || null;
+    await mapConcurrent(propIdsToEnrich, 25, async (propId) => {
+      try {
+        const propRes = await fetchWithRetry(`${CAMARA_API_BASE}/proposicoes/${propId}`, 2, 200);
+        if (propRes.ok) {
+          const pJson = await propRes.json();
+          const pd: CamaraPropositionSummary | undefined = pJson.dados;
 
-          propsMapToInsert.set(propId, {
-            id: propId,
-            sigla_tipo: siglaTipo,
-            numero,
-            ano,
-            titulo,
-            ementa,
-            ementa_detalhada: ementa,
-            url_inteiro_teor: urlInteiroTeor,
-            url_camara: urlCamara,
-            data_apresentacao: dataApresentacao,
-            ultimo_status: ultimoStatus,
-          });
+          if (pd) {
+            const siglaTipo = pd.siglaTipo ? pd.siglaTipo.trim().toUpperCase() : "PROP";
+            const numero = pd.numero ? Number(pd.numero) : 0;
+            const ano = pd.ano ? Number(pd.ano) : 2024;
+            const titulo = numero > 0 ? `${siglaTipo} ${numero}/${ano}` : `Proposição ${propId}`;
+            const ementa = pd.ementa || pd.ementaDetalhada || `Deliberação legislativa sobre ${titulo}`;
+            const urlInteiroTeor = pd.urlInteiroTeor || null;
+            const urlCamara = `https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao=${propId}`;
+            const dataApresentacao = pd.dataApresentacao ? pd.dataApresentacao.substring(0, 10) : null;
+            const ultimoStatus = pd.statusProposicao?.descricaoSituacao || pd.statusProposicao?.descricaoTramitacao || null;
+
+            propsMapToInsert.set(propId, {
+              id: propId,
+              sigla_tipo: siglaTipo,
+              numero,
+              ano,
+              titulo,
+              ementa,
+              ementa_detalhada: ementa,
+              url_inteiro_teor: urlInteiroTeor,
+              url_camara: urlCamara,
+              data_apresentacao: dataApresentacao,
+              ultimo_status: ultimoStatus,
+            });
+          }
+        }
+      } catch {
+        // Ignora erro pontual
+      } finally {
+        enrichedCount++;
+        if (enrichedCount % 500 === 0 || enrichedCount === totalToEnrich) {
+          const pct = ((enrichedCount / totalToEnrich) * 100).toFixed(1);
+          const elapsedSec = Math.max(1, Math.round((Date.now() - enrichStartTime) / 1000));
+          const rate = Math.round(enrichedCount / elapsedSec);
+          console.log(`⏳ [Proposições] ${enrichedCount}/${totalToEnrich} enriquecidas (${pct}%) - ${rate} req/s`);
         }
       }
-    } catch {
-      // Ignora erro pontual
-    } finally {
-      enrichedCount++;
-      if (enrichedCount % 100 === 0 || enrichedCount === propIdsToEnrich.length) {
-        const pct = ((enrichedCount / propIdsToEnrich.length) * 100).toFixed(1);
-        console.log(`⏳ [Proposições] ${enrichedCount}/${propIdsToEnrich.length} proposições enriquecidas (${pct}%).`);
-      }
-    }
-  });
+    });
+  }
 
   // 4. Salvar Proposições em Lotes (Batch Insert)
   let insertedProps = 0;
