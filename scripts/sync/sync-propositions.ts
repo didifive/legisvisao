@@ -273,8 +273,7 @@ export async function syncPropositions(): Promise<{
         data_hora = EXCLUDED.data_hora,
         descricao = EXCLUDED.descricao,
         resultado = EXCLUDED.resultado,
-        sigla_orgao = EXCLUDED.sigla_orgao,
-        last_updated_at = NOW()
+        sigla_orgao = EXCLUDED.sigla_orgao
       RETURNING (xmax = 0) AS is_insert;
     `;
 
