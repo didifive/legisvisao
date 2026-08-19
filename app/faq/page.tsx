@@ -477,11 +477,17 @@ export default function FAQPage() {
             </div>
           </div>
 
-          <div className="p-4 sm:p-5 rounded-xl bg-muted/60 border border-border text-xs text-foreground space-y-2">
-            <span className="font-bold text-primary block">🎯 Por que o Voto de Mérito Principal é o considerado no cálculo de afinidade?</span>
+          <div className="p-4 sm:p-5 rounded-xl bg-muted/60 border border-border text-xs text-foreground space-y-3">
+            <span className="font-bold text-primary block text-sm">🎯 Por que o Voto de Mérito Principal é o considerado no cálculo de afinidade?</span>
             <p className="text-muted-foreground text-xs leading-relaxed">
-              Quando você responde ao questionário de opiniões ("Concordo" ou "Discordo"), você está avaliando o <strong>mérito substantivo da proposta</strong>. Vincular sua resposta à deliberação principal de mérito evita que táticas meramente regimentais (como votar "Sim" para retirar de pauta para estender o debate) distorçam a afinidade real do eleitor com o parlamentar. No perfil de cada deputado, todos os momentos são exibidos de forma auditável e transparente.
+              <strong>A votação principal é utilizada para o cálculo básico de afinidade, por representar a decisão final de mérito da Câmara sobre a matéria.</strong> Quando você responde ao questionário ("Concordo" ou "Discordo"), sua opinião avalia o mérito substantivo da proposta de lei. Vincular sua resposta à deliberação principal evita que manobras puramente procedimentais (como votar "Sim" para adiar sessão) distorçam o índice básico.
             </p>
+            <div className="pt-1 p-3.5 rounded-lg bg-background/80 border border-border/70 space-y-1.5">
+              <span className="font-semibold text-foreground text-xs block">💡 E as nuances ideológicas em Destaques e Emendas?</span>
+              <p className="text-muted-foreground text-xs leading-relaxed">
+                Nem sempre a deliberação mais polarizada é o texto-base — em muitas leis, o texto geral é aprovado por consenso e a verdadeira disputa ideológica ocorre em um <strong>Destaque para Votação em Separado (DVS)</strong> para retirar ou manter um artigo polêmico. Por essa razão, o LegisVisão <strong>não oculta nenhuma votação</strong>: na página de cada projeto e no perfil de cada deputado, todo o histórico de emendas e destaques é exibido com crachás visuais explicativos, garantindo total transparência para análises avançadas.
+              </p>
+            </div>
           </div>
 
           {/* Critério Determinístico Estrito de Classificação */}
