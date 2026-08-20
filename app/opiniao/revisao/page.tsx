@@ -21,23 +21,16 @@ import {
   FaLandmark,
   FaExclamationTriangle,
   FaSyncAlt,
-  FaLayerGroup,
-  FaRobot,
 } from "react-icons/fa";
 import {
   getStoredAnswers,
   saveStoredAnswers,
-  getStoredGranularAnswers,
-  saveStoredGranularAnswer,
-  removeStoredGranularAnswer,
   StoredAnswers,
-  StoredGranularAnswers,
 } from "@/lib/storage";
 
 export default function RevisaoPage() {
   const [propositions, setPropositions] = useState<PropositionWithVoteSession[]>([]);
   const [answers, setAnswers] = useState<StoredAnswers>({});
-  const [granularAnswers, setGranularAnswers] = useState<StoredGranularAnswers>({});
   const [search, setSearch] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [selectedYears, setSelectedYears] = useState<number[]>([]);
@@ -54,11 +47,9 @@ export default function RevisaoPage() {
         );
 
         const savedAnswers = getStoredAnswers();
-        const savedGranular = getStoredGranularAnswers();
 
         if (!mounted) return;
         setAnswers(savedAnswers);
-        setGranularAnswers(savedGranular);
         setPropositions(propsData.propositions || propsData.projects || []);
       } catch (err) {
         console.error("Erro ao carregar revisão:", err);
@@ -71,7 +62,6 @@ export default function RevisaoPage() {
 
     const handleStorage = () => {
       setAnswers(getStoredAnswers());
-      setGranularAnswers(getStoredGranularAnswers());
     };
 
     window.addEventListener("storage-answers-updated", handleStorage);
@@ -92,59 +82,25 @@ export default function RevisaoPage() {
     return map;
   }, [propositions]);
 
-  // Mapeia votos granulares para os seus respectivos IDs de proposição pai
-  const granularVotesByPropId = useMemo(() => {
-    const map = new Map<number, Array<{ sessionId: string; opinion: "CONCORDO" | "DISCORDO" }>>();
-
-    for (const [sessionId, opinion] of Object.entries(granularAnswers)) {
-      let propId: number | null = null;
-      if (sessionId.includes("-")) {
-        const prefix = Number(sessionId.split("-")[0]);
-        if (!Number.isNaN(prefix) && prefix > 0) {
-          propId = prefix;
-        }
-      }
-
-      if (propId) {
-        const list = map.get(propId) || [];
-        list.push({ sessionId, opinion });
-        map.set(propId, list);
-      }
-    }
-
-    return map;
-  }, [granularAnswers]);
-
-  // Lista todas as proposições que possuem voto geral OU voto granular em destaques
+  // Lista de proposições respondidas pelo usuário
   const answeredPropositions = useMemo(() => {
-    const propIdSet = new Set<number>();
-    for (const k of Object.keys(answers)) {
-      const pId = Number(k);
-      if (!Number.isNaN(pId)) propIdSet.add(pId);
-    }
-    for (const pId of granularVotesByPropId.keys()) {
-      propIdSet.add(pId);
-    }
-
     const list: Array<{
       proposition: PropositionWithVoteSession;
-      generalAnswer: "CONCORDO" | "DISCORDO" | null;
-      granularList: Array<{ sessionId: string; opinion: "CONCORDO" | "DISCORDO" }>;
+      answer: "CONCORDO" | "DISCORDO";
     }> = [];
 
-    for (const pId of propIdSet) {
-      const proposition = propsById.get(pId);
-      if (proposition) {
-        list.push({
-          proposition,
-          generalAnswer: answers[pId] || null,
-          granularList: granularVotesByPropId.get(pId) || [],
-        });
+    for (const [propIdStr, opinion] of Object.entries(answers)) {
+      const pId = Number(propIdStr);
+      if (!Number.isNaN(pId)) {
+        const proposition = propsById.get(pId);
+        if (proposition) {
+          list.push({ proposition, answer: opinion });
+        }
       }
     }
 
     return list;
-  }, [answers, granularVotesByPropId, propsById]);
+  }, [answers, propsById]);
 
   // Situações presentes nas proposições respondidas
   const availableStatus = useMemo(() => {
@@ -234,29 +190,9 @@ export default function RevisaoPage() {
     saveStoredAnswers(updated);
   }
 
-  function handleGranularVoteChange(sessionId: string, opinion: "CONCORDO" | "DISCORDO") {
-    saveStoredGranularAnswer(sessionId, opinion);
-    setGranularAnswers((prev) => ({ ...prev, [sessionId]: opinion }));
-  }
-
-  function handleRemoveGranularOpinion(sessionId: string) {
-    removeStoredGranularAnswer(sessionId);
-    setGranularAnswers((prev) => {
-      const { [sessionId]: _, ...rest } = prev;
-      return rest;
-    });
-  }
-
-  // Contagem Geral + Granular
-  const generalConcordo = Object.values(answers).filter((a) => a === "CONCORDO").length;
-  const granularConcordo = Object.values(granularAnswers).filter((a) => a === "CONCORDO").length;
-  const concordoCount = generalConcordo + granularConcordo;
-
-  const generalDiscordo = Object.values(answers).filter((a) => a === "DISCORDO").length;
-  const granularDiscordo = Object.values(granularAnswers).filter((a) => a === "DISCORDO").length;
-  const discordoCount = generalDiscordo + granularDiscordo;
-
-  const totalCount = Object.keys(answers).length + Object.keys(granularAnswers).length;
+  const concordoCount = Object.values(answers).filter((a) => a === "CONCORDO").length;
+  const discordoCount = Object.values(answers).filter((a) => a === "DISCORDO").length;
+  const totalCount = Object.keys(answers).length;
   const activeFiltersCount = selectedStatus.length + selectedYears.length;
 
   if (loading) {
@@ -367,38 +303,47 @@ export default function RevisaoPage() {
         </div>
       ) : (
         <>
-          {/* Barra de Busca & Filtros */}
-          <div className="p-4 rounded-xl bg-card border border-border shadow-soft space-y-3">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-1.5 focus-within:ring-2 focus-within:ring-primary/20 flex-1">
-                <FaSearch className="text-muted-foreground w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Buscar proposta por tema, sigla ou número..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full bg-transparent border-none outline-none text-xs sm:text-sm text-foreground"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
+          {/* Barra de Busca & Filtros (Ampla e com layout destacado) */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-card border border-border shadow-soft space-y-4">
+            {/* 1. Busca ampla */}
+            <div className="relative flex items-center w-full">
+              <FaSearch className="absolute left-3.5 text-muted-foreground w-4 h-4 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Buscar em minhas respostas por tema, palavra-chave, sigla ou número..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl pl-10 pr-10 py-2.5 text-sm sm:text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-smooth"
+              />
+              {search && (
                 <button
-                  onClick={() => setShowFilterDrawer(!showFilterDrawer)}
-                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-smooth cursor-pointer ${
-                    activeFiltersCount > 0 || showFilterDrawer
-                      ? "bg-primary text-white border-primary shadow-soft"
-                      : "bg-background border-border text-foreground hover:bg-muted"
-                  }`}
+                  onClick={() => setSearch("")}
+                  className="absolute right-3 p-1 rounded-md text-muted-foreground hover:text-foreground text-xs hover:bg-muted transition-smooth"
+                  title="Limpar busca"
                 >
-                  <FaFilter className="w-3 h-3" />
-                  <span>Filtros {activeFiltersCount > 0 ? `(${activeFiltersCount})` : "Avançados"}</span>
+                  <FaTimes className="w-3.5 h-3.5" />
                 </button>
+              )}
+            </div>
 
-                <Button variant="hero" size="sm" href="/afinidade" className="gap-1.5 text-xs font-bold shrink-0">
-                  <FaChartPie className="w-3.5 h-3.5" />
-                  <span>Ver Afinidade</span>
-                </Button>
-              </div>
+            {/* 2. Controles de Filtragem */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border/40">
+              <button
+                onClick={() => setShowFilterDrawer(!showFilterDrawer)}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-smooth cursor-pointer font-bold ${
+                  activeFiltersCount > 0 || showFilterDrawer
+                    ? "bg-primary text-white border-primary shadow-soft"
+                    : "bg-background border-border text-foreground hover:bg-muted"
+                }`}
+              >
+                <FaFilter className="w-3 h-3" />
+                <span>Filtros {activeFiltersCount > 0 ? `(${activeFiltersCount})` : "Avançados"}</span>
+              </button>
+
+              <Button variant="hero" size="sm" href="/afinidade" className="gap-1.5 text-xs font-bold shrink-0">
+                <FaChartPie className="w-3.5 h-3.5" />
+                <span>Ver Afinidade com Parlamentares</span>
+              </Button>
             </div>
 
             {/* Painel Avançado: Filtros por Ano e Situação */}
@@ -488,7 +433,7 @@ export default function RevisaoPage() {
             )}
           </div>
 
-          {/* Lista de Proposições Respondidas (com agrupamento hierárquico) */}
+          {/* Lista de Proposições Respondidas */}
           {filteredList.length === 0 ? (
             <div className="p-8 rounded-xl bg-card border border-border text-center space-y-3 shadow-soft">
               <p className="text-muted-foreground text-sm">
@@ -499,8 +444,9 @@ export default function RevisaoPage() {
               </Button>
             </div>
           ) : (
-            <div className="space-y-6">
-              {filteredList.map(({ proposition, generalAnswer, granularList }) => {
+            <div className="space-y-4">
+              {filteredList.map(({ proposition, answer }) => {
+                const isConcordo = answer === "CONCORDO";
                 const situacaoAtual = proposition.ultimo_status || "Em Tramitação";
                 const lastVoteDate = proposition.vote_session_date
                   ? new Date(proposition.vote_session_date).toLocaleDateString("pt-BR")
@@ -511,7 +457,7 @@ export default function RevisaoPage() {
                 return (
                   <div
                     key={proposition.id}
-                    className="p-5 sm:p-6 rounded-2xl bg-card border border-border shadow-soft hover:shadow-medium transition-smooth space-y-5"
+                    className="p-5 sm:p-6 rounded-2xl bg-card border border-border shadow-soft hover:shadow-medium transition-smooth space-y-4"
                   >
                     {/* Header do Card */}
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -568,149 +514,68 @@ export default function RevisaoPage() {
                         href={`/projetos/${proposition.id}`}
                         className="inline-flex items-center gap-1 text-primary hover:underline font-bold"
                       >
-                        <span>Ver todos os destaques, tramitação e votos</span>
+                        <span>Ver detalhes da tramitação e votos nominais</span>
                         <FaExternalLinkAlt className="w-2.5 h-2.5" />
                       </Link>
                     </div>
 
-                    {/* 1. Painel de Opinião Geral da Lei (se houver) */}
-                    {generalAnswer && (
-                      <div className="pt-3 border-t border-border/60 flex flex-wrap items-center justify-between gap-3 bg-muted/20 -mx-5 sm:-mx-6 px-5 sm:px-6 py-3.5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold text-muted-foreground">
-                            Voto no Texto-Base (Projeto Geral):
-                          </span>
-                          <span
-                            className={`px-3 py-1 rounded-lg text-xs font-extrabold flex items-center gap-1 ${
-                              generalAnswer === "CONCORDO"
-                                ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
-                                : "bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30"
-                            }`}
-                          >
-                            {generalAnswer === "CONCORDO" ? <FaCheck className="w-3 h-3" /> : <FaTimes className="w-3 h-3" />}
-                            <span>{generalAnswer}</span>
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleVoteChange(proposition.id, "CONCORDO")}
-                            disabled={generalAnswer === "CONCORDO"}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-smooth cursor-pointer ${
-                              generalAnswer === "CONCORDO"
-                                ? "opacity-40 cursor-not-allowed bg-emerald-600 text-white"
-                                : "bg-background border border-border text-foreground hover:bg-emerald-600 hover:text-white"
-                            }`}
-                          >
-                            <FaCheck className="w-3 h-3" />
-                            <span>Mudar p/ Concordo</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleVoteChange(proposition.id, "DISCORDO")}
-                            disabled={generalAnswer === "DISCORDO"}
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-smooth cursor-pointer ${
-                              generalAnswer === "DISCORDO"
-                                ? "opacity-40 cursor-not-allowed bg-rose-600 text-white"
-                                : "bg-background border border-border text-foreground hover:bg-rose-600 hover:text-white"
-                            }`}
-                          >
-                            <FaTimes className="w-3 h-3" />
-                            <span>Mudar p/ Discordo</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveOpinion(proposition.id)}
-                            title="Remover minha resposta do projeto geral"
-                            className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 border border-transparent hover:border-destructive/20 transition-smooth cursor-pointer ml-1"
-                          >
-                            <FaTrashAlt className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                    {/* Painel de Modificação de Resposta */}
+                    <div className="pt-3 border-t border-border/60 flex flex-wrap items-center justify-between gap-3 bg-muted/20 -mx-5 -mb-5 sm:-mx-6 sm:-mb-6 p-4 sm:p-5 rounded-b-2xl">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-muted-foreground">
+                          Sua Opinião Registrada:
+                        </span>
+                        <span
+                          className={`px-3 py-1 rounded-lg text-xs font-extrabold flex items-center gap-1 ${
+                            isConcordo
+                              ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
+                              : "bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30"
+                          }`}
+                        >
+                          {isConcordo ? <FaCheck className="w-3 h-3" /> : <FaTimes className="w-3 h-3" />}
+                          <span>{answer}</span>
+                        </span>
                       </div>
-                    )}
 
-                    {/* 2. Painel Agrupado de Destaques e Emendas Específicas */}
-                    {granularList.length > 0 && (
-                      <div className="space-y-2.5 pt-2 border-t border-border/50">
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                          <FaLayerGroup className="w-3 h-3 text-primary" />
-                          <span>Destaques & Emendas Votadas neste Projeto ({granularList.length}):</span>
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleVoteChange(proposition.id, "CONCORDO")}
+                          disabled={isConcordo}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-smooth cursor-pointer ${
+                            isConcordo
+                              ? "opacity-40 cursor-not-allowed bg-emerald-600 text-white"
+                              : "bg-background border border-border text-foreground hover:bg-emerald-600 hover:text-white"
+                          }`}
+                        >
+                          <FaCheck className="w-3 h-3" />
+                          <span>Mudar para Concordo</span>
+                        </button>
 
-                        <div className="space-y-2">
-                          {granularList.map(({ sessionId, opinion }) => {
-                            const isGranularConcordo = opinion === "CONCORDO";
+                        <button
+                          type="button"
+                          onClick={() => handleVoteChange(proposition.id, "DISCORDO")}
+                          disabled={!isConcordo}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-smooth cursor-pointer ${
+                            !isConcordo
+                              ? "opacity-40 cursor-not-allowed bg-rose-600 text-white"
+                              : "bg-background border border-border text-foreground hover:bg-rose-600 hover:text-white"
+                          }`}
+                        >
+                          <FaTimes className="w-3 h-3" />
+                          <span>Mudar para Discordo</span>
+                        </button>
 
-                            return (
-                              <div
-                                key={sessionId}
-                                className="p-3 sm:p-3.5 rounded-xl bg-background border border-border/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-soft"
-                              >
-                                <div className="space-y-0.5 min-w-0 flex-1">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 flex items-center gap-1">
-                                      <FaRobot className="w-2.5 h-2.5" />
-                                      <span>Destaque / Deliberação {sessionId}</span>
-                                    </span>
-                                    <span
-                                      className={`px-2 py-0.5 rounded text-[11px] font-black flex items-center gap-1 border ${
-                                        isGranularConcordo
-                                          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
-                                          : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30"
-                                      }`}
-                                    >
-                                      {isGranularConcordo ? <FaCheck className="w-2.5 h-2.5" /> : <FaTimes className="w-2.5 h-2.5" />}
-                                      <span>{opinion}</span>
-                                    </span>
-                                  </div>
-                                </div>
-
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleGranularVoteChange(sessionId, "CONCORDO")}
-                                    disabled={isGranularConcordo}
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-smooth cursor-pointer ${
-                                      isGranularConcordo
-                                        ? "opacity-40 cursor-not-allowed bg-emerald-600 text-white"
-                                        : "bg-muted text-foreground hover:bg-emerald-600 hover:text-white"
-                                    }`}
-                                  >
-                                    Concordo
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleGranularVoteChange(sessionId, "DISCORDO")}
-                                    disabled={!isGranularConcordo}
-                                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-smooth cursor-pointer ${
-                                      !isGranularConcordo
-                                        ? "opacity-40 cursor-not-allowed bg-rose-600 text-white"
-                                        : "bg-muted text-foreground hover:bg-rose-600 hover:text-white"
-                                    }`}
-                                  >
-                                    Discordo
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveGranularOpinion(sessionId)}
-                                    title="Remover voto neste destaque"
-                                    className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-smooth cursor-pointer"
-                                  >
-                                    <FaTrashAlt className="w-3 h-3" />
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveOpinion(proposition.id)}
+                          title="Remover minha resposta desta proposta"
+                          className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 border border-transparent hover:border-destructive/20 transition-smooth cursor-pointer ml-1"
+                        >
+                          <FaTrashAlt className="w-3.5 h-3.5" />
+                        </button>
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               })}

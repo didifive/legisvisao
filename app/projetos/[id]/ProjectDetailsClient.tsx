@@ -23,17 +23,12 @@ import {
   FaChevronDown,
   FaChevronUp,
   FaRobot,
-  FaTrashAlt,
 } from "react-icons/fa";
 import type { Proposition, VoteSession } from "@/types/db";
 import { normalizeVote } from "@/lib/match/normalizeVotes";
 import {
   getStoredAnswers,
   saveStoredAnswers,
-  getStoredGranularAnswers,
-  saveStoredGranularAnswer,
-  removeStoredGranularAnswer,
-  StoredGranularAnswers,
 } from "@/lib/storage";
 
 import {
@@ -63,7 +58,6 @@ export default function ProjectDetailsClient({
   votes,
 }: Readonly<ProjectDetailsClientProps>) {
   const [userOpinion, setUserOpinion] = useState<"CONCORDO" | "DISCORDO" | null>(null);
-  const [granularAnswers, setGranularAnswers] = useState<StoredGranularAnswers>({});
   const [voteSearch, setVoteSearch] = useState("");
   const [filterParty, setFilterParty] = useState<string>("ALL");
   const [filterState, setFilterState] = useState<string>("ALL");
@@ -73,17 +67,13 @@ export default function ProjectDetailsClient({
 
   useEffect(() => {
     const stored = getStoredAnswers();
-    const storedGranular = getStoredGranularAnswers();
     if (stored[proposition.id]) {
       setUserOpinion(stored[proposition.id]);
     }
-    setGranularAnswers(storedGranular);
 
     const handleStorageUpdate = () => {
       const updated = getStoredAnswers();
-      const updatedGranular = getStoredGranularAnswers();
       setUserOpinion(updated[proposition.id] || null);
-      setGranularAnswers(updatedGranular);
     };
 
     window.addEventListener("storage-answers-updated", handleStorageUpdate);
@@ -96,26 +86,13 @@ export default function ProjectDetailsClient({
   }, [proposition.id]);
 
   function handleVote(opinion: "CONCORDO" | "DISCORDO") {
-    const stored = getStoredAnswers();
-    const updated = { ...stored, [proposition.id]: opinion };
-    saveStoredAnswers(updated);
+    const current = getStoredAnswers();
+    const updated = { ...current, [proposition.id]: opinion };
     setUserOpinion(opinion);
+    saveStoredAnswers(updated);
   }
 
-  function handleGranularVote(sessionId: string, opinion: "CONCORDO" | "DISCORDO") {
-    saveStoredGranularAnswer(sessionId, opinion);
-    setGranularAnswers((prev) => ({ ...prev, [sessionId]: opinion }));
-  }
-
-  function handleRemoveGranularVote(sessionId: string) {
-    removeStoredGranularAnswer(sessionId);
-    setGranularAnswers((prev) => {
-      const { [sessionId]: _, ...rest } = prev;
-      return rest;
-    });
-  }
-
-  // Agrupa votos por votacao_id
+  // Agrupa votos nominais por ID de sessão de votação
   const votesBySession = useMemo(() => {
     const map = new Map<string, RawVote[]>();
     for (const v of votes) {
@@ -264,108 +241,136 @@ export default function ProjectDetailsClient({
     })
     : null;
 
+  const situacaoAtual = proposition.ultimo_status || "Em Tramitação";
+  const isAprovado =
+    situacaoAtual.toLowerCase().includes("aprovad") ||
+    situacaoAtual.toLowerCase().includes("transformad") ||
+    situacaoAtual.toLowerCase().includes("norma");
+  const isArquivado =
+    situacaoAtual.toLowerCase().includes("arquivad") ||
+    situacaoAtual.toLowerCase().includes("rejeitad") ||
+    situacaoAtual.toLowerCase().includes("encerrad");
+
   const nominalSessions = classifiedSessions.filter((s) => s.votesCount > 0);
   const isPrimaryActive = activeSession?.id === primarySession?.id;
 
   return (
-    <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10">
-      {/* Breadcrumb */}
+    <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 space-y-8 animate-fade-in">
+      {/* Navegação de Retorno */}
       <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-        <Link href="/opiniao" className="hover:text-primary transition-smooth flex items-center gap-1">
+        <Link
+          href="/opiniao"
+          className="hover:text-primary transition-smooth flex items-center gap-1.5"
+        >
           <FaArrowLeft className="w-3 h-3" />
-          <span>Propostas</span>
+          <span>Voltar para Votação</span>
         </Link>
         <span>/</span>
-        <span className="text-foreground font-semibold">{proposition.titulo}</span>
+        <span className="text-foreground font-semibold">Detalhes do Projeto</span>
       </div>
 
-      {/* Header e Metadados Detalhados da Proposição */}
+      {/* Cartão de Cabeçalho do Projeto */}
       <div className="p-6 sm:p-8 rounded-2xl bg-card border border-border shadow-soft space-y-6">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div className="space-y-2.5 max-w-2xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-bold">
-                <FaLandmark className="w-3 h-3" />
-                Câmara dos Deputados (Plenário)
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 text-xs font-bold">
+              <FaLandmark className="w-3 h-3" />
+              <span>Câmara dos Deputados</span>
+            </span>
+
+            {proposition.tema && (
+              <span className="px-3 py-1 rounded-full bg-secondary/10 text-secondary border border-secondary/20 text-xs font-bold">
+                {proposition.tema}
               </span>
-
-              {proposition.tema && (
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-muted text-muted-foreground border border-border/50">
-                  {proposition.tema}
-                </span>
-              )}
-
-              {proposition.ultimo_status && (
-                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-secondary/10 text-secondary border border-secondary/20">
-                  {proposition.ultimo_status}
-                </span>
-              )}
-
-              {presentationDate && (
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <FaCalendarAlt className="w-3 h-3 text-muted-foreground/70" />
-                  <span>Apresentado em {presentationDate}</span>
-                </span>
-              )}
-            </div>
-
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
-              {proposition.titulo}
-            </h1>
-          </div>
-
-          {/* Links Oficiais da Câmara */}
-          <div className="flex flex-wrap gap-2 shrink-0">
-            {proposition.url_camara && (
-              <a
-                href={proposition.url_camara}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-border bg-background hover:bg-muted text-xs font-bold transition-smooth shadow-soft"
-              >
-                <FaExternalLinkAlt className="w-3 h-3 text-primary" />
-                <span>Página Oficial na Câmara</span>
-              </a>
             )}
 
-            {proposition.url_inteiro_teor && (
-              <a
-                href={proposition.url_inteiro_teor}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 text-xs font-bold transition-smooth"
-              >
-                <FaFileAlt className="w-3 h-3" />
-                <span>Texto Integral (PDF)</span>
-              </a>
-            )}
+            <span
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${isAprovado
+                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                  : isArquivado
+                    ? "bg-rose-500/10 text-rose-600 border-rose-500/20"
+                    : "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                }`}
+            >
+              <FaInfoCircle className="w-3 h-3" />
+              <span>{situacaoAtual}</span>
+            </span>
           </div>
+
+          {presentationDate && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+              <FaCalendarAlt className="w-3.5 h-3.5 text-primary" />
+              <span>Apresentado em {presentationDate}</span>
+            </span>
+          )}
         </div>
 
-        {/* Ementa Oficial */}
-        <div className="p-4 sm:p-5 rounded-xl bg-muted/40 border border-border/70 space-y-2">
-          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
-            Ementa Oficial
-          </span>
-          <p className="text-sm sm:text-base text-foreground leading-relaxed">
+        <div className="space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="p-3 rounded-xl bg-primary/10 text-primary shrink-0 mt-1">
+              <FaFileAlt className="w-5 h-5" />
+            </div>
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground leading-tight">
+                {proposition.titulo}
+              </h1>
+              <p className="text-sm font-semibold text-muted-foreground mt-0.5">
+                {proposition.sigla_tipo} {proposition.numero}/{proposition.ano}
+              </p>
+            </div>
+          </div>
+
+          <p className="text-base text-foreground leading-relaxed font-normal pt-2">
             {proposition.ementa_detalhada || proposition.ementa}
           </p>
         </div>
 
-        {/* Área de Posicionamento do Visitante */}
-        <div className="p-5 rounded-xl bg-gradient-subtle border border-primary/20 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-soft">
-          <div className="space-y-0.5 text-center sm:text-left">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-              Sua Opinião Cívica
+        {/* Link Oficial da Câmara */}
+        {proposition.url_inteiro_teor && (
+          <div className="pt-2 border-t border-border flex items-center justify-between text-xs">
+            <span className="text-muted-foreground">Documento Oficial:</span>
+            <a
+              href={proposition.url_inteiro_teor}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-primary hover:underline font-bold"
+            >
+              <span>Acessar Inteiro Teor na Câmara</span>
+              <FaExternalLinkAlt className="w-3 h-3" />
+            </a>
+          </div>
+        )}
+
+        {/* Painel de Opinião do Cidadão */}
+        <div className="pt-4 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-muted/20 -mx-6 -mb-6 sm:-mx-8 sm:-mb-8 p-5 sm:p-6 rounded-b-2xl">
+          <div className="space-y-1">
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
+              Sua Opinião sobre este Projeto:
             </span>
-            <p className="text-sm font-semibold text-foreground">
-              {userOpinion
-                ? `Você registrou: ${userOpinion}`
-                : "Qual é o seu posicionamento sobre esta proposta de lei?"}
-            </p>
+            <div className="flex items-center gap-2">
+              {userOpinion ? (
+                <span
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs sm:text-sm font-extrabold border ${userOpinion === "CONCORDO"
+                      ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                      : "bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/30"
+                    }`}
+                >
+                  {userOpinion === "CONCORDO" ? (
+                    <FaCheck className="w-3.5 h-3.5" />
+                  ) : (
+                    <FaTimes className="w-3.5 h-3.5" />
+                  )}
+                  <span>Você votou: {userOpinion}</span>
+                </span>
+              ) : (
+                <span className="text-xs text-muted-foreground italic">
+                  Você ainda não opinou nesta proposta no simulador.
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2">
             <button
               onClick={() => handleVote("CONCORDO")}
               className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-smooth cursor-pointer shadow-soft ${userOpinion === "CONCORDO"
@@ -416,7 +421,7 @@ export default function ProjectDetailsClient({
             </div>
           </div>
 
-          {/* Seletor de Sessões de Votação (Abas / Botoes de Seleção) */}
+          {/* Seletor de Sessões de Votação (Abas / Botões de Seleção) */}
           {nominalSessions.length > 1 && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -430,7 +435,6 @@ export default function ProjectDetailsClient({
                 {nominalSessions.map((s) => {
                   const isSelected = s.id === activeSession?.id;
                   const isMain = s.id === primarySession?.id;
-                  const granularVote = granularAnswers[s.id];
                   const sDate = s.data_hora
                     ? new Date(s.data_hora).toLocaleDateString("pt-BR")
                     : "";
@@ -449,23 +453,12 @@ export default function ProjectDetailsClient({
                         <span className={`text-[11px] font-bold px-2 py-0.5 rounded border ${s.classification.badgeClass}`}>
                           {s.classification.label}
                         </span>
-                        <div className="flex items-center gap-1">
-                          {granularVote && (
-                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
-                              granularVote === "CONCORDO"
-                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
-                                : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30"
-                            }`}>
-                              Voto: {granularVote}
-                            </span>
-                          )}
-                          {isMain && (
-                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                              <FaBolt className="w-2.5 h-2.5" />
-                              <span>Principal</span>
-                            </span>
-                          )}
-                        </div>
+                        {isMain && (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                            <FaBolt className="w-2.5 h-2.5" />
+                            <span>Principal</span>
+                          </span>
+                        )}
                       </div>
 
                       <p className="text-xs font-semibold text-foreground line-clamp-2 leading-snug">
@@ -487,7 +480,7 @@ export default function ProjectDetailsClient({
           {activeSession && (
             <div className="p-6 rounded-2xl bg-card border border-border shadow-soft space-y-6">
               {/* Header da Deliberação Selecionada */}
-              <div className="space-y-2">
+              <div className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
                     {isPrimaryActive ? (
@@ -523,277 +516,258 @@ export default function ProjectDetailsClient({
                   </div>
                 </div>
 
-                <p className="text-sm text-muted-foreground leading-relaxed pt-1">
-                  <strong>Descrição Oficial da Câmara:</strong> {activeSession.descricao}
-                </p>
-              </div>
+                {/* Apresentação Amigável com Nota de IA e Expansão do Original */}
+                {activeSession.resumo_simplificado ? (
+                  <div className="p-4 sm:p-5 rounded-2xl bg-primary/5 border border-primary/20 space-y-3 shadow-soft">
+                    <div className="space-y-1.5">
+                      <h4 className="text-base sm:text-lg font-extrabold text-foreground">
+                        {activeSession.titulo_amigavel || activeSession.descricao}
+                      </h4>
+                      <p className="text-xs sm:text-sm text-foreground/90 leading-relaxed font-normal">
+                        {activeSession.resumo_simplificado}
+                      </p>
+                    </div>
 
-              {/* Card de Enriquecimento Cívico (IA) e Votação Granular */}
-              <div className="p-5 rounded-2xl bg-primary/5 border border-primary/20 space-y-4 shadow-soft">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 text-[11px] font-bold">
-                    <FaRobot className="w-3 h-3" />
-                    <span>{activeSession.resumo_simplificado ? "Tradução Cívica Neutra (IA)" : "Deliberação em Plenário"}</span>
-                  </span>
-                  {granularAnswers[activeSession.id] && (
-                    <span className="text-xs font-bold text-muted-foreground">
-                      Sua opinião nesta deliberação:{" "}
-                      <strong className={granularAnswers[activeSession.id] === "CONCORDO" ? "text-emerald-600 dark:text-emerald-400 font-black" : "text-rose-600 font-black"}>
-                        {granularAnswers[activeSession.id]}
-                      </strong>
-                    </span>
-                  )}
-                </div>
+                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground pt-1">
+                      <FaRobot className="w-3 h-3 text-primary shrink-0" />
+                      <span>Resumo simplificado gerado por Inteligência Artificial a partir dos registros oficiais da Câmara.</span>
+                    </div>
 
-                <div className="space-y-1.5">
-                  <h4 className="text-base sm:text-lg font-extrabold text-foreground">
-                    {activeSession.titulo_amigavel || activeSession.descricao}
-                  </h4>
-                  {activeSession.resumo_simplificado && (
-                    <p className="text-xs sm:text-sm text-foreground/90 leading-relaxed">
-                      {activeSession.resumo_simplificado}
-                    </p>
-                  )}
-                </div>
-
-                {/* Pergunta e Ações de Votação Granular */}
-                <div className="pt-3 border-t border-border/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                  <p className="text-xs sm:text-sm font-bold text-foreground">
-                    {activeSession.pergunta_cidadao || "Qual é o seu posicionamento sobre esta deliberação específica?"}
+                    {/* Detalhes para expandir a descrição original */}
+                    <details className="group pt-2 border-t border-border/40">
+                      <summary className="text-xs font-bold text-primary cursor-pointer hover:underline flex items-center gap-1.5 select-none list-none">
+                        <FaInfoCircle className="w-3.5 h-3.5" />
+                        <span>Ver descrição técnica oficial da Câmara</span>
+                        <FaChevronDown className="w-2.5 h-2.5 group-open:rotate-180 transition-transform" />
+                      </summary>
+                      <div className="mt-2.5 p-3 rounded-xl bg-background border border-border text-xs text-muted-foreground leading-relaxed">
+                        {activeSession.descricao}
+                      </div>
+                    </details>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground leading-relaxed pt-1">
+                    <strong>Descrição Oficial da Câmara:</strong> {activeSession.descricao}
                   </p>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => handleGranularVote(activeSession.id, "CONCORDO")}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-smooth cursor-pointer shadow-soft ${
-                        granularAnswers[activeSession.id] === "CONCORDO"
-                          ? "bg-emerald-600 text-white ring-2 ring-emerald-600/40"
-                          : "bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white"
-                      }`}
-                    >
-                      <FaCheck className="w-3 h-3" />
-                      <span>CONCORDO</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleGranularVote(activeSession.id, "DISCORDO")}
-                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-smooth cursor-pointer shadow-soft ${
-                        granularAnswers[activeSession.id] === "DISCORDO"
-                          ? "bg-rose-600 text-white ring-2 ring-rose-600/40"
-                          : "bg-rose-600/20 text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white"
-                      }`}
-                    >
-                      <FaTimes className="w-3 h-3" />
-                      <span>DISCORDO</span>
-                    </button>
-
-                    {granularAnswers[activeSession.id] && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveGranularVote(activeSession.id)}
-                        title="Limpar minha opinião nesta deliberação"
-                        className="p-2 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-smooth cursor-pointer ml-1"
-                      >
-                        <FaTrashAlt className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                </div>
+                )}
               </div>
 
-              {/* Placar Numérico e Barra Empilhada da Deliberação Selecionada */}
-              <div className="space-y-4 pt-2 border-t border-border/60">
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div className="space-y-1">
-                    <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase">
-                      SIM (A favor)
+              {/* Placar e Distribuição da Votação */}
+              <div className="space-y-3 pt-4 border-t border-border">
+                <div className="flex items-center justify-between text-xs font-bold text-muted-foreground">
+                  <span>Placar Nominal dos Deputados Federais ({activeVoteStats.total} votos)</span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
+                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase block">
+                      SIM ({activeVoteStats.simPct}%)
                     </span>
-                    <p className="text-2xl sm:text-3xl font-black text-foreground">{activeVoteStats.sim}</p>
-                    <span className="text-xs text-muted-foreground">{activeVoteStats.simPct}% dos votos</span>
+                    <span className="text-xl sm:text-2xl font-black text-emerald-700 dark:text-emerald-300">
+                      {activeVoteStats.sim}
+                    </span>
                   </div>
 
-                  <div className="space-y-1">
-                    <span className="text-xs font-bold text-rose-600 dark:text-rose-400 uppercase">
-                      NÃO (Contra)
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-center">
+                    <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase block">
+                      NÃO ({activeVoteStats.naoPct}%)
                     </span>
-                    <p className="text-2xl sm:text-3xl font-black text-foreground">{activeVoteStats.nao}</p>
-                    <span className="text-xs text-muted-foreground">{activeVoteStats.naoPct}% dos votos</span>
+                    <span className="text-xl sm:text-2xl font-black text-rose-700 dark:text-rose-300">
+                      {activeVoteStats.nao}
+                    </span>
                   </div>
 
-                  <div className="space-y-1">
-                    <span className="text-xs font-bold text-muted-foreground uppercase">
-                      Outros / Abstenções
+                  <div className="p-3 rounded-xl bg-muted text-center border border-border">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase block">
+                      Outros ({activeVoteStats.outrosPct}%)
                     </span>
-                    <p className="text-2xl sm:text-3xl font-black text-foreground">{activeVoteStats.outros}</p>
-                    <span className="text-xs text-muted-foreground">{activeVoteStats.outrosPct}%</span>
+                    <span className="text-xl sm:text-2xl font-black text-foreground">
+                      {activeVoteStats.outros}
+                    </span>
                   </div>
                 </div>
 
-                {/* Barra empilhada */}
-                <div className="w-full bg-muted h-3.5 rounded-full overflow-hidden flex border border-border/50">
-                  <div
-                    style={{ width: `${activeVoteStats.simPct}%` }}
-                    className="bg-emerald-500 transition-all duration-500"
-                    title={`Sim: ${activeVoteStats.sim}`}
-                  />
-                  <div
-                    style={{ width: `${activeVoteStats.naoPct}%` }}
-                    className="bg-rose-500 transition-all duration-500"
-                    title={`Não: ${activeVoteStats.nao}`}
-                  />
-                  <div
-                    style={{ width: `${activeVoteStats.outrosPct}%` }}
-                    className="bg-slate-400 transition-all duration-500"
-                    title={`Outros: ${activeVoteStats.outros}`}
-                  />
-                </div>
-              </div>
-
-              {/* Botão para Expandir / Recolher Lista Detalhada de Deputados */}
-              <div className="space-y-4 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowVotesList(!showVotesList)}
-                  className="w-full p-4 rounded-xl border border-border bg-muted/30 hover:bg-muted/50 hover:border-primary/40 flex items-center justify-between transition-smooth font-bold text-sm text-foreground cursor-pointer shadow-soft group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                      <FaUserTie className="w-4 h-4" />
-                    </div>
-                    <div className="text-left">
-                      <span>{showVotesList ? "Ocultar lista de votos dos deputados" : "Ver lista detalhada de votos dos deputados"}</span>
-                      <span className="text-xs text-muted-foreground block font-normal">
-                        {activeSessionVotes.length} {activeSessionVotes.length === 1 ? "parlamentar registrou voto" : "parlamentares registraram voto"} nesta deliberação
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 text-primary font-bold text-xs group-hover:translate-x-0.5 transition-smooth shrink-0">
-                    <span>{showVotesList ? "Recolher" : "Expandir"}</span>
-                    {showVotesList ? <FaChevronUp className="w-3.5 h-3.5" /> : <FaChevronDown className="w-3.5 h-3.5" />}
-                  </div>
-                </button>
-
-                {/* Filtros e Grid de Votos Nominais (Exibidos apenas quando expandido) */}
-                {showVotesList && (
-                  <div className="space-y-4 pt-2 animate-fade-in">
-                    {/* Filtros da Tabela de Votos Nominais */}
-                    <div className="p-4 rounded-xl bg-muted/30 border border-border/80 flex flex-wrap items-center justify-between gap-4">
-                      <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-1.5 focus-within:ring-2 focus-within:ring-primary/20 flex-1 min-w-[200px]">
-                        <FaSearch className="text-muted-foreground w-3.5 h-3.5" />
-                        <input
-                          type="text"
-                          placeholder="Buscar parlamentar nesta deliberação..."
-                          value={voteSearch}
-                          onChange={(e) => setVoteSearch(e.target.value)}
-                          className="w-full bg-transparent border-none outline-none text-xs sm:text-sm text-foreground"
-                        />
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <select
-                          value={filterParty}
-                          onChange={(e) => setFilterParty(e.target.value)}
-                          className="bg-background border border-border rounded-md px-2.5 py-1 text-foreground"
-                        >
-                          <option value="ALL">Todos os Partidos</option>
-                          {availableParties.map((p) => (
-                            <option key={p} value={p}>
-                              {p}
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          value={filterState}
-                          onChange={(e) => setFilterState(e.target.value)}
-                          className="bg-background border border-border rounded-md px-2.5 py-1 text-foreground"
-                        >
-                          <option value="ALL">Todos os Estados</option>
-                          {availableStates.map((s) => (
-                            <option key={s} value={s}>
-                              {s}
-                            </option>
-                          ))}
-                        </select>
-
-                        <select
-                          value={filterVoteType}
-                          onChange={(e) => setFilterVoteType(e.target.value)}
-                          className="bg-background border border-border rounded-md px-2.5 py-1 text-foreground"
-                        >
-                          <option value="ALL">Todos os Votos</option>
-                          <option value="SIM">Apenas SIM</option>
-                          <option value="NAO">Apenas NÃO</option>
-                          <option value="OUTROS">Outros / Abstenção</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Grid de Votos Nominais da Sessão Ativa */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-                        <span>Exibindo <strong>{filteredVotes.length}</strong> parlamentares nesta votação</span>
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                        {filteredVotes.map((v) => {
-                          const norm = normalizeVote(v.voto_original);
-                          const isSim = norm === "SIM";
-                          const isNao = norm === "NÃO";
-
-                          return (
-                            <Link
-                              key={`${v.votacao_id}-${v.deputado_id}`}
-                              href={`/politicos/${v.deputado_id}`}
-                              className="p-3.5 rounded-xl bg-card border border-border shadow-soft hover:border-primary/50 transition-smooth flex items-center justify-between gap-3 group"
-                            >
-                              <div className="min-w-0 flex-1">
-                                <h4 className="font-bold text-xs sm:text-sm text-foreground truncate group-hover:text-primary transition-smooth">
-                                  {v.deputado_nome}
-                                </h4>
-                                <span className="text-[11px] text-muted-foreground block">
-                                  {v.sigla_partido} • {v.deputado_uf}
-                                </span>
-                              </div>
-
-                              <span
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-black shrink-0 border ${isSim
-                                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
-                                    : isNao
-                                      ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30"
-                                      : "bg-muted text-muted-foreground border-border"
-                                  }`}
-                              >
-                                {isSim && <FaCheck className="w-2.5 h-2.5" />}
-                                {isNao && <FaTimes className="w-2.5 h-2.5" />}
-                                <span>{v.voto_original}</span>
-                              </span>
-                            </Link>
-                          );
-                        })}
-                      </div>
-                    </div>
+                {/* Barra Visual de Proporção */}
+                {activeVoteStats.total > 0 && (
+                  <div className="w-full h-3 rounded-full overflow-hidden flex bg-muted shadow-inner">
+                    <div
+                      style={{ width: `${activeVoteStats.simPct}%` }}
+                      className="bg-emerald-500 h-full transition-all duration-500"
+                      title={`SIM: ${activeVoteStats.sim} (${activeVoteStats.simPct}%)`}
+                    />
+                    <div
+                      style={{ width: `${activeVoteStats.naoPct}%` }}
+                      className="bg-rose-500 h-full transition-all duration-500"
+                      title={`NÃO: ${activeVoteStats.nao} (${activeVoteStats.naoPct}%)`}
+                    />
+                    <div
+                      style={{ width: `${activeVoteStats.outrosPct}%` }}
+                      className="bg-muted-foreground/30 h-full transition-all duration-500"
+                      title={`Outros: ${activeVoteStats.outros} (${activeVoteStats.outrosPct}%)`}
+                    />
                   </div>
                 )}
               </div>
+
+              {/* Botão para Expandir Lista Nominal de Deputados */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowVotesList(!showVotesList)}
+                  className="w-full py-3 px-4 rounded-xl border border-border bg-muted/30 hover:bg-muted/60 transition-smooth font-bold text-xs sm:text-sm text-foreground flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <FaUserTie className="w-4 h-4 text-primary" />
+                  <span>
+                    {showVotesList
+                      ? "Ocultar votos nominais dos deputados"
+                      : `Ver como cada deputado votou nesta sessão (${activeSessionVotes.length} votos)`}
+                  </span>
+                  {showVotesList ? <FaChevronUp className="w-3 h-3" /> : <FaChevronDown className="w-3 h-3" />}
+                </button>
+              </div>
+
+              {/* Tabela/Lista Nominal de Votos dos Deputados (Expandível) */}
+              {showVotesList && (
+                <div className="space-y-4 pt-2 border-t border-border animate-fade-in">
+                  {/* Filtros de Votação Nominal */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
+                    {/* Busca por Nome */}
+                    <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-1.5 focus-within:ring-2 focus-within:ring-primary/20">
+                      <FaSearch className="text-muted-foreground w-3.5 h-3.5" />
+                      <input
+                        type="text"
+                        placeholder="Buscar deputado..."
+                        value={voteSearch}
+                        onChange={(e) => setVoteSearch(e.target.value)}
+                        className="w-full bg-transparent border-none outline-none text-xs text-foreground placeholder:text-muted-foreground"
+                      />
+                    </div>
+
+                    {/* Filtro por Partido */}
+                    <div className="flex items-center gap-1.5 bg-background border border-border rounded-lg px-2.5 py-1.5">
+                      <span className="text-muted-foreground font-medium">Partido:</span>
+                      <select
+                        value={filterParty}
+                        onChange={(e) => setFilterParty(e.target.value)}
+                        className="bg-transparent border-none outline-none text-xs text-foreground w-full cursor-pointer font-bold"
+                      >
+                        <option value="ALL">Todos os Partidos</option>
+                        {availableParties.map((p) => (
+                          <option key={p} value={p}>
+                            {p}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Filtro por Estado */}
+                    <div className="flex items-center gap-1.5 bg-background border border-border rounded-lg px-2.5 py-1.5">
+                      <span className="text-muted-foreground font-medium">UF:</span>
+                      <select
+                        value={filterState}
+                        onChange={(e) => setFilterState(e.target.value)}
+                        className="bg-transparent border-none outline-none text-xs text-foreground w-full cursor-pointer font-bold"
+                      >
+                        <option value="ALL">Todos os Estados</option>
+                        {availableStates.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Filtro por Voto */}
+                    <div className="flex items-center gap-1.5 bg-background border border-border rounded-lg px-2.5 py-1.5">
+                      <span className="text-muted-foreground font-medium">Voto:</span>
+                      <select
+                        value={filterVoteType}
+                        onChange={(e) => setFilterVoteType(e.target.value)}
+                        className="bg-transparent border-none outline-none text-xs text-foreground w-full cursor-pointer font-bold"
+                      >
+                        <option value="ALL">Todos os Votos</option>
+                        <option value="SIM">Apenas SIM</option>
+                        <option value="NAO">Apenas NÃO</option>
+                        <option value="OUTROS">Abstenções / Outros</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Lista com Virtualização / Grid Responsivo */}
+                  {filteredVotes.length === 0 ? (
+                    <div className="p-8 rounded-xl bg-muted/20 text-center space-y-2 border border-border/60">
+                      <p className="text-sm text-muted-foreground">
+                        Nenhum voto de parlamentar encontrado com os filtros selecionados.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-[420px] overflow-y-auto pr-1">
+                      {filteredVotes.map((v) => {
+                        const norm = normalizeVote(v.voto_original);
+                        const isSim = norm === "SIM";
+                        const isNao = norm === "NÃO";
+
+                        return (
+                          <div
+                            key={v.id}
+                            className="p-2.5 rounded-xl bg-background border border-border/80 flex items-center justify-between gap-2 shadow-soft hover:border-border transition-smooth"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {v.deputado_foto ? (
+                                <img
+                                  src={v.deputado_foto}
+                                  alt={v.deputado_nome}
+                                  className="w-8 h-8 rounded-full object-cover shrink-0 border border-border/60 bg-muted"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0 border border-border/60 text-muted-foreground">
+                                  <FaUserTie className="w-4 h-4" />
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <Link
+                                  href={`/politicos/${v.deputado_id}`}
+                                  className="text-xs font-bold text-foreground hover:text-primary transition-smooth truncate block"
+                                  title={v.deputado_nome}
+                                >
+                                  {v.deputado_nome}
+                                </Link>
+                                <span className="text-[11px] text-muted-foreground">
+                                  {v.sigla_partido} • {v.deputado_uf}
+                                </span>
+                              </div>
+                            </div>
+
+                            <span
+                              className={`px-2.5 py-0.5 rounded-lg text-[11px] font-black shrink-0 ${isSim
+                                  ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
+                                  : isNao
+                                    ? "bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30"
+                                    : "bg-muted text-muted-foreground border border-border"
+                                }`}
+                            >
+                              {v.voto_original}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </section>
       ) : (
         <div className="p-8 rounded-2xl bg-card border border-border text-center space-y-3 shadow-soft">
-          <FaHistory className="w-8 h-8 text-muted-foreground mx-auto" />
-          <p className="text-sm font-semibold text-foreground">
-            Esta proposição foi deliberada por votação simbólica ou por acordo de líderes, sem registro nominal individual de votos no painel eletrônico.
+          <FaVoteYea className="w-8 h-8 text-muted-foreground mx-auto" />
+          <h3 className="text-base font-bold text-foreground">
+            Sem votações nominais registradas
+          </h3>
+          <p className="text-xs text-muted-foreground max-w-md mx-auto">
+            Esta proposta foi aprovada por votação simbólica ou ainda aguarda deliberação nominal no Plenário da Câmara.
           </p>
-          <Link
-            href="/faq#multiplas-votacoes"
-            className="text-xs text-primary font-semibold hover:underline inline-flex items-center gap-1"
-          >
-            <FaQuestionCircle className="w-3 h-3" />
-            <span>Entenda como a Câmara registra votações simbólicas e nominais</span>
-          </Link>
         </div>
       )}
     </main>
