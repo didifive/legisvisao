@@ -96,16 +96,12 @@ async function main() {
       COALESCE(p.titulo, 'Proposição ' || vs.proposicao_id) AS proposicao_titulo,
       COALESCE(p.ementa, vs.descricao) AS proposicao_ementa,
       vs.descricao AS session_descricao,
-      vs.resultado AS session_resultado,
-      COUNT(dv.id) AS total_votes
+      vs.resultado AS session_resultado
     FROM vote_sessions vs
     LEFT JOIN propositions p ON p.id = vs.proposicao_id
-    LEFT JOIN deputy_votes dv ON dv.votacao_id = vs.id
     WHERE vs.ai_processed = FALSE OR vs.ai_processed IS NULL
-    GROUP BY vs.id, vs.proposicao_id, p.titulo, p.ementa, vs.descricao, vs.resultado, vs.data_hora
     ORDER BY 
-      COUNT(dv.id) DESC,
-      vs.data_hora DESC
+      vs.data_hora DESC NULLS LAST
     LIMIT ${limit};
   `;
 
@@ -122,6 +118,7 @@ async function main() {
   async function worker(workerId: number) {
     while (currentIndex < sessionsToProcess.length && !quotaReached) {
       const idx = currentIndex++;
+      if (idx >= sessionsToProcess.length) break;
       const item = sessionsToProcess[idx];
 
       const context: SessionContextData = {

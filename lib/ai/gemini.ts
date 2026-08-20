@@ -1,5 +1,6 @@
 // ====================================================================
 // LegisVisão - Módulo de Integração com Google AI Studio (Gemini API)
+// Suporte a Fallback Automático e Alta Resiliência
 // ====================================================================
 
 export interface GeminiSessionEnrichment {
@@ -18,6 +19,13 @@ export interface SessionContextData {
   sessionResultado?: string | null;
 }
 
+const FALLBACK_MODELS = [
+  "gemini-2.5-flash-lite",
+  "gemini-3.5-flash",
+  "gemini-flash-latest",
+  "gemini-3.7-flash",
+];
+
 /**
  * Consulta a API do Google AI Studio (Gemini) para gerar resumo amigável e pergunta contextualizada.
  */
@@ -33,8 +41,10 @@ export async function enrichSessionWithGemini(
     );
   }
 
-  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  const customModel = process.env.GEMINI_MODEL;
+  const modelsToTry = customModel
+    ? [customModel, ...FALLBACK_MODELS.filter((m) => m !== customModel)]
+    : FALLBACK_MODELS;
 
   const systemInstruction = `
 Você é um especialista em direito parlamentar e comunicação cívica neutra do LegisVisão.
@@ -90,39 +100,51 @@ Gere a análise neutra no formato JSON solicitado.
     },
   };
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(requestBody),
-  });
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `Falha na chamada ao Google AI Studio (${response.status}): ${errorText}`
-    );
+  for (const model of modelsToTry) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        // Se for 503 (indisponível momentaneamente) ou 404, tenta o próximo modelo da lista de fallback
+        if (response.status === 503 || response.status === 404) {
+          lastError = new Error(`Modelo ${model} retornou ${response.status}: ${errorText.slice(0, 100)}`);
+          continue;
+        }
+        throw new Error(`Falha na chamada ao Google AI Studio (${response.status}): ${errorText}`);
+      }
+
+      const data = await response.json();
+      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+
+      const parsed = JSON.parse(rawText) as GeminiSessionEnrichment;
+
+      return {
+        tipo_deliberacao: parsed.tipo_deliberacao || "OUTRO",
+        titulo_amigavel: parsed.titulo_amigavel || context.sessionDescricao.slice(0, 70),
+        resumo_simplificado: parsed.resumo_simplificado || context.sessionDescricao,
+        pergunta_cidadao:
+          parsed.pergunta_cidadao ||
+          `Você concorda com esta deliberação sobre ${context.proposicaoTitulo}?`,
+      };
+    } catch (err) {
+      lastError = err as Error;
+      if (lastError.message.includes("503") || lastError.message.includes("404")) {
+        continue;
+      }
+      throw lastError;
+    }
   }
 
-  const data = await response.json();
-  const rawText =
-    data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
-
-  try {
-    const parsed = JSON.parse(rawText) as GeminiSessionEnrichment;
-
-    return {
-      tipo_deliberacao: parsed.tipo_deliberacao || "OUTRO",
-      titulo_amigavel: parsed.titulo_amigavel || context.sessionDescricao.slice(0, 70),
-      resumo_simplificado: parsed.resumo_simplificado || context.sessionDescricao,
-      pergunta_cidadao:
-        parsed.pergunta_cidadao ||
-        `Você concorda com esta deliberação sobre ${context.proposicaoTitulo}?`,
-    };
-  } catch (err) {
-    throw new Error(
-      `Erro ao interpretar JSON retornado pelo Gemini: ${(err as Error).message}. Resposta bruta: ${rawText}`
-    );
-  }
+  throw lastError || new Error("Nenhum modelo da lista de fallback pôde responder à requisição.");
 }
