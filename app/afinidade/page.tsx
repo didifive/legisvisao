@@ -13,6 +13,7 @@ import type {
   DeputyMatch,
   PartyMatchResult,
   UserVotes,
+  GranularUserVotes,
   VoteDetailWithProposition,
 } from "@/lib/match/types";
 import {
@@ -21,7 +22,7 @@ import {
   calculatePartyMatch,
   sortVoteSessionsDeterministic,
 } from "@/lib/match";
-import { getStoredAnswers } from "@/lib/storage";
+import { getStoredAnswers, getStoredGranularAnswers } from "@/lib/storage";
 
 export default function AfinidadePage() {
   const { isReady } = useSystemStatus();
@@ -69,11 +70,12 @@ export default function AfinidadePage() {
       }
 
       const stored: UserVotes = getStoredAnswers();
-      const votesCount = Object.keys(stored).length;
+      const storedGranular: GranularUserVotes = getStoredGranularAnswers();
+      const votesCount = Object.keys(stored).length + Object.keys(storedGranular).length;
       setHasVotes(votesCount > 0);
 
       if (votesCount > 0) {
-        await calculateAllMatches(stored, fetchedDeputies, fetchedParties);
+        await calculateAllMatches(stored, storedGranular, fetchedDeputies, fetchedParties);
       }
     } catch (err) {
       console.error("Erro ao carregar dados iniciais:", err);
@@ -85,6 +87,7 @@ export default function AfinidadePage() {
   // Calcula os índices de afinidade
   async function calculateAllMatches(
     votes: UserVotes,
+    granularVotes: GranularUserVotes,
     currentDeputies: DeputySearchResult[],
     currentParties: Party[]
   ) {
@@ -99,7 +102,21 @@ export default function AfinidadePage() {
         return Math.max(0, Math.min(1, v));
       }
 
-      const propIds = Object.keys(votes).map((k) => Number(k)).filter((n) => !Number.isNaN(n));
+      const propIdSet = new Set<number>();
+      for (const k of Object.keys(votes)) {
+        const n = Number(k);
+        if (!Number.isNaN(n)) propIdSet.add(n);
+      }
+      for (const sessionId of Object.keys(granularVotes)) {
+        if (sessionId.includes("-")) {
+          const prefix = Number(sessionId.split("-")[0]);
+          if (!Number.isNaN(prefix) && prefix > 0) {
+            propIdSet.add(prefix);
+          }
+        }
+      }
+
+      const propIds = Array.from(propIdSet);
       if (propIds.length === 0) {
         setCalculatedParties([]);
         setAllCalculatedDeputies([]);
@@ -154,10 +171,8 @@ export default function AfinidadePage() {
           primarySessionId = sortedSessions[0]?.id ? String(sortedSessions[0].id) : null;
         }
 
-        // Se uma sessão principal for identificada, vincula apenas ela. Caso contrário, faz fallback para todas.
-        if (primarySessionId) {
-          voteSessionToProposition[primarySessionId] = pId;
-        } else if (Array.isArray(pd.sessions)) {
+        // Mapeia todas as sessões para a proposição
+        if (Array.isArray(pd.sessions)) {
           for (const s of pd.sessions) {
             if (s.id) {
               voteSessionToProposition[String(s.id)] = pId;
@@ -168,17 +183,18 @@ export default function AfinidadePage() {
         if (pd.votes && Array.isArray(pd.votes)) {
           for (const v of pd.votes) {
             const vSessionId = String(v.votacao_id || v.vote_session_id || "");
-            // Filtra exclusivamente os votos da sessão de mérito principal para não inflar múltiplos turnos/emendas
-            if (primarySessionId && vSessionId !== primarySessionId) {
-              continue;
-            }
+            const hasGranularVote = Boolean(granularVotes[vSessionId]);
+            const isPrimary = primarySessionId && vSessionId === primarySessionId;
 
-            rawVotes.push({
-              deputado_id: v.deputado_id || v.politician_id,
-              votacao_id: vSessionId,
-              voto_original: v.voto_original,
-              sigla_partido: v.sigla_partido || v.party_sigla,
-            });
+            // Inclui se for a sessão principal de mérito OU se o usuário votou especificamente nessa sessão
+            if (isPrimary || hasGranularVote) {
+              rawVotes.push({
+                deputado_id: v.deputado_id || v.politician_id,
+                votacao_id: vSessionId,
+                voto_original: v.voto_original,
+                sigla_partido: v.sigla_partido || v.party_sigla,
+              });
+            }
           }
         }
       }
@@ -190,7 +206,7 @@ export default function AfinidadePage() {
         const votesForParty = allVotesWithProp.filter(
           (v) => (v.sigla_partido ?? "").toUpperCase() === (party.sigla ?? "").toUpperCase()
         );
-        const rawMatch = calculatePartyMatch(votes, votesForParty);
+        const rawMatch = calculatePartyMatch(votes, votesForParty, granularVotes);
         const normalizedMatch = rawMatch
           ? { ...rawMatch, adherence: normalizeAdherence(rawMatch.adherence) }
           : { adherence: null, matches_count: 0, comparable_count: 0 };
@@ -200,7 +216,7 @@ export default function AfinidadePage() {
       // 2. Afinidade Individual dos Deputados
       const deputyMatches: DeputyMatch[] = currentDeputies.map((dep) => {
         const votesOfDep = allVotesWithProp.filter((v) => v.deputado_id === dep.id);
-        const raw = calculatePoliticianMatch(votes, votesOfDep, dep);
+        const raw = calculatePoliticianMatch(votes, votesOfDep, dep, granularVotes);
         const normalized = raw ? { ...raw, adherence: normalizeAdherence(raw.adherence) } : raw;
         return normalized;
       });
@@ -233,7 +249,8 @@ export default function AfinidadePage() {
 
     const handleStorageUpdate = () => {
       const stored: UserVotes = getStoredAnswers();
-      const votesCount = Object.keys(stored).length;
+      const storedGranular: GranularUserVotes = getStoredGranularAnswers();
+      const votesCount = Object.keys(stored).length + Object.keys(storedGranular).length;
       setHasVotes(votesCount > 0);
       loadInitialData();
     };

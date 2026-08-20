@@ -1,8 +1,9 @@
 // ====================================================================
 // LegisVisão - Cálculo de Afinidade Partidária (Média dos Deputados)
+// Suporte a Opiniões Gerais e Destaques Granulares
 // ====================================================================
 import { normalizeVote } from "./normalizeVotes";
-import type { UserVotes, PartyMatchResult, VoteDetailWithProposition } from "./types";
+import type { UserVotes, GranularUserVotes, PartyMatchResult, VoteDetailWithProposition } from "./types";
 
 /**
  * Calcula a afinidade de um partido político com base estritamente na média
@@ -11,21 +12,31 @@ import type { UserVotes, PartyMatchResult, VoteDetailWithProposition } from "./t
  * Regra Oficial:
  * - Não utiliza orientação formal de liderança.
  * - Cada voto de um deputado é vinculado ao seu partido.
- * - Cada voto nominal gera uma comparação.
+ * - Se o usuário votou especificamente na sessão/destaque (granularVotes), essa opinião é priorizada.
+ * - Caso contrário, utiliza a opinião sobre o projeto geral (userVotes).
  * - Índice de Afinidade = Total de Concordâncias dos Deputados / Total de Votos Comparáveis dos Deputados * 100.
  */
 export function calculatePartyMatch(
   userVotes: UserVotes,
-  deputyVotesForParty: VoteDetailWithProposition[]
+  deputyVotesForParty: VoteDetailWithProposition[],
+  granularVotes?: GranularUserVotes
 ): PartyMatchResult {
   let matches = 0;
   let comparable = 0;
 
   for (const pv of deputyVotesForParty) {
     const propId = pv.proposicao_id;
-    if (typeof propId !== "number") continue;
+    const sessionId = pv.votacao_id;
 
-    const userRaw = userVotes[propId];
+    let userRaw: string | undefined;
+    if (sessionId && granularVotes && granularVotes[sessionId]) {
+      userRaw = granularVotes[sessionId];
+    } else if (typeof propId === "number" && userVotes[propId]) {
+      userRaw = userVotes[propId];
+    }
+
+    if (!userRaw) continue;
+
     const userVote = normalizeVote(userRaw);
     const polRaw = pv.voto_original;
     const deputyVote = normalizeVote(polRaw);

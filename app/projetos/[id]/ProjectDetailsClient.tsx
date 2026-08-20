@@ -22,10 +22,19 @@ import {
   FaUserTie,
   FaChevronDown,
   FaChevronUp,
+  FaRobot,
+  FaTrashAlt,
 } from "react-icons/fa";
 import type { Proposition, VoteSession } from "@/types/db";
 import { normalizeVote } from "@/lib/match/normalizeVotes";
-import { getStoredAnswers, saveStoredAnswers } from "@/lib/storage";
+import {
+  getStoredAnswers,
+  saveStoredAnswers,
+  getStoredGranularAnswers,
+  saveStoredGranularAnswer,
+  removeStoredGranularAnswer,
+  StoredGranularAnswers,
+} from "@/lib/storage";
 
 import {
   sortVoteSessionsDeterministic,
@@ -54,6 +63,7 @@ export default function ProjectDetailsClient({
   votes,
 }: Readonly<ProjectDetailsClientProps>) {
   const [userOpinion, setUserOpinion] = useState<"CONCORDO" | "DISCORDO" | null>(null);
+  const [granularAnswers, setGranularAnswers] = useState<StoredGranularAnswers>({});
   const [voteSearch, setVoteSearch] = useState("");
   const [filterParty, setFilterParty] = useState<string>("ALL");
   const [filterState, setFilterState] = useState<string>("ALL");
@@ -63,9 +73,26 @@ export default function ProjectDetailsClient({
 
   useEffect(() => {
     const stored = getStoredAnswers();
+    const storedGranular = getStoredGranularAnswers();
     if (stored[proposition.id]) {
       setUserOpinion(stored[proposition.id]);
     }
+    setGranularAnswers(storedGranular);
+
+    const handleStorageUpdate = () => {
+      const updated = getStoredAnswers();
+      const updatedGranular = getStoredGranularAnswers();
+      setUserOpinion(updated[proposition.id] || null);
+      setGranularAnswers(updatedGranular);
+    };
+
+    window.addEventListener("storage-answers-updated", handleStorageUpdate);
+    window.addEventListener("storage", handleStorageUpdate);
+
+    return () => {
+      window.removeEventListener("storage-answers-updated", handleStorageUpdate);
+      window.removeEventListener("storage", handleStorageUpdate);
+    };
   }, [proposition.id]);
 
   function handleVote(opinion: "CONCORDO" | "DISCORDO") {
@@ -73,6 +100,19 @@ export default function ProjectDetailsClient({
     const updated = { ...stored, [proposition.id]: opinion };
     saveStoredAnswers(updated);
     setUserOpinion(opinion);
+  }
+
+  function handleGranularVote(sessionId: string, opinion: "CONCORDO" | "DISCORDO") {
+    saveStoredGranularAnswer(sessionId, opinion);
+    setGranularAnswers((prev) => ({ ...prev, [sessionId]: opinion }));
+  }
+
+  function handleRemoveGranularVote(sessionId: string) {
+    removeStoredGranularAnswer(sessionId);
+    setGranularAnswers((prev) => {
+      const { [sessionId]: _, ...rest } = prev;
+      return rest;
+    });
   }
 
   // Agrupa votos por votacao_id
@@ -390,6 +430,7 @@ export default function ProjectDetailsClient({
                 {nominalSessions.map((s) => {
                   const isSelected = s.id === activeSession?.id;
                   const isMain = s.id === primarySession?.id;
+                  const granularVote = granularAnswers[s.id];
                   const sDate = s.data_hora
                     ? new Date(s.data_hora).toLocaleDateString("pt-BR")
                     : "";
@@ -404,20 +445,31 @@ export default function ProjectDetailsClient({
                           : "bg-card border-border hover:border-border/80 text-muted-foreground hover:text-foreground"
                         }`}
                     >
-                      <div className="flex items-center justify-between gap-1.5 w-full">
+                      <div className="flex items-center justify-between gap-1.5 w-full flex-wrap">
                         <span className={`text-[11px] font-bold px-2 py-0.5 rounded border ${s.classification.badgeClass}`}>
                           {s.classification.label}
                         </span>
-                        {isMain && (
-                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                            <FaBolt className="w-2.5 h-2.5" />
-                            <span>Principal</span>
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1">
+                          {granularVote && (
+                            <span className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${
+                              granularVote === "CONCORDO"
+                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                : "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30"
+                            }`}>
+                              Voto: {granularVote}
+                            </span>
+                          )}
+                          {isMain && (
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                              <FaBolt className="w-2.5 h-2.5" />
+                              <span>Principal</span>
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       <p className="text-xs font-semibold text-foreground line-clamp-2 leading-snug">
-                        {s.descricao || "Deliberação em Plenário"}
+                        {s.titulo_amigavel || s.descricao || "Deliberação em Plenário"}
                       </p>
 
                       <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/40 w-full">
@@ -471,9 +523,84 @@ export default function ProjectDetailsClient({
                   </div>
                 </div>
 
-                <p className="text-sm font-semibold text-foreground leading-relaxed pt-1">
-                  {activeSession.descricao}
+                <p className="text-sm text-muted-foreground leading-relaxed pt-1">
+                  <strong>Descrição Oficial da Câmara:</strong> {activeSession.descricao}
                 </p>
+              </div>
+
+              {/* Card de Enriquecimento Cívico (IA) e Votação Granular */}
+              <div className="p-5 rounded-2xl bg-primary/5 border border-primary/20 space-y-4 shadow-soft">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 text-[11px] font-bold">
+                    <FaRobot className="w-3 h-3" />
+                    <span>{activeSession.resumo_simplificado ? "Tradução Cívica Neutra (IA)" : "Deliberação em Plenário"}</span>
+                  </span>
+                  {granularAnswers[activeSession.id] && (
+                    <span className="text-xs font-bold text-muted-foreground">
+                      Sua opinião nesta deliberação:{" "}
+                      <strong className={granularAnswers[activeSession.id] === "CONCORDO" ? "text-emerald-600 dark:text-emerald-400 font-black" : "text-rose-600 font-black"}>
+                        {granularAnswers[activeSession.id]}
+                      </strong>
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  <h4 className="text-base sm:text-lg font-extrabold text-foreground">
+                    {activeSession.titulo_amigavel || activeSession.descricao}
+                  </h4>
+                  {activeSession.resumo_simplificado && (
+                    <p className="text-xs sm:text-sm text-foreground/90 leading-relaxed">
+                      {activeSession.resumo_simplificado}
+                    </p>
+                  )}
+                </div>
+
+                {/* Pergunta e Ações de Votação Granular */}
+                <div className="pt-3 border-t border-border/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <p className="text-xs sm:text-sm font-bold text-foreground">
+                    {activeSession.pergunta_cidadao || "Qual é o seu posicionamento sobre esta deliberação específica?"}
+                  </p>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleGranularVote(activeSession.id, "CONCORDO")}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-smooth cursor-pointer shadow-soft ${
+                        granularAnswers[activeSession.id] === "CONCORDO"
+                          ? "bg-emerald-600 text-white ring-2 ring-emerald-600/40"
+                          : "bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white"
+                      }`}
+                    >
+                      <FaCheck className="w-3 h-3" />
+                      <span>CONCORDO</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleGranularVote(activeSession.id, "DISCORDO")}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-smooth cursor-pointer shadow-soft ${
+                        granularAnswers[activeSession.id] === "DISCORDO"
+                          ? "bg-rose-600 text-white ring-2 ring-rose-600/40"
+                          : "bg-rose-600/20 text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white"
+                      }`}
+                    >
+                      <FaTimes className="w-3 h-3" />
+                      <span>DISCORDO</span>
+                    </button>
+
+                    {granularAnswers[activeSession.id] && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveGranularVote(activeSession.id)}
+                        title="Limpar minha opinião nesta deliberação"
+                        className="p-2 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-smooth cursor-pointer ml-1"
+                      >
+                        <FaTrashAlt className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {/* Placar Numérico e Barra Empilhada da Deliberação Selecionada */}

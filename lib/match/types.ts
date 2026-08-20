@@ -4,10 +4,12 @@
 import type { DeputySearchResult } from "@/types/db";
 
 export type UserVotes = Record<number, string>;
+export type GranularUserVotes = Record<string, string>;
 
 export interface VoteDetailWithProposition {
   deputado_id: number;
   proposicao_id: number;
+  votacao_id?: string;
   voto_original: string;
   sigla_partido?: string | null;
 }

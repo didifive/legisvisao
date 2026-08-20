@@ -1,0 +1,40 @@
+name: Enriquecimento Semântico por IA (Google AI Studio)
+
+on:
+  schedule:
+    # Executa diariamente às 04:00 UTC (madrugada)
+    - cron: "0 4 * * *"
+  workflow_dispatch: # Permite disparo manual com configuração de limite de requisições
+    inputs:
+      limit:
+        description: "Quantidade máxima de deliberações para enriquecer nesta execução"
+        required: false
+        default: "500"
+        type: string
+
+jobs:
+  enrich-vote-sessions:
+    name: Enriquecer Deliberações com Gemini
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    environment: prd
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Instalar Dependências
+        run: npm ci
+
+      - name: Executar Enriquecimento Semântico por IA
+        run: npm run enrich:ai -- --limit=${{ inputs.limit || '500' }}

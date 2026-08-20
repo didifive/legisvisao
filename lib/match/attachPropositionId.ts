@@ -11,7 +11,7 @@ export interface RawDeputyVoteInput {
 }
 
 /**
- * Anexa proposicao_id a cada voto usando o mapa voteSessionToProposition.
+ * Anexa proposicao_id e preserva votacao_id a cada voto usando o mapa voteSessionToProposition.
  */
 export function attachPropositionIdToVotes(
   votes: RawDeputyVoteInput[],
@@ -24,6 +24,7 @@ export function attachPropositionIdToVotes(
       result.push({
         deputado_id: v.deputado_id,
         proposicao_id: propId,
+        votacao_id: v.votacao_id,
         voto_original: v.voto_original,
         sigla_partido: v.sigla_partido,
       });

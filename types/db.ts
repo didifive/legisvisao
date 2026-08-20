@@ -51,6 +51,13 @@ export interface VoteSession {
   descricao: string;
   resultado?: string | null;
   sigla_orgao: string;
+  tipo_deliberacao?: "MERITO" | "DESTAQUE" | "EMENDA" | "REQUERIMENTO" | "OUTRO" | string | null;
+  titulo_amigavel?: string | null;
+  resumo_simplificado?: string | null;
+  pergunta_cidadao?: string | null;
+  ai_processed?: boolean;
+  ai_processed_at?: string | null;
+  ai_error?: string | null;
 }
 
 // 5. Votos Nominais dos Deputados
