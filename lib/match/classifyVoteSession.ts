@@ -66,7 +66,7 @@ export function classifyVoteSession(
       type: "OUTRO",
       label: "Deliberação em Plenário",
       badgeClass: "bg-muted text-muted-foreground border-border",
-      priority: 2,
+      priority: 5,
     };
   }
 
@@ -77,9 +77,13 @@ export function classifyVoteSession(
     descUpper.includes("RETIRADA DE PAUTA") ||
     descUpper.includes("ADIAMENTO") ||
     descUpper.includes("URGÊNCIA") ||
+    descUpper.includes("URGENCIA") ||
     descUpper.includes("PREFERÊNCIA") ||
+    descUpper.includes("PREFERENCIA") ||
     descUpper.includes("INTERSTÍCIO") ||
-    descUpper.includes("RECURSO Nº")
+    descUpper.includes("INTERSTICIO") ||
+    descUpper.includes("RECURSO Nº") ||
+    descUpper.includes("RECURSO N.")
   ) {
     return {
       type: "REQUERIMENTO",
@@ -96,6 +100,11 @@ export function classifyVoteSession(
     descUpper.includes("DTQ") ||
     descUpper.includes("DVS") ||
     descUpper.includes("VOTAÇÃO EM SEPARADO") ||
+    descUpper.includes("VOTACAO EM SEPARADO") ||
+    descUpper.includes("VOTAÇÃO DO DTQ") ||
+    descUpper.includes("VOTAÇÃO DO DVS") ||
+    descUpper.includes("VOTAÇÃO DO DESTAQUE") ||
+    descUpper.includes("VOTAÇÃO DOS DESTAQUES") ||
     descUpper.startsWith("MANTIDO O TEXTO") ||
     descUpper.startsWith("SUPRIMIDO O TEXTO")
   ) {
@@ -108,11 +117,44 @@ export function classifyVoteSession(
   }
 
   // 3. Emendas ao Projeto (Prioridade 2)
+  // Qualquer deliberação cujo objeto seja Emenda (mesmo citando "ao Substitutivo" ou "ao Projeto")
+  const isSubemendaGlobal =
+    descUpper.includes("SUBEMENDA SUBSTITUTIVA GLOBAL") ||
+    descUpper.includes("SUBSTITUTIVA GLOBAL");
+
+  const isPecMerit =
+    (descUpper.includes("PROPOSTA DE EMENDA À CONSTITUIÇÃO") ||
+      descUpper.includes("PROPOSTA DE EMENDA A CONSTITUICAO") ||
+      descUpper.includes("EMENDA À CONSTITUIÇÃO") ||
+      descUpper.includes("EMENDA A CONSTITUICAO")) &&
+    (descUpper.includes("TURNO") ||
+      descUpper.includes("TEXTO-BASE") ||
+      descUpper.includes("TEXTO BASE") ||
+      descUpper.includes("SUBSTITUTIVO") ||
+      descUpper.startsWith("VOTAÇÃO DA PROPOSTA") ||
+      descUpper.startsWith("VOTACAO DA PROPOSTA") ||
+      descUpper.startsWith("APROVADA A PROPOSTA") ||
+      descUpper.startsWith("REJEITADA A PROPOSTA"));
+
   if (
-    descUpper.startsWith("EMENDA") ||
-    descUpper.startsWith("SUBEMENDA") ||
-    descUpper.includes("EMENDA DE PLENÁRIO") ||
-    descUpper.includes("EMENDA DE RELATOR")
+    !isSubemendaGlobal &&
+    !isPecMerit &&
+    (descUpper.includes("EMENDA") ||
+      descUpper.includes("EMENDAS") ||
+      descUpper.includes("SUBEMENDA") ||
+      descUpper.includes("SUBEMENDAS") ||
+      descUpper.includes("EMENDAS DE PLENÁRIO") ||
+      descUpper.includes("EMENDA DE PLENÁRIO") ||
+      descUpper.includes("EMENDAS AO SUBSTITUTIVO") ||
+      descUpper.includes("EMENDA AO SUBSTITUTIVO") ||
+      descUpper.includes("REJEITADAS AS EMENDAS") ||
+      descUpper.includes("REJEITADA A EMENDA") ||
+      descUpper.includes("APROVADAS AS EMENDAS") ||
+      descUpper.includes("APROVADA A EMENDA") ||
+      descUpper.includes("EMENDA DE RELATOR") ||
+      descUpper.includes("EMENDAS DE RELATOR") ||
+      descUpper.includes("EMENDA DE COMISSÃO") ||
+      descUpper.includes("EMENDAS DE COMISSÃO"))
   ) {
     return {
       type: "EMENDA",
@@ -123,22 +165,24 @@ export function classifyVoteSession(
   }
 
   // 4. Mérito / Texto-Base (Prioridade 1 Máxima)
-  // Deliberações sobre o mérito substantivo, incluindo 1º e 2º turnos de PECs, Substitutivos e Projetos
+  // Deliberações sobre o mérito substantivo do texto principal, turnos de PEC, Substitutivos e Projetos
   if (
-    descUpper.includes("TURNO") ||
+    descUpper.includes("SUBSTITUTIVO") ||
     descUpper.includes("TEXTO-BASE") ||
     descUpper.includes("TEXTO BASE") ||
+    descUpper.includes("TURNO") ||
     descUpper.includes("PROJETO DE LEI DE CONVERSÃO") ||
-    descUpper.includes("SUBSTITUTIVO") ||
-    descUpper.includes("SUBEMENDA SUBSTITUTIVA") ||
-    descUpper.includes("EMENDA SUBSTITUTIVA") ||
-    descUpper.includes("EMENDA AGLUTINATIVA") ||
+    descUpper.includes("PLV") ||
     descUpper.includes("PARECER DA COMISSÃO") ||
+    descUpper.includes("PARECER DA COMISSAO") ||
     descUpper.includes("REDAÇÃO FINAL") ||
+    descUpper.includes("REDACAO FINAL") ||
     descUpper.includes("PROPOSTA DE EMENDA À CONSTITUIÇÃO") ||
     descUpper.includes("PROPOSTA DE EMENDA A CONSTITUICAO") ||
+    descUpper.includes("PROJETO DE LEI COMPLEMENTAR") ||
     descUpper.includes("PROJETO DE LEI") ||
     descUpper.includes("MEDIDA PROVISÓRIA") ||
+    descUpper.includes("MEDIDA PROVISORIA") ||
     descUpper.startsWith("APROVAD") ||
     descUpper.startsWith("REJEITAD")
   ) {
@@ -268,5 +312,17 @@ export function sortPropositionsByRelevance<T extends {
 
     // 5. Desempate estrito por ID
     return b.id - a.id;
+  });
+}
+
+/**
+ * Verifica se a lista de sessões de votação contém ao menos uma deliberação nominal de Mérito / Texto-Base (Prioridade 1).
+ */
+export function hasMeritVoteSession(
+  sessions: Array<{ descricao?: string | null; tipo_deliberacao?: string | null }>
+): boolean {
+  return sessions.some((s) => {
+    const c = classifyVoteSession(s.descricao, s.tipo_deliberacao);
+    return c.type === "MERITO" && c.priority === 1;
   });
 }

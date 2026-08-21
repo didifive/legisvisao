@@ -8,6 +8,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
 [![TailwindCSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?style=for-the-badge&logo=tailwind-css)](https://tailwindcss.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Supabase-336791?style=for-the-badge&logo=postgresql)](https://supabase.com/)
+[![Vitest](https://img.shields.io/badge/Vitest-Testing-6E9F18?style=for-the-badge&logo=vitest)](https://vitest.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
 [![Netlify Status](https://api.netlify.com/api/v1/badges/4168480c-025c-45cc-8217-f0f40fbed713/deploy-status)](https://app.netlify.com/projects/legisvisao/deploys)
@@ -364,7 +365,7 @@ erDiagram
 ### 1. Cálculo Aritmético de Afinidade
 O motor de cálculo (`lib/match/`) cruza determinística e pontualmente cada resposta do usuário com os votos nominais dos deputados:
 
-$$\text{Índice de Afinidade (\%)} = \left( \frac{\text{Concordâncias}}{\text{Votações Comparáveis}} \right) \times 100$$
+$$\text{Índice de Afinidade}\;(\%) = \left( \frac{\text{Concordâncias}}{\text{Votações Comparáveis}} \right) \times 100$$
 
 - **Concordância**: Usuário **CONCORDO** $\leftrightarrow$ Deputado **SIM** / Usuário **DISCORDO** $\leftrightarrow$ Deputado **NÃO**.
 - **Divergência**: Usuário **CONCORDO** $\leftrightarrow$ Deputado **NÃO** / Usuário **DISCORDO** $\leftrightarrow$ Deputado **SIM**.
@@ -373,8 +374,8 @@ $$\text{Índice de Afinidade (\%)} = \left( \frac{\text{Concordâncias}}{\text{V
 
 ### 2. Hierarquia Determinística de Eleição da Votação Principal (`classifyVoteSession`)
 Para proposições com múltiplas deliberações (Texto-Base, Destaques, Emendas e Requerimentos), o sistema elege a sessão principal com base em 4 níveis de desempate estrito:
-1. **Nível 1 (Mérito Substantivo):** Prioridade 1 (Texto-Base, Substitutivos, Projetos de Lei de Conversão) $>$ Prioridade 2 (Emendas) $>$ Prioridade 3 (Destaques / DTQ / DVS) $>$ Prioridade 4 (Requerimentos de Pauta).
-2. **Nível 2 (Presença de Votos Nominais):** Prioriza deliberações com votos nominais registrados sobre redações finais meramente simbólicas (0 votos nominais).
+1. **Nível 1 (Mérito Substantivo):** Prioridade 1 (Texto-Base, Substitutivos, 1º e 2º Turnos de PEC, Projetos de Lei de Conversão) $>$ Prioridade 2 (Emendas) $>$ Prioridade 3 (Destaques / DTQ / DVS) $>$ Prioridade 4 (Requerimentos de Pauta). Expressões de praxe regimental como *"ressalvado o destaque"* são tratadas com precisão sintática para não rebaixar textos de mérito legítimo.
+2. **Nível 2 (Presença Obrigatória de Votos Nominais):** Exige quórum nominal registrado no painel eletrônico (Sim/Não). Matérias com texto-base aprovado simbolicamente (0 votos nominais) não são computadas no cálculo de afinidade e são disponibilizadas apenas em modo consulta.
 3. **Nível 3 (Atualidade Temporal):** `data_hora DESC` (deliberação mais recente que consolidou a decisão final da Câmara, como o 2º turno sobre o 1º turno).
 4. **Nível 4 (Desempate Alfanumérico):** `ID da Sessão` (`localeCompare` determinístico).
 
@@ -481,8 +482,29 @@ Esta seção detalha as principais decisões de design de software e infraestrut
 A concepção, arquitetura, design de interface e implementação do **LegisVisão** foram desenvolvidos utilizando práticas modernas de **Engenharia de Software Aumentada por Inteligência Artificial (AI-Assisted Engineering)**, combinando as seguintes ferramentas:
 
 - **🚀 Google Antigravity & Google Gemini**: Utilizados como agente autônomo principal de programação em par (pair programming), estruturação da arquitetura em camadas, implementação do design system (Tailwind CSS e Dark Mode), refatoração modular dos scripts de sincronização e otimização de batch inserts no banco de dados.
+- **⚡ Google AI Studio**: Utilizado para prototipagem rápida, engenharia e validação de prompts multimodais (análise de PDFs do inteiro teor de leis e deliberações legislativas), calibração de parâmetros de temperatura e inferência neutra, além de testes comparativos de desempenho e cotas entre modelos da família Gemini (`gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-1.5-flash`).
 - **💻 GitHub Copilot**: Utilizado no ambiente de desenvolvimento para geração contextual de código TypeScript, validação de tipagens estritas, criação de rotas de API e aceleração de testes de componentes React.
 - **📊 Microsoft 365 Copilot**: Utilizado na fase de planejamento estratégico, levantamento de requisitos de transparência pública, refinamento da metodologia de cálculo e elaboração da documentação técnica e cívica.
+
+---
+
+## 🧪 Testes Automatizados e Garantia de Qualidade
+
+A integridade do sistema, a precisão do classificador determinístico, a renderização dos componentes e a retrocompatibilidade dos dados são validadas por uma suíte de testes automatizados com **Vitest** e **React Testing Library**:
+
+```bash
+# Executar todos os testes unitários e de integração
+npm run test
+
+# Executar testes em modo interativo com hot-reload (Watch Mode)
+npm run test:watch
+
+# Validação estrita de tipagem TypeScript
+npx tsc --noEmit
+
+# Validação do build de produção (Turbopack)
+npm run build
+```
 
 ---
 
@@ -490,6 +512,7 @@ A concepção, arquitetura, design de interface e implementação do **LegisVis�
 
 - **Frontend**: [Next.js 16.3 (Turbopack)](https://nextjs.org/) + [React 19](https://react.dev/)
 - **Estilização**: [TailwindCSS v4](https://tailwindcss.com/) com paleta HSL dinâmica e suporte a tema Claro/Escuro (`next-themes`)
+- **Testes Automatizados**: [Vitest](https://vitest.dev/) + [@testing-library/react](https://testing-library.com/) + [jsdom](https://github.com/jsdom/jsdom)
 - **Ícones**: [React Icons (FontAwesome)](https://react-icons.github.io/react-icons/)
 - **Performance & UX**: Loading Skeletons por rota dinâmica (`loading.tsx`), barra de progresso em tempo real (`NavigationProgressBar`) e preloading de imagens
 - **Banco de Dados**: [PostgreSQL](https://www.postgresql.org/) hospedado no [Supabase](https://supabase.com/)
@@ -527,8 +550,11 @@ A concepção, arquitetura, design de interface e implementação do **LegisVis�
 │   ├── faq/                 # Metodologia, FAQ e Monitor de Fontes da Câmara
 │   ├── og-image/            # Gerador dinâmico de imagem Open Graph (@vercel/og)
 │   ├── opiniao/             # Simulador de Votação e Minhas Opiniões (com loading.tsx e revisao/)
+│   │   └── revisao/__tests__/ # Testes da página de revisão de opiniões
 │   ├── partidos/            # Páginas de Detalhes dos Partidos e Bancadas (com loading.tsx)
+│   │   └── __tests__/       # Testes da página de detalhes do partido (filtros e bancada)
 │   ├── politicos/           # Páginas de Perfil e Votações Nominais dos Deputados (com loading.tsx)
+│   │   └── __tests__/       # Testes de detalhes do deputado (busca, ordenação e paginação)
 │   ├── projetos/            # Detalhes da Proposição, Votações e Lista de Deputados (com loading.tsx)
 │   ├── globals.css          # Design tokens HSL, tema escuro/claro, animações e utilitários
 │   ├── layout.tsx           # Layout raiz com preloading de logo, ThemeProvider e NavigationProgressBar
@@ -538,6 +564,7 @@ A concepção, arquitetura, design de interface e implementação do **LegisVis�
 │   ├── robots.ts            # Configuração de indexação para buscadores
 │   └── sitemap.ts           # Sitemap XML dinâmico (deputados, projetos, partidos)
 ├── lib/
+│   ├── __tests__/           # Testes unitários de storage e retrocompatibilidade de dados
 │   ├── ai/                  # Integração com Google AI Studio (Gemini API)
 │   │   └── gemini.ts        # Modelos dinâmicos, resumo de PDF multimodal e deliberações
 │   ├── match/               # Motor de cálculo determinístico, classificador de sessões e votos
@@ -564,8 +591,9 @@ A concepção, arquitetura, design de interface e implementação do **LegisVis�
 │       └── sync-votes.ts    # Ingestão em lote dos votos nominais individuais
 ├── supabase/
 │   └── migrations/          # Migrations SQL do PostgreSQL (schema, índices e campos de IA)
-└── types/
-    └── db.ts                # Tipagens TypeScript estritas do schema e domínio
+├── types/
+│   └── db.ts                # Tipagens TypeScript estritas do schema e domínio
+└── vitest.config.ts         # Configuração da suíte de testes (Vitest + JSDOM)
 ```
 
 ---
@@ -596,8 +624,8 @@ GEMINI_API_KEY="sua_chave_do_google_ai_studio"
 ### 3. Aplicar o Esquema do Banco de Dados
 Execute as migrations com o Supabase CLI ou via script:
 ```bash
-npm run db:reset
-# ou npx supabase db push
+npm run migrate:push 
+# ou 'npm run db:reset' para resetar o banco de dados e recriar com as migrações
 ```
 
 ### 4. Sincronizar os Dados Oficiais da Câmara dos Deputados
@@ -616,13 +644,22 @@ npm run enrich:ai -- --models
 npm run enrich:ai -- --limit=100 --concurrency=3
 ```
 
-### 6. Iniciar o Servidor de Desenvolvimento
+### 6. Executar Testes Automatizados (Vitest)
+```bash
+# Executar toda a suíte de testes unitários e de integração
+npm run test
+
+# Modo interativo (watch mode com hot-reload)
+npm run test:watch
+```
+
+### 7. Iniciar o Servidor de Desenvolvimento
 ```bash
 npm run dev
 ```
 Acesse [http://localhost:3000](http://localhost:3000) no seu navegador.
 
-### 6. Build de Produção
+### 8. Build de Produção
 ```bash
 npm run build
 npm run start

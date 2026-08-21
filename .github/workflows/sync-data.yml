@@ -1,4 +1,4 @@
-name: Sincronização de Bases Oficiais
+name: ⚡ Sincronização de Bases Oficiais (Câmara dos Deputados)
 
 on:
   schedule:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   sync-official-data:
-    name: Sincronizar Dados Câmara
+    name: 🏛️ Sincronizar Dados da Câmara
     runs-on: ubuntu-latest
     timeout-minutes: 60
 

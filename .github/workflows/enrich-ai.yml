@@ -1,4 +1,4 @@
-name: Enriquecimento Semântico por IA (Google AI Studio)
+name: 🤖 Enriquecimento Semântico por IA (Google AI Studio)
 
 on:
   schedule:
@@ -29,7 +29,7 @@ on:
 
 jobs:
   enrich-vote-sessions:
-    name: Enriquecer Proposições e Deliberações com Gemini
+    name: 🧠 Enriquecer Proposições e Deliberações com Gemini
     runs-on: ubuntu-latest
     timeout-minutes: 45
 

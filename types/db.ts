@@ -158,6 +158,7 @@ export interface PropositionWithVoteSession extends Proposition {
   total_sim?: number;
   total_nao?: number;
   total_outros?: number;
+  is_merit?: boolean;
 }
 
 export interface PropositionDetail extends PropositionWithVoteSession {

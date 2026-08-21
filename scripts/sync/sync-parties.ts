@@ -1,7 +1,4 @@
-// ====================================================================
-// LegisVisão - Sincronização de Partidos Políticos (Câmara dos Deputados)
-// ====================================================================
-import { sql, CAMARA_API_BASE, fetchWithRetry } from "./client";
+import { sql, CAMARA_API_BASE, fetchWithRetry, mapConcurrent } from "./client";
 
 interface CamaraPartyItem {
   id: number;
@@ -17,6 +14,15 @@ export interface SyncPartiesResult {
   partyMap: Map<string, number>;
 }
 
+function getPartyLogoUrlFallback(sigla: string): string {
+  const clean = sigla
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
+  return `https://www.camara.leg.br/internet/Deputado/img/partidos/${clean}.gif`;
+}
+
 export async function syncParties(): Promise<SyncPartiesResult> {
   console.log("🚩 [Partidos] Sincronizando catálogo de partidos da Câmara...");
 
@@ -29,6 +35,30 @@ export async function syncParties(): Promise<SyncPartiesResult> {
   const parties: CamaraPartyItem[] = json.dados || [];
 
   const partyMap = new Map<string, number>();
+
+  // Consultar detalhes individuais de cada partido em paralelo para obter o urlLogo oficial
+  const detailedParties = await mapConcurrent(parties, 6, async (party) => {
+    let officialLogoUrl: string | null = null;
+    try {
+      const detailRes = await fetchWithRetry(`${CAMARA_API_BASE}/partidos/${party.id}`);
+      if (detailRes.ok) {
+        const detailJson = await detailRes.json();
+        officialLogoUrl = detailJson.dados?.urlLogo || null;
+      }
+    } catch {
+      // Usa fallback caso a consulta do detalhe falhe
+    }
+
+    const sigla = party.sigla.trim().toUpperCase();
+    return {
+      id: party.id,
+      sigla,
+      nome: party.nome.trim(),
+      logo_url: officialLogoUrl || getPartyLogoUrlFallback(sigla),
+      total_membros: 0,
+    };
+  });
+
   const partiesMapToInsert = new Map<number, {
     id: number;
     sigla: string;
@@ -37,16 +67,9 @@ export async function syncParties(): Promise<SyncPartiesResult> {
     total_membros: number;
   }>();
 
-  for (const party of parties) {
-    const sigla = party.sigla.trim().toUpperCase();
-    partyMap.set(sigla, party.id);
-    partiesMapToInsert.set(party.id, {
-      id: party.id,
-      sigla,
-      nome: party.nome.trim(),
-      logo_url: null,
-      total_membros: 0,
-    });
+  for (const item of detailedParties) {
+    partyMap.set(item.sigla, item.id);
+    partiesMapToInsert.set(item.id, item);
   }
 
   const valuesToInsert = Array.from(partiesMapToInsert.values());
@@ -59,7 +82,8 @@ export async function syncParties(): Promise<SyncPartiesResult> {
       INSERT INTO parties ${sql(valuesToInsert, "id", "sigla", "nome", "logo_url", "total_membros")}
       ON CONFLICT (id) DO UPDATE SET
         sigla = EXCLUDED.sigla,
-        nome = EXCLUDED.nome
+        nome = EXCLUDED.nome,
+        logo_url = EXCLUDED.logo_url
       RETURNING (xmax = 0) AS is_insert;
     `;
 

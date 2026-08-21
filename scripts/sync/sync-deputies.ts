@@ -22,10 +22,19 @@ export interface SyncDeputiesResult {
   deputyMap: Map<number, { nome: string; partido: string; uf: string }>;
 }
 
-export async function syncDeputies(partyMap: Map<string, number>): Promise<SyncDeputiesResult> {
-  console.log("🚩 [Deputados] Sincronizando Deputados Federais da 57ª Legislatura (2023-2027)...");
+function getPartyLogoUrl(sigla: string): string {
+  const clean = sigla
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
+  return `https://www.camara.leg.br/internet/Deputado/img/partidos/${clean}.gif`;
+}
 
-  const res = await fetchWithRetry(`${CAMARA_API_BASE}/deputados?idLegislatura=57&itens=1000&ordem=ASC&ordenarPor=nome`);
+export async function syncDeputies(partyMap: Map<string, number>): Promise<SyncDeputiesResult> {
+  console.log("🚩 [Deputados] Sincronizando 513 parlamentares da 57ª Legislatura...");
+
+  const res = await fetchWithRetry(`${CAMARA_API_BASE}/deputados?idLegislatura=57&itens=600&ordem=ASC&ordenarPor=nome`);
   if (!res.ok) {
     throw new Error(`Erro ao consultar API de deputados: HTTP ${res.status}`);
   }
@@ -65,7 +74,7 @@ export async function syncDeputies(partyMap: Map<string, number>): Promise<SyncD
         id: generatedId,
         sigla: siglaPartido,
         nome: siglaPartido,
-        logo_url: null,
+        logo_url: getPartyLogoUrl(siglaPartido),
         total_membros: 0,
       });
     }

@@ -127,7 +127,7 @@ export default function ProjectDetailsClient({
     });
   }, [sessions, votesBySession]);
 
-  // Define a sessão principal (utilizada no cálculo de afinidade: eleita pelo classificador determinístico)
+  // Define a sessão principal de mérito (utilizada no cálculo de afinidade: eleita pelo classificador determinístico)
   const primarySession = useMemo(() => {
     const deterministicList = sortVoteSessionsDeterministic(
       sessions.map((s) => ({
@@ -136,21 +136,39 @@ export default function ProjectDetailsClient({
         votes: votesBySession.get(s.id) || [],
       }))
     );
-    return deterministicList[0] || null;
+    const candidate = deterministicList[0];
+    if (
+      candidate &&
+      candidate.classification.type === "MERITO" &&
+      candidate.classification.priority === 1 &&
+      (candidate.votesCount || 0) > 0
+    ) {
+      return candidate;
+    }
+    return null;
   }, [sessions, votesBySession]);
 
-  // Inicializa selectedSessionId com a sessão principal
+  const hasMeritNominalVote = primarySession !== null;
+
+  // Inicializa selectedSessionId com a sessão principal (ou a primeira com votos)
   useEffect(() => {
-    if (!selectedSessionId && primarySession) {
-      setSelectedSessionId(primarySession.id);
+    if (!selectedSessionId) {
+      if (primarySession) {
+        setSelectedSessionId(primarySession.id);
+      } else if (classifiedSessions.length > 0) {
+        const firstWithVotes = classifiedSessions.find((s) => s.votesCount > 0);
+        setSelectedSessionId((firstWithVotes || classifiedSessions[0]).id);
+      }
     }
-  }, [primarySession, selectedSessionId]);
+  }, [primarySession, selectedSessionId, classifiedSessions]);
 
   // Sessão atualmente ativa para inspeção
   const activeSession = useMemo(() => {
     return (
       classifiedSessions.find((s) => s.id === selectedSessionId) ||
-      primarySession
+      primarySession ||
+      classifiedSessions[0] ||
+      null
     );
   }, [classifiedSessions, selectedSessionId, primarySession]);
 
@@ -380,8 +398,8 @@ export default function ProjectDetailsClient({
             </div>
           )}
 
-          {/* 2. Deliberação de Mérito Votada no Plenário (Utilizada no Cálculo de Afinidade) */}
-          {primarySession && (
+          {/* 2. Deliberação de Mérito Votada no Plenário ou Aviso de Votação Simbólica */}
+          {primarySession && primarySession.classification.type === "MERITO" && (primarySession.votesCount ?? 0) > 0 ? (
             <div className="p-4 sm:p-5 rounded-2xl bg-muted/40 border border-border/80 space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-black uppercase tracking-wider text-foreground flex items-center gap-1.5">
@@ -401,6 +419,16 @@ export default function ProjectDetailsClient({
 
               <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
                 {primarySession.resumo_simplificado || primarySession.descricao || "Votação do texto-base/mérito principal da proposição."}
+              </p>
+            </div>
+          ) : (
+            <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-bold text-xs sm:text-sm">
+                <FaInfoCircle className="w-4 h-4 shrink-0" />
+                <span>Texto-Base Deliberado por Votação Simbólica</span>
+              </div>
+              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                O texto principal desta proposição foi aprovado/rejeitado por <strong>votação simbólica</strong> em Plenário (sem registro nominal individual de votos no painel eletrônico). As votações registradas abaixo referem-se a emendas, destaques ou requerimentos pontuais.
               </p>
             </div>
           )}
@@ -434,58 +462,69 @@ export default function ProjectDetailsClient({
         </div>
 
         {/* Painel de Opinião do Cidadão */}
-        <div className="pt-4 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-muted/20 -mx-6 -mb-6 sm:-mx-8 sm:-mb-8 p-5 sm:p-6 rounded-b-2xl">
-          <div className="space-y-1">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
-              Sua Opinião sobre este Projeto:
-            </span>
+        {hasMeritNominalVote ? (
+          <div className="pt-4 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-muted/20 -mx-6 -mb-6 sm:-mx-8 sm:-mb-8 p-5 sm:p-6 rounded-b-2xl">
+            <div className="space-y-1">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">
+                Sua Opinião sobre este Projeto:
+              </span>
+              <div className="flex items-center gap-2">
+                {userOpinion ? (
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs sm:text-sm font-extrabold border ${userOpinion === "CONCORDO"
+                        ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                        : "bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/30"
+                      }`}
+                  >
+                    {userOpinion === "CONCORDO" ? (
+                      <FaCheck className="w-3.5 h-3.5" />
+                    ) : (
+                      <FaTimes className="w-3.5 h-3.5" />
+                    )}
+                    <span>Você votou: {userOpinion}</span>
+                  </span>
+                ) : (
+                  <span className="text-xs text-muted-foreground italic">
+                    Você ainda não opinou nesta proposta no simulador.
+                  </span>
+                )}
+              </div>
+            </div>
+
             <div className="flex items-center gap-2">
-              {userOpinion ? (
-                <span
-                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs sm:text-sm font-extrabold border ${userOpinion === "CONCORDO"
-                      ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                      : "bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/30"
-                    }`}
-                >
-                  {userOpinion === "CONCORDO" ? (
-                    <FaCheck className="w-3.5 h-3.5" />
-                  ) : (
-                    <FaTimes className="w-3.5 h-3.5" />
-                  )}
-                  <span>Você votou: {userOpinion}</span>
-                </span>
-              ) : (
-                <span className="text-xs text-muted-foreground italic">
-                  Você ainda não opinou nesta proposta no simulador.
-                </span>
-              )}
+              <button
+                onClick={() => handleVote("CONCORDO")}
+                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-smooth cursor-pointer shadow-soft ${userOpinion === "CONCORDO"
+                    ? "bg-emerald-600 text-white ring-2 ring-emerald-600/40"
+                    : "bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white"
+                  }`}
+              >
+                <FaCheck className="w-3.5 h-3.5" />
+                <span>CONCORDO</span>
+              </button>
+
+              <button
+                onClick={() => handleVote("DISCORDO")}
+                className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-smooth cursor-pointer shadow-soft ${userOpinion === "DISCORDO"
+                    ? "bg-rose-600 text-white ring-2 ring-rose-600/40"
+                    : "bg-rose-600/20 text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white"
+                  }`}
+              >
+                <FaTimes className="w-3.5 h-3.5" />
+                <span>DISCORDO</span>
+              </button>
             </div>
           </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => handleVote("CONCORDO")}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-smooth cursor-pointer shadow-soft ${userOpinion === "CONCORDO"
-                  ? "bg-emerald-600 text-white ring-2 ring-emerald-600/40"
-                  : "bg-emerald-600/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-600 hover:text-white"
-                }`}
-            >
-              <FaCheck className="w-3.5 h-3.5" />
-              <span>CONCORDO</span>
-            </button>
-
-            <button
-              onClick={() => handleVote("DISCORDO")}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-smooth cursor-pointer shadow-soft ${userOpinion === "DISCORDO"
-                  ? "bg-rose-600 text-white ring-2 ring-rose-600/40"
-                  : "bg-rose-600/20 text-rose-700 dark:text-rose-300 hover:bg-rose-600 hover:text-white"
-                }`}
-            >
-              <FaTimes className="w-3.5 h-3.5" />
-              <span>DISCORDO</span>
-            </button>
+        ) : (
+          <div className="pt-4 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/20 -mx-6 -mb-6 sm:-mx-8 sm:-mb-8 p-5 sm:p-6 rounded-b-2xl">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <FaInfoCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>
+                <strong>Votação de Opinião Desativada</strong>: Esta matéria foi deliberada por <em>votação simbólica</em> no Plenário e não integra o simulador de afinidade com os parlamentares.
+              </span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Painel Unificado de Deliberações do Plenário (Ordem Cronológica Decrescente) */}
