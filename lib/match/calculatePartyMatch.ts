@@ -11,7 +11,6 @@ import type { UserVotes, PartyMatchResult, VoteDetailWithProposition } from "./t
  * Regra Oficial:
  * - Não utiliza orientação formal de liderança.
  * - Cada voto de um deputado é vinculado ao seu partido.
- * - Cada voto nominal gera uma comparação.
  * - Índice de Afinidade = Total de Concordâncias dos Deputados / Total de Votos Comparáveis dos Deputados * 100.
  */
 export function calculatePartyMatch(

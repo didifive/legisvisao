@@ -19,9 +19,14 @@ import {
   FaFilter,
   FaSearch,
   FaLandmark,
+  FaRobot,
+  FaChevronDown,
+  FaVoteYea,
+  FaFlag,
   FaExclamationTriangle,
   FaSyncAlt,
 } from "react-icons/fa";
+import { AiFeedbackModal } from "@/app/components/AiFeedbackModal";
 import {
   getStoredAnswers,
   saveStoredAnswers,
@@ -36,6 +41,7 @@ export default function RevisaoPage() {
   const [selectedYears, setSelectedYears] = useState<number[]>([]);
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [feedbackTarget, setFeedbackTarget] = useState<PropositionWithVoteSession | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -82,16 +88,23 @@ export default function RevisaoPage() {
     return map;
   }, [propositions]);
 
-  // Lista apenas as proposições que o usuário já respondeu
+  // Lista de proposições respondidas pelo usuário
   const answeredPropositions = useMemo(() => {
-    const list: Array<{ proposition: PropositionWithVoteSession; answer: "CONCORDO" | "DISCORDO" }> = [];
-    for (const [propIdStr, answer] of Object.entries(answers)) {
+    const list: Array<{
+      proposition: PropositionWithVoteSession;
+      answer: "CONCORDO" | "DISCORDO";
+    }> = [];
+
+    for (const [propIdStr, opinion] of Object.entries(answers)) {
       const pId = Number(propIdStr);
-      const proposition = propsById.get(pId);
-      if (proposition) {
-        list.push({ proposition, answer });
+      if (!Number.isNaN(pId)) {
+        const proposition = propsById.get(pId);
+        if (proposition) {
+          list.push({ proposition, answer: opinion });
+        }
       }
     }
+
     return list;
   }, [answers, propsById]);
 
@@ -142,6 +155,8 @@ export default function RevisaoPage() {
       list = list.filter(
         (item) =>
           item.proposition.titulo.toLowerCase().includes(q) ||
+          (item.proposition.titulo_amigavel && item.proposition.titulo_amigavel.toLowerCase().includes(q)) ||
+          (item.proposition.resumo_geral && item.proposition.resumo_geral.toLowerCase().includes(q)) ||
           (item.proposition.ementa && item.proposition.ementa.toLowerCase().includes(q)) ||
           (item.proposition.tema && item.proposition.tema.toLowerCase().includes(q))
       );
@@ -296,38 +311,47 @@ export default function RevisaoPage() {
         </div>
       ) : (
         <>
-          {/* Barra de Busca & Filtros */}
-          <div className="p-4 rounded-xl bg-card border border-border shadow-soft space-y-3">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-1.5 focus-within:ring-2 focus-within:ring-primary/20 flex-1">
-                <FaSearch className="text-muted-foreground w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Buscar proposta por tema, sigla ou número..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full bg-transparent border-none outline-none text-xs sm:text-sm text-foreground"
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
+          {/* Barra de Busca & Filtros (Ampla e com layout destacado) */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-card border border-border shadow-soft space-y-4">
+            {/* 1. Busca ampla */}
+            <div className="relative flex items-center w-full">
+              <FaSearch className="absolute left-3.5 text-muted-foreground w-4 h-4 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Buscar em minhas respostas por tema, palavra-chave, sigla ou número..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full bg-background border border-border rounded-xl pl-10 pr-10 py-2.5 text-sm sm:text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-smooth"
+              />
+              {search && (
                 <button
-                  onClick={() => setShowFilterDrawer(!showFilterDrawer)}
-                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-smooth cursor-pointer ${
-                    activeFiltersCount > 0 || showFilterDrawer
-                      ? "bg-primary text-white border-primary shadow-soft"
-                      : "bg-background border-border text-foreground hover:bg-muted"
-                  }`}
+                  onClick={() => setSearch("")}
+                  className="absolute right-3 p-1 rounded-md text-muted-foreground hover:text-foreground text-xs hover:bg-muted transition-smooth"
+                  title="Limpar busca"
                 >
-                  <FaFilter className="w-3 h-3" />
-                  <span>Filtros {activeFiltersCount > 0 ? `(${activeFiltersCount})` : "Avançados"}</span>
+                  <FaTimes className="w-3.5 h-3.5" />
                 </button>
+              )}
+            </div>
 
-                <Button variant="hero" size="sm" href="/afinidade" className="gap-1.5 text-xs font-bold shrink-0">
-                  <FaChartPie className="w-3.5 h-3.5" />
-                  <span>Ver Afinidade</span>
-                </Button>
-              </div>
+            {/* 2. Controles de Filtragem */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-border/40">
+              <button
+                onClick={() => setShowFilterDrawer(!showFilterDrawer)}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-smooth cursor-pointer font-bold ${
+                  activeFiltersCount > 0 || showFilterDrawer
+                    ? "bg-primary text-white border-primary shadow-soft"
+                    : "bg-background border-border text-foreground hover:bg-muted"
+                }`}
+              >
+                <FaFilter className="w-3 h-3" />
+                <span>Filtros {activeFiltersCount > 0 ? `(${activeFiltersCount})` : "Avançados"}</span>
+              </button>
+
+              <Button variant="hero" size="sm" href="/afinidade" className="gap-1.5 text-xs font-bold shrink-0">
+                <FaChartPie className="w-3.5 h-3.5" />
+                <span>Ver Afinidade com Parlamentares</span>
+              </Button>
             </div>
 
             {/* Painel Avançado: Filtros por Ano e Situação */}
@@ -441,7 +465,7 @@ export default function RevisaoPage() {
                 return (
                   <div
                     key={proposition.id}
-                    className="p-5 rounded-2xl bg-card border border-border shadow-soft hover:shadow-medium transition-smooth space-y-4"
+                    className="p-5 sm:p-6 rounded-2xl bg-card border border-border shadow-soft hover:shadow-medium transition-smooth space-y-4"
                   >
                     {/* Header do Card */}
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -487,10 +511,83 @@ export default function RevisaoPage() {
                       </div>
                     </div>
 
-                    {/* Descrição */}
-                    <p className="text-sm text-foreground/90 leading-relaxed font-normal">
-                      {proposition.ementa_detalhada || proposition.ementa}
-                    </p>
+                    {/* 1. Resumo Geral do Projeto de Lei (Linguagem Cidadã por IA) ou Ementa Oficial Direta */}
+                    {proposition.resumo_geral ? (
+                      <>
+                        <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-extrabold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                              <FaRobot className="w-3.5 h-3.5 shrink-0" />
+                              <span>Sobre o Projeto de Lei (Resumo Geral):</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setFeedbackTarget(proposition)}
+                              title="Relatar inconsistência ou viés no resumo"
+                              className="text-[11px] text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-smooth flex items-center gap-1 cursor-pointer font-medium"
+                            >
+                              <FaFlag className="w-2.5 h-2.5" />
+                              <span className="hidden sm:inline">Relatar problema</span>
+                            </button>
+                          </div>
+                          <p className="text-sm text-foreground leading-relaxed font-normal">
+                            {proposition.resumo_geral}
+                          </p>
+                        </div>
+
+                        {/* Expansor da Ementa Jurídica Oficial */}
+                        <details className="group pt-0.5">
+                          <summary className="text-xs font-bold text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1.5 select-none list-none">
+                            <FaInfoCircle className="w-3 h-3 text-primary" />
+                            <span>Ver ementa jurídica oficial da Câmara</span>
+                            <FaChevronDown className="w-2.5 h-2.5 group-open:rotate-180 transition-transform" />
+                          </summary>
+                          <div className="mt-2 p-3.5 rounded-xl bg-muted/30 border border-border/60 text-xs text-muted-foreground leading-relaxed">
+                            {proposition.ementa_detalhada || proposition.ementa}
+                          </div>
+                        </details>
+                      </>
+                    ) : (
+                      /* Exibição direta da Ementa Oficial */
+                      <div className="p-4 rounded-xl bg-muted/30 border border-border/60 space-y-1.5">
+                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                          <FaInfoCircle className="w-3.5 h-3.5 text-primary shrink-0" />
+                          <span>Ementa Oficial:</span>
+                        </span>
+                        <p className="text-sm text-foreground leading-relaxed font-normal">
+                          {proposition.ementa_detalhada || proposition.ementa}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 2. Deliberação de Mérito Votada no Plenário */}
+                    {proposition.resumo_simplificado && (
+                      <div className="p-4 rounded-xl bg-muted/40 border border-border/80 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                            <FaVoteYea className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <span>Deliberação de Mérito Votada no Plenário:</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setFeedbackTarget(proposition)}
+                            title="Relatar inconsistência ou viés no resumo desta deliberação"
+                            className="text-[11px] text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-smooth flex items-center gap-1 cursor-pointer font-medium"
+                          >
+                            <FaFlag className="w-2.5 h-2.5" />
+                            <span className="hidden sm:inline">Relatar problema</span>
+                          </button>
+                        </div>
+                        {proposition.titulo_amigavel && (
+                          <p className="text-xs font-semibold text-primary">
+                            {proposition.titulo_amigavel}
+                          </p>
+                        )}
+                        <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                          {proposition.resumo_simplificado}
+                        </p>
+                      </div>
+                    )}
 
                     {/* Link Oficial */}
                     <div className="flex items-center justify-between text-xs pt-1">
@@ -504,7 +601,7 @@ export default function RevisaoPage() {
                     </div>
 
                     {/* Painel de Modificação de Resposta */}
-                    <div className="pt-3 border-t border-border/60 flex flex-wrap items-center justify-between gap-3 bg-muted/20 -mx-5 -mb-5 p-4 rounded-b-2xl">
+                    <div className="pt-3 border-t border-border/60 flex flex-wrap items-center justify-between gap-3 bg-muted/20 -mx-5 -mb-5 sm:-mx-6 sm:-mb-6 p-4 sm:p-5 rounded-b-2xl">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-muted-foreground">
                           Sua Opinião Registrada:
@@ -523,6 +620,7 @@ export default function RevisaoPage() {
 
                       <div className="flex items-center gap-2">
                         <button
+                          type="button"
                           onClick={() => handleVoteChange(proposition.id, "CONCORDO")}
                           disabled={isConcordo}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-smooth cursor-pointer ${
@@ -536,6 +634,7 @@ export default function RevisaoPage() {
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => handleVoteChange(proposition.id, "DISCORDO")}
                           disabled={!isConcordo}
                           className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-smooth cursor-pointer ${
@@ -549,6 +648,7 @@ export default function RevisaoPage() {
                         </button>
 
                         <button
+                          type="button"
                           onClick={() => handleRemoveOpinion(proposition.id)}
                           title="Remover minha resposta desta proposta"
                           className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 border border-transparent hover:border-destructive/20 transition-smooth cursor-pointer ml-1"
@@ -564,6 +664,17 @@ export default function RevisaoPage() {
           )}
         </>
       )}
+
+      {/* Modal de Relato de Inconsistência em IA */}
+      <AiFeedbackModal
+        isOpen={Boolean(feedbackTarget)}
+        onClose={() => setFeedbackTarget(null)}
+        propositionId={feedbackTarget?.id}
+        propositionTitle={feedbackTarget?.titulo}
+        sessionId={feedbackTarget?.vote_session_id}
+        sessionTitle={feedbackTarget?.titulo_amigavel || feedbackTarget?.vote_session_description || undefined}
+        reportedSummary={feedbackTarget?.resumo_geral || feedbackTarget?.resumo_simplificado || feedbackTarget?.ementa || undefined}
+      />
     </main>
   );
 }

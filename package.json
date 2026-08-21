@@ -11,7 +11,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "sync": "tsx scripts/sync/index.ts"
+    "sync": "tsx scripts/sync/index.ts",
+    "enrich:ai": "tsx scripts/sync/enrich-sessions-ai.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.3",

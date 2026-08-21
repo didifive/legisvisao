@@ -40,6 +40,10 @@ export interface Proposition {
   url_camara?: string | null;
   data_apresentacao?: string | null;
   ultimo_status?: string | null;
+  resumo_geral?: string | null;
+  ai_processed?: boolean;
+  ai_processed_at?: string | null;
+  ai_error?: string | null;
   last_updated_at?: string | null;
 }
 
@@ -51,6 +55,13 @@ export interface VoteSession {
   descricao: string;
   resultado?: string | null;
   sigla_orgao: string;
+  tipo_deliberacao?: "MERITO" | "DESTAQUE" | "EMENDA" | "REQUERIMENTO" | "OUTRO" | string | null;
+  titulo_amigavel?: string | null;
+  resumo_simplificado?: string | null;
+  pergunta_cidadao?: string | null;
+  ai_processed?: boolean;
+  ai_processed_at?: string | null;
+  ai_error?: string | null;
 }
 
 // 5. Votos Nominais dos Deputados
@@ -141,6 +152,9 @@ export interface PropositionWithVoteSession extends Proposition {
   vote_session_date?: string;
   vote_session_description?: string;
   vote_session_result?: string | null;
+  tipo_deliberacao?: string | null;
+  titulo_amigavel?: string | null;
+  resumo_simplificado?: string | null;
   total_sim?: number;
   total_nao?: number;
   total_outros?: number;
