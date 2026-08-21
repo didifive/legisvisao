@@ -138,22 +138,67 @@ async function main() {
       LIMIT ${limit};
     `;
   } else {
-    // Busca proposições pendentes de processamento de resumo geral ou com sessões pendentes
+    // Busca proposições pendentes priorizando matérias com deliberação de mérito/texto-base e votos nominais
     propositionsToProcess = await sql<PropositionHeader[]>`
-      SELECT p.id, p.titulo, p.ementa, p.ementa_detalhada, p.tema, p.url_inteiro_teor
+      SELECT 
+        p.id, 
+        p.titulo, 
+        p.ementa, 
+        p.ementa_detalhada, 
+        p.tema, 
+        p.url_inteiro_teor
       FROM propositions p
+      LEFT JOIN (
+        SELECT 
+          vs.proposicao_id,
+          COUNT(vs.id) as total_sessions,
+          COUNT(dv.id) as total_nominal_votes,
+          MAX(CASE 
+            WHEN (
+              vs.tipo_deliberacao = 'MERITO' 
+              OR vs.descricao ILIKE '%substitutivo%' 
+              OR vs.descricao ILIKE '%texto-base%' 
+              OR vs.descricao ILIKE '%texto base%' 
+              OR vs.descricao ILIKE '%turno%' 
+              OR vs.descricao ILIKE '%projeto de lei%' 
+              OR vs.descricao ILIKE '%proposta de emenda%' 
+              OR vs.descricao ILIKE '%medida provis%' 
+              OR vs.descricao ILIKE '%redação final%' 
+              OR vs.descricao ILIKE '%redacao final%'
+            )
+            AND NOT (
+              (vs.descricao ILIKE '%emenda%' OR vs.descricao ILIKE '%subemenda%') 
+              AND NOT (vs.descricao ILIKE '%subemenda substitutiva global%' OR vs.descricao ILIKE '%substitutiva global%')
+            )
+            AND NOT (
+              vs.descricao ILIKE 'destaque%' OR vs.descricao ILIKE '%votação do destaque%' OR vs.descricao ILIKE '%votação dos destaques%' OR vs.descricao ILIKE '%votação de destaque%' OR vs.descricao ILIKE '%dtq%' OR vs.descricao ILIKE '%dvs%' OR vs.descricao ILIKE '%votação em separado%' OR vs.descricao ILIKE '%votacao em separado%' OR vs.descricao ILIKE 'mantido o texto%' OR vs.descricao ILIKE 'suprimido o texto%'
+            )
+            AND NOT (
+              vs.descricao ILIKE '%requerimento%' OR vs.descricao ILIKE '%retirada de pauta%' OR vs.descricao ILIKE '%adiamento%' OR vs.descricao ILIKE '%urgência%' OR vs.descricao ILIKE '%urgencia%' OR vs.descricao ILIKE '%preferência%' OR vs.descricao ILIKE '%preferencia%'
+            )
+            AND dv.id IS NOT NULL THEN 1 ELSE 0 
+          END) as has_merit_nominal
+        FROM vote_sessions vs
+        LEFT JOIN deputy_votes dv ON dv.votacao_id = vs.id
+        GROUP BY vs.proposicao_id
+      ) stats ON stats.proposicao_id = p.id
       WHERE ${
         force
           ? sql`TRUE`
           : sql`
             (p.ai_processed = FALSE OR p.ai_processed IS NULL)
             OR EXISTS (
-              SELECT 1 FROM vote_sessions vs 
-              WHERE vs.proposicao_id = p.id AND (vs.ai_processed = FALSE OR vs.ai_processed IS NULL)
+              SELECT 1 FROM vote_sessions vs2 
+              WHERE vs2.proposicao_id = p.id AND (vs2.ai_processed = FALSE OR vs2.ai_processed IS NULL)
             )
           `
       }
-      ORDER BY p.ano DESC, p.id DESC
+      ORDER BY 
+        COALESCE(stats.has_merit_nominal, 0) DESC,
+        COALESCE(stats.total_nominal_votes, 0) DESC,
+        COALESCE(stats.total_sessions, 0) DESC,
+        p.ano DESC, 
+        p.id DESC
       LIMIT ${limit};
     `;
   }
