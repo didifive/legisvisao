@@ -4,17 +4,32 @@ on:
   schedule:
     # Executa diariamente às 04:00 UTC (madrugada)
     - cron: "0 4 * * *"
-  workflow_dispatch: # Permite disparo manual com configuração de limite de requisições
+  workflow_dispatch: # Permite disparo manual com configuração de parâmetros
     inputs:
       limit:
-        description: "Quantidade máxima de deliberações para enriquecer nesta execução"
+        description: "Quantidade máxima de projetos a enriquecer"
         required: false
-        default: "500"
+        default: "300"
         type: string
+      concurrency:
+        description: "Número de workers concorrentes (1 a 4)"
+        required: false
+        default: "3"
+        type: string
+      proposicao_id:
+        description: "ID de uma Proposição específica (opcional, ex: 2256735)"
+        required: false
+        default: ""
+        type: string
+      force:
+        description: "Forçar reprocessamento de matérias já enriquecidas"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   enrich-vote-sessions:
-    name: Enriquecer Deliberações com Gemini
+    name: Enriquecer Proposições e Deliberações com Gemini
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -36,5 +51,13 @@ jobs:
       - name: Instalar Dependências
         run: npm ci
 
-      - name: Executar Enriquecimento Semântico por IA
-        run: npm run enrich:ai -- --limit=${{ inputs.limit || '500' }}
+      - name: Executar Pipeline Unificado de Enriquecimento por IA
+        run: |
+          EXTRA_ARGS=""
+          if [ -n "${{ inputs.proposicao_id }}" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --proposicao=${{ inputs.proposicao_id }}"
+          fi
+          if [ "${{ inputs.force }}" = "true" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --force"
+          fi
+          npm run enrich:ai -- --limit=${{ inputs.limit || '300' }} --concurrency=${{ inputs.concurrency || '3' }} $EXTRA_ARGS

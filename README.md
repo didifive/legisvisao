@@ -81,16 +81,17 @@ flowchart TB
 
     cidadao["👤 <b>Cidadão</b><br/><i>[Pessoa]</i><br/>Usuário no navegador web"]:::person
 
-    subgraph ExtSystems ["🌐 Sistemas Externos (Dados Abertos)"]
+    subgraph ExtSystems ["🌐 Sistemas Externos (Dados Abertos e IA)"]
         camara["🏛️ <b>API da Câmara dos Deputados</b><br/><i>[Sistema Externo / REST]</i><br/>Proposições, sessões e votos nominais"]:::ext
+        gemini["🤖 <b>Google AI Studio (Gemini)</b><br/><i>[Sistema Externo / GenAI]</i><br/>Gera resumos cívicos neutros (PDF e deliberações)"]:::ext
     end
 
     subgraph LegisBoundary ["🏛️ LegisVisão (Container Boundary)"]
         spa["💻 <b>Single-Page / Web App</b><br/><i>[Next.js 16 / React 19 / Tailwind]</i><br/>Interface Local-First responsiva onde o cálculo ocorre 100% no cliente"]:::container
         storage[("💾 <b>Armazenamento Local</b><br/><i>[localStorage]</i><br/>Armazena opiniões do cidadão de forma estritamente local e privada")]:::db
         bff["⚙️ <b>Backend / BFF & APIs</b><br/><i>[Next.js Route Handlers]</i><br/>Serve catálogo de proposições, deputados e histórico com cache em memória"]:::container
-        db[("🗄️ <b>Banco de Dados Relacional</b><br/><i>[PostgreSQL / Supabase]</i><br/>Cache estruturado de 5 tabelas enxutas e alta performance")]:::db
-        sync["⚡ <b>Sync Engine (CLI)</b><br/><i>[TSX / Node.js Scripts]</i><br/>Pipeline de ingestão e normalização rápida dos dados oficiais da Câmara"]:::container
+        db[("🗄️ <b>Banco de Dados Relacional</b><br/><i>[PostgreSQL / Supabase]</i><br/>Cache estruturado com resumos cívicos e alta performance")]:::db
+        sync["⚡ <b>Sync & Enrich Engine (CLI)</b><br/><i>[TSX / Node.js Scripts]</i><br/>Pipeline de ingestão oficial e enriquecimento por IA"]:::container
     end
 
     %% Fluxos do Usuário e Frontend
@@ -100,8 +101,9 @@ flowchart TB
 
     %% Fluxos de Backend e Persistência
     bff -->|"4. Consulta dados com cache inteligente<br/>[SQL / Connection Pool]"| db
-    sync -->|"5. Coleta dados oficiais da Câmara<br/>[HTTPS / REST JSON]"| camara
-    sync -->|"6. Atualiza tabelas e sync_control<br/>[PostgreSQL / SQL]"| db
+    sync -->|"5. Coleta dados oficiais e PDFs da Câmara<br/>[HTTPS / REST JSON]"| camara
+    sync -->|"6. Envia PDFs e deliberações para resumo neutro<br/>[HTTPS / Gemini API]"| gemini
+    sync -->|"7. Atualiza tabelas e sync_control<br/>[PostgreSQL / SQL]"| db
 ```
 
 ---
@@ -167,6 +169,17 @@ sequenceDiagram
     UI->>UI: Valida estrutura do JSON (retrocompatível com v1 legada)
     UI->>LocalStorage: Grava respostas normalizadas
     UI-->>Usuario: Restaura sessões e recalcula afinidades instantaneamente
+
+    Note over Usuario,DB: 5. Auditoria Cívica e Relato de Problemas em Resumos
+    Usuario->>UI: Clica em "Relatar problema" no resumo de IA
+    UI->>Usuario: Abre modal interativo com contexto pré-preenchido
+    Usuario->>UI: Descreve o problema e clica em "Enviar Relato"
+    UI->>API: POST /api/feedback { description, propositionId, sessionId, category }
+    API->>API: Formata payload estruturado em Markdown com links da Câmara
+    API->>DB: Dispara criação de Issue na API do GitHub (com GITHUB_FEEDBACK_TOKEN)
+    DB-->>API: Retorna número da issue (#X) e link público
+    API-->>UI: Responde { success: true, issueUrl, issueNumber }
+    UI-->>Usuario: Exibe confirmação com link público da issue aberta no GitHub
 ```
 
 ---
@@ -285,6 +298,10 @@ erDiagram
         text url_camara "Página da proposição na Câmara"
         date data_apresentacao "Data de apresentação"
         text ultimo_status "Situação da tramitação"
+        text resumo_geral "Resumo geral explicativo da lei (IA)"
+        boolean ai_processed "Flag de processamento por IA"
+        timestamp ai_processed_at "Data de geração do resumo"
+        text ai_error "Log de erro em caso de falha"
     }
 
     VOTE_SESSIONS {
@@ -294,6 +311,13 @@ erDiagram
         text descricao "Objeto e ata da votação"
         varchar resultado "Resultado (Aprovado / Rejeitado)"
         varchar sigla_orgao "Órgão deliberativo (PLEN)"
+        varchar tipo_deliberacao "MERITO | DESTAQUE | EMENDA | REQUERIMENTO"
+        text titulo_amigavel "Título simplificado da pauta"
+        text resumo_simplificado "Explicação da deliberação específica (IA)"
+        text pergunta_cidadao "Pergunta contextualizada"
+        boolean ai_processed "Flag de processamento por IA"
+        timestamp ai_processed_at "Data de processamento por IA"
+        text ai_error "Log de erro em caso de falha"
     }
 
     DEPUTY_VOTES {
@@ -416,6 +440,25 @@ Esta seção detalha as principais decisões de design de software e infraestrut
 - **Justificativa de Negócio:**
   - Ciclo de entrega contínua (CD) profissional e sem atrito humano. Histórico de versões 100% auditável, rastreabilidade total de quais PRs originaram cada release e eliminação de falhas manuais de versionamento.
 
+### 7. Pipeline Assíncrono de Enriquecimento por IA (Google AI Studio Free-Tier + GitHub Actions)
+- **Implementação Técnica:**
+  - **Processamento em Lote Desacoplado (Offline/Background):** Script TypeScript (`scripts/sync/enrich-sessions-ai.ts`) orquestrado diariamente por cron do GitHub Actions (`.github/workflows/enrich-ai.yml`) às 04:00 UTC, desacoplando totalmente a geração de resumos da navegação em tempo real do usuário.
+  - **Ingestão Multimodal e Agrupamento por Projeto:** O script efetua o download em memória do PDF oficial do inteiro teor direto da Câmara e envia em uma única requisição multimodal a lei e todas as suas sessões vinculadas para a família Gemini (`gemini-3.5-flash-lite`, `gemini-3.5-flash`), reduzindo até 80% do consumo de requisições (RPM).
+  - **Seleção Incremental e Resiliência de Quota:** O banco de dados PostgreSQL persiste os resumos nas tabelas `propositions` (`resumo_geral`) e `vote_sessions` (`tipo_deliberacao`, `titulo_amigavel`, `resumo_simplificado`, `pergunta_cidadao`), sinalizando `ai_processed = TRUE`. O pipeline busca automaticamente apenas matérias pendentes, garantindo que novas sessões ou leis adicionadas sejam capturadas sem reprocessar o histórico existente.
+- **Justificativa de Negócio:**
+  - Traduz o jargão legislativo hermético e ementas burocráticas para uma linguagem cidadã clara, acessível e rigorosamente neutra.
+  - Mantém o custo de inteligência artificial em **R$ 0,00**, aproveitando a cota gratuita diária do Google AI Studio (500 requisições/dia) alimentada progressivamente pela automação.
+
+### 8. Canal de Auditoria Cívica Integrado ao GitHub (Transparência Pública Sem Custos de Servidor)
+- **Implementação Técnica:**
+  - Rota de API BFF (`app/api/feedback/route.ts`) autenticada com a API REST do GitHub via secret `GITHUB_FEEDBACK_TOKEN`.
+  - Componente modal interativo (`app/components/AiFeedbackModal.tsx`) integrado diretamente nos cards de resumos de IA e deliberações de mérito.
+  - O backend formata automaticamente um relatório estruturado em Markdown com a ementa original, identificadores oficiais da Câmara, categoria do apontamento e descrição enviada pelo usuário, criando a issue pública rotulada (`feedback-ia`, `triage`).
+  - O usuário recebe instantaneamente o link direto da issue pública aberta para acompanhar o ciclo de correção.
+- **Justificativa de Negócio:**
+  - Transparência radical e engajamento comunitário em projeto de código aberto (Open Source).
+  - Elimina totalmente custos com serviços pagos de envio de e-mail (servidores SMTP transacionais) e dispensa a criação de tabelas de suporte ou moderação no banco de dados.
+
 ---
 
 ### ⚖️ Matriz de Tradeoffs de Arquitetura
@@ -426,6 +469,8 @@ Esta seção detalha as principais decisões de design de software e infraestrut
 | **PostgreSQL como Cache Persistente** | Consultas sub-milissegundo; integridade relacional; imunidade a instabilidades na API da Câmara. | Necessidade de pipeline periódico de sincronização para manter a base atualizada. | Pipeline automatizado via GitHub Actions com detecção inteligente de atualizações pendentes. |
 | **Cache em Memória no BFF** | Redução massiva de queries ao PostgreSQL; latência quase nula para rotas públicas. | O cache local reside na memória do processo e requer sincronia entre instâncias. | Invalidação automática e verificação leve a cada 15 minutos via `sync_control.dataset_version`. |
 | **Classificador Determinístico por Regras** | 100% auditável, transparente e sem custos de inferência de IA em produção. | Necessidade de cobrir variações de redação das atas e termos regimentais da Câmara. | Mapeamento extensivo das expressões oficiais da Câmara com testes automatizados para casos complexos. |
+| **Enriquecimento Assíncrono por IA (Free-Tier Diário)** | Resumos em linguagem cidadã de alta qualidade a custo computacional zero em produção; enriquecimento contínuo sem onerar a navegação do usuário. | Limites diários de requisições por minuto (RPM) e dia (RPD) da cota gratuita do Google AI Studio. | Pipeline em lote desacoplado no GitHub Actions rodando 1 vez ao dia (às 04:00 UTC), com agrupamento de 1 projeto + todas as sessões por chamada e seleção incremental apenas de itens pendentes (`ai_processed = FALSE`). |
+| **Auditoria Cívica via GitHub Issues** | Transparência pública total; custo zero de infraestrutura; histórico auditável e aberto no repositório; sem necessidade de servidor de e-mail (SMTP) ou banco para mensagens. | Usuários não técnicos podem não conhecer a plataforma do GitHub e não há resposta automática para a caixa de entrada pessoal de e-mail do cidadão. | O modal de feedback explica em linguagem simples que o GitHub é o quadro público onde os desenvolvedores organizam as correções do site e entrega o link direto para acompanhar a issue criada. |
 | **Mapeamento de Prefixos no ETL** | Eliminação de 18.000 requisições HTTP no pipeline; execução ordens de grandeza mais rápida. | Dependência do padrão de nomenclatura de IDs da API da Câmara (`{propId}-{seq}`). | Verificação e tratamento de fallback para garantir integridade caso surjam IDs fora do padrão. |
 | **Release Semântico Automatizado via PR** | Governança estrita; changelog rastreável; eliminação de intervenção manual no deploy. | Exige padronização dos títulos de PR ou nomes de branch pela equipe. | Regras flexíveis com suporte a múltiplos sinônimos em português, conventional commits e tags explícitas. |
 
@@ -461,6 +506,7 @@ A concepção, arquitetura, design de interface e implementação do **LegisVis�
 │   ├── afinidade/           # Visualização de Afinidades por Deputado e Partido (com loading.tsx)
 │   ├── api/                 # Endpoints REST (BFF com cache inteligente)
 │   │   ├── deputies/        # Consulta e perfil de Deputados Federais
+│   │   ├── feedback/        # Endpoint para criação de issues de feedback no GitHub
 │   │   ├── metadata/        # Metadados e versão do dataset ativo
 │   │   ├── parties/         # Consulta de legendas e bancadas
 │   │   ├── politicians/     # Rota de compatibilidade para deputados
@@ -472,6 +518,7 @@ A concepção, arquitetura, design de interface e implementação do **LegisVis�
 │   │   └── version/         # Versão do dataset ativo
 │   ├── components/          # Componentes visuais globais
 │   │   ├── ui/              # Componentes base (Button, ConfirmationModal, NavigationProgressBar)
+│   │   ├── AiFeedbackModal.tsx # Modal acessível de relato cívico e auditoria
 │   │   ├── Footer.tsx       # Rodapé institucional e links cívicos
 │   │   ├── Header.tsx       # Barra de navegação responsiva com logo e menu móvel
 │   │   ├── SystemStatusProvider.tsx # Provedor de prontidão das fontes públicas
@@ -491,6 +538,8 @@ A concepção, arquitetura, design de interface e implementação do **LegisVis�
 │   ├── robots.ts            # Configuração de indexação para buscadores
 │   └── sitemap.ts           # Sitemap XML dinâmico (deputados, projetos, partidos)
 ├── lib/
+│   ├── ai/                  # Integração com Google AI Studio (Gemini API)
+│   │   └── gemini.ts        # Modelos dinâmicos, resumo de PDF multimodal e deliberações
 │   ├── match/               # Motor de cálculo determinístico, classificador de sessões e votos
 │   │   ├── calculatePartyMatch.ts       # Cálculo de afinidade de partidos políticos
 │   │   ├── calculatePoliticianMatch.ts  # Cálculo de afinidade de deputados federais
@@ -507,13 +556,14 @@ A concepção, arquitetura, design de interface e implementação do **LegisVis�
 ├── scripts/
 │   └── sync/                # Pipeline de ingestão da API de Dados Abertos da Câmara
 │       ├── client.ts        # Cliente Postgres, controle de concorrência e rate-limiting
+│       ├── enrich-sessions-ai.ts # Enriquecimento semântico e resumos por IA (Gemini)
 │       ├── index.ts         # Orquestrador linear de sincronização
 │       ├── sync-deputies.ts # Ingestão dos 513 deputados federais da 57ª legislatura
 │       ├── sync-parties.ts  # Ingestão de partidos políticos com representação
 │       ├── sync-propositions.ts # Ingestão de proposições e sessões nominais (paginação completa)
 │       └── sync-votes.ts    # Ingestão em lote dos votos nominais individuais
 ├── supabase/
-│   └── migrations/          # Migration SQL minimalista do PostgreSQL (5 tabelas)
+│   └── migrations/          # Migrations SQL do PostgreSQL (schema, índices e campos de IA)
 └── types/
     └── db.ts                # Tipagens TypeScript estritas do schema e domínio
 ```
@@ -526,6 +576,7 @@ A concepção, arquitetura, design de interface e implementação do **LegisVis�
 - **Node.js**: `20.x` ou superior
 - **NPM**: `10.x` ou superior
 - **Instância PostgreSQL** ou projeto no **Supabase**
+- **Chave de API do Google AI Studio (Gemini)** (opcional para gerar resumos de IA)
 
 ### 1. Clonar o Repositório e Instalar Dependências
 ```bash
@@ -539,10 +590,11 @@ Crie um arquivo `.env.local` na raiz do projeto:
 ```env
 DATABASE_URL="postgresql://postgres.[REF]:[SENHA]@aws-0-sa-east-1.pooler.supabase.com:6543/postgres?pgbouncer=true"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
+GEMINI_API_KEY="sua_chave_do_google_ai_studio"
 ```
 
 ### 3. Aplicar o Esquema do Banco de Dados
-Execute a migration inicial com o Supabase CLI ou via script:
+Execute as migrations com o Supabase CLI ou via script:
 ```bash
 npm run db:reset
 # ou npx supabase db push
@@ -554,7 +606,17 @@ Execute o pipeline de ingestão linear para popular os 513 deputados, partidos, 
 npm run sync
 ```
 
-### 5. Iniciar o Servidor de Desenvolvimento
+### 5. Enriquecer Proposições e Sessões com Resumos por IA (Opcional)
+Execute o gerador de resumos em linguagem cidadã com o modelo Gemini (1 projeto + todas as sessões por requisição multimodal):
+```bash
+# Listar modelos disponíveis e limites de tokens
+npm run enrich:ai -- --models
+
+# Enriquecer projetos e suas respectivas deliberações
+npm run enrich:ai -- --limit=100 --concurrency=3
+```
+
+### 6. Iniciar o Servidor de Desenvolvimento
 ```bash
 npm run dev
 ```
@@ -582,6 +644,7 @@ npm run start
 | `/api/sync-status` | `GET` | Status operacional e contadores da sincronização com a Câmara |
 | `/api/system-status` | `GET` | Indicador de prontidão do sistema para a interface |
 | `/api/metadata` | `GET` | Versão do dataset e metadados de atualização |
+| `/api/feedback` | `POST` | Dispara issues no GitHub com relatos de inconsistências em resumos de IA |
 
 ---
 

@@ -18,9 +18,14 @@ import {
   FaInfoCircle,
   FaFilter,
   FaLandmark,
+  FaVoteYea,
+  FaRobot,
+  FaChevronDown,
+  FaFlag,
   FaExclamationTriangle,
   FaSyncAlt,
 } from "react-icons/fa";
+import { AiFeedbackModal } from "@/app/components/AiFeedbackModal";
 import { saveStoredAnswers, getStoredAnswers, StoredAnswers } from "@/lib/storage";
 import { sortPropositionsByRelevance } from "@/lib/match/classifyVoteSession";
 
@@ -58,6 +63,7 @@ export default function VoteForm() {
   const [selectedYears, setSelectedYears] = useState<number[]>([]);
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [feedbackTarget, setFeedbackTarget] = useState<PropositionWithVoteSession | null>(null);
 
   // Carregar proposições + opiniões existentes
   useEffect(() => {
@@ -157,12 +163,14 @@ export default function VoteForm() {
   const filtered = useMemo(() => {
     let list = [...unvotedPropositions];
 
-    // Filtro por busca de texto
+    // Filtro por busca de texto (título, resumo simplificado por IA, ementa técnica e tema)
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
         (p) =>
           p.titulo.toLowerCase().includes(q) ||
+          (p.titulo_amigavel && p.titulo_amigavel.toLowerCase().includes(q)) ||
+          (p.resumo_geral && p.resumo_geral.toLowerCase().includes(q)) ||
           (p.ementa && p.ementa.toLowerCase().includes(q)) ||
           (p.tema && p.tema.toLowerCase().includes(q))
       );
@@ -545,31 +553,97 @@ export default function VoteForm() {
                   </div>
                 </div>
 
-                {/* Ementa / Descrição */}
-                <p className="text-sm text-foreground/90 leading-relaxed font-normal">
-                  {p.ementa_detalhada || p.ementa}
-                </p>
+                {/* 1. Resumo Geral do Projeto de Lei (Linguagem Cidadã por IA) ou Ementa Oficial Direta */}
+                {p.resumo_geral ? (
+                  <>
+                    <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                          <FaRobot className="w-3.5 h-3.5 shrink-0" />
+                          <span>Sobre o Projeto de Lei (Resumo Geral):</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setFeedbackTarget(p)}
+                          title="Relatar inconsistência ou viés no resumo"
+                          className="text-[11px] text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-smooth flex items-center gap-1 cursor-pointer font-medium"
+                        >
+                          <FaFlag className="w-2.5 h-2.5" />
+                          <span className="hidden sm:inline">Relatar problema</span>
+                        </button>
+                      </div>
+                      <p className="text-sm text-foreground leading-relaxed font-normal">
+                        {p.resumo_geral}
+                      </p>
+                    </div>
 
-                {/* Placar e Quórum de Votação Nominal */}
-                {(p.total_sim !== undefined && p.total_sim !== null && (Number(p.total_sim || 0) > 0 || Number(p.total_nao || 0) > 0)) && (
-                  <div className="flex flex-wrap items-center gap-2 text-xs py-1.5 px-3 rounded-xl bg-muted/50 border border-border/70">
-                    <span className="text-muted-foreground font-semibold">Placar no Plenário:</span>
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/20">
-                      {Number(p.total_sim || 0)} Sim
+                    {/* Expansor da Ementa Jurídica Oficial */}
+                    <details className="group pt-0.5">
+                      <summary className="text-xs font-bold text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1.5 select-none list-none">
+                        <FaInfoCircle className="w-3 h-3 text-primary" />
+                        <span>Ver ementa jurídica oficial da Câmara</span>
+                        <FaChevronDown className="w-2.5 h-2.5 group-open:rotate-180 transition-transform" />
+                      </summary>
+                      <div className="mt-2 p-3.5 rounded-xl bg-muted/30 border border-border/60 text-xs text-muted-foreground leading-relaxed">
+                        {p.ementa_detalhada || p.ementa}
+                      </div>
+                    </details>
+                  </>
+                ) : (
+                  /* Exibição direta da Ementa Oficial */
+                  <div className="p-4 rounded-xl bg-muted/30 border border-border/60 space-y-1.5">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                      <FaInfoCircle className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <span>Ementa Oficial:</span>
                     </span>
-                    <span className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 font-bold border border-rose-500/20">
-                      {Number(p.total_nao || 0)} Não
-                    </span>
-                    {Number(p.total_outros || 0) > 0 && (
-                      <span className="px-2 py-0.5 rounded bg-muted text-muted-foreground font-medium border border-border">
-                        {Number(p.total_outros || 0)} Outros
-                      </span>
-                    )}
-                    <span className="text-muted-foreground text-[11px] ml-auto font-medium">
-                      Quórum: {Number(p.total_sim || 0) + Number(p.total_nao || 0) + Number(p.total_outros || 0)} deputados
-                    </span>
+                    <p className="text-sm text-foreground leading-relaxed font-normal">
+                      {p.ementa_detalhada || p.ementa}
+                    </p>
                   </div>
                 )}
+
+                {/* 2. Deliberação de Mérito Votada no Plenário */}
+                {p.resumo_simplificado && (
+                  <div className="p-4 rounded-xl bg-muted/40 border border-border/80 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                        <FaVoteYea className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>Deliberação de Mérito Votada no Plenário:</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFeedbackTarget(p)}
+                        title="Relatar inconsistência ou viés no resumo desta deliberação"
+                        className="text-[11px] text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-smooth flex items-center gap-1 cursor-pointer font-medium"
+                      >
+                        <FaFlag className="w-2.5 h-2.5" />
+                        <span className="hidden sm:inline">Relatar problema</span>
+                      </button>
+                    </div>
+                    {p.titulo_amigavel && (
+                      <p className="text-xs font-semibold text-primary">
+                        {p.titulo_amigavel}
+                      </p>
+                    )}
+                    <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                      {p.resumo_simplificado}
+                    </p>
+                  </div>
+                )}
+
+                {/* Quórum de Votação Nominal (Sem antecipar o resultado/placar para não enviesar a resposta) */}
+                {(() => {
+                  const quorum = Number(p.total_sim || 0) + Number(p.total_nao || 0) + Number(p.total_outros || 0);
+                  if (quorum <= 0) return null;
+                  return (
+                    <div className="flex items-center gap-2 text-xs py-1.5 px-3 rounded-xl bg-muted/40 border border-border/60 text-muted-foreground">
+                      <FaVoteYea className="w-3.5 h-3.5 text-primary shrink-0" />
+                      <span>
+                        Quórum de Deliberação Nominal: <strong>{quorum}</strong> deputados votaram no Plenário
+                      </span>
+                    </div>
+                  );
+                })()}
 
                 {/* Acesso a Detalhes e Fontes Oficiais */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
@@ -623,6 +697,17 @@ export default function VoteForm() {
           </Button>
         </div>
       )}
+
+      {/* Modal de Relato de Inconsistência em IA */}
+      <AiFeedbackModal
+        isOpen={Boolean(feedbackTarget)}
+        onClose={() => setFeedbackTarget(null)}
+        propositionId={feedbackTarget?.id}
+        propositionTitle={feedbackTarget?.titulo}
+        sessionId={feedbackTarget?.vote_session_id}
+        sessionTitle={feedbackTarget?.titulo_amigavel || feedbackTarget?.vote_session_description || undefined}
+        reportedSummary={feedbackTarget?.resumo_geral || feedbackTarget?.resumo_simplificado || feedbackTarget?.ementa || undefined}
+      />
     </div>
   );
 }

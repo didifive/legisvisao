@@ -13,17 +13,16 @@ import {
   FaCheck,
   FaTimes,
   FaSearch,
-  FaHistory,
   FaBolt,
   FaQuestionCircle,
   FaLayerGroup,
-  FaFilter,
-  FaCheckCircle,
   FaUserTie,
   FaChevronDown,
   FaChevronUp,
   FaRobot,
+  FaFlag,
 } from "react-icons/fa";
+import { AiFeedbackModal } from "@/app/components/AiFeedbackModal";
 import type { Proposition, VoteSession } from "@/types/db";
 import { normalizeVote } from "@/lib/match/normalizeVotes";
 import {
@@ -64,6 +63,8 @@ export default function ProjectDetailsClient({
   const [filterVoteType, setFilterVoteType] = useState<string>("ALL");
   const [selectedSessionId, setSelectedSessionId] = useState<string>("");
   const [showVotesList, setShowVotesList] = useState(false);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [feedbackSession, setFeedbackSession] = useState<VoteSession | null>(null);
 
   useEffect(() => {
     const stored = getStoredAnswers();
@@ -103,7 +104,7 @@ export default function ProjectDetailsClient({
     return map;
   }, [votes]);
 
-  // Classifica e ordena sessões de votação com votos nominais determinísticos
+  // Classifica e ordena todas as sessões de votação por ordem cronológica decrescente
   const classifiedSessions = useMemo(() => {
     const list = sessions.map((s) => {
       const sessionVotes = votesBySession.get(s.id) || [];
@@ -114,23 +115,29 @@ export default function ProjectDetailsClient({
       };
     });
 
-    // Ordenação determinística estrita:
-    // 1. Sessões com votos nominais primeiro
-    // 2. Prioridade de Mérito e desempate estrito por data e ID
-    const sorted = sortVoteSessionsDeterministic(list);
+    // Atribui as classificações oficiais (Mérito, Destaque, Emenda, etc.)
+    const classified = sortVoteSessionsDeterministic(list);
 
-    return sorted.sort((a, b) => {
-      const hasVotesA = a.votesCount > 0 ? 1 : 0;
-      const hasVotesB = b.votesCount > 0 ? 1 : 0;
-      return hasVotesB - hasVotesA;
+    // Ordenação por tempo decrescente (deliberações mais recentes primeiro)
+    return classified.sort((a, b) => {
+      const dateA = a.data_hora ? new Date(a.data_hora).getTime() : 0;
+      const dateB = b.data_hora ? new Date(b.data_hora).getTime() : 0;
+      if (dateB !== dateA) return dateB - dateA;
+      return b.id.localeCompare(a.id);
     });
   }, [sessions, votesBySession]);
 
-  // Define a sessão principal (utilizada no cálculo de afinidade)
+  // Define a sessão principal (utilizada no cálculo de afinidade: eleita pelo classificador determinístico)
   const primarySession = useMemo(() => {
-    const withVotes = classifiedSessions.filter((s) => s.votesCount > 0);
-    return withVotes[0] || classifiedSessions[0] || null;
-  }, [classifiedSessions]);
+    const deterministicList = sortVoteSessionsDeterministic(
+      sessions.map((s) => ({
+        ...s,
+        votesCount: (votesBySession.get(s.id) || []).length,
+        votes: votesBySession.get(s.id) || [],
+      }))
+    );
+    return deterministicList[0] || null;
+  }, [sessions, votesBySession]);
 
   // Inicializa selectedSessionId com a sessão principal
   useEffect(() => {
@@ -252,6 +259,7 @@ export default function ProjectDetailsClient({
     situacaoAtual.toLowerCase().includes("encerrad");
 
   const nominalSessions = classifiedSessions.filter((s) => s.votesCount > 0);
+  const symbolicSessions = classifiedSessions.filter((s) => s.votesCount === 0);
   const isPrimaryActive = activeSession?.id === primarySession?.id;
 
   return (
@@ -305,7 +313,7 @@ export default function ProjectDetailsClient({
           )}
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="flex items-start gap-3">
             <div className="p-3 rounded-xl bg-primary/10 text-primary shrink-0 mt-1">
               <FaFileAlt className="w-5 h-5" />
@@ -320,26 +328,110 @@ export default function ProjectDetailsClient({
             </div>
           </div>
 
-          <p className="text-base text-foreground leading-relaxed font-normal pt-2">
-            {proposition.ementa_detalhada || proposition.ementa}
-          </p>
+          {/* 1. Resumo Geral do Projeto de Lei (Linguagem Cidadã por IA) ou Ementa Oficial Direta */}
+          {proposition.resumo_geral ? (
+            <>
+              <div className="p-4 sm:p-5 rounded-2xl bg-primary/5 border border-primary/20 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                    <FaRobot className="w-3.5 h-3.5" />
+                    <span>Sobre o Projeto de Lei (Resumo Geral):</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFeedbackSession(null);
+                      setIsFeedbackOpen(true);
+                    }}
+                    title="Relatar inconsistência ou viés no resumo"
+                    className="text-[11px] text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-smooth flex items-center gap-1 cursor-pointer font-medium"
+                  >
+                    <FaFlag className="w-2.5 h-2.5" />
+                    <span className="hidden sm:inline">Relatar problema</span>
+                  </button>
+                </div>
+                <p className="text-sm sm:text-base text-foreground leading-relaxed font-normal">
+                  {proposition.resumo_geral}
+                </p>
+              </div>
+
+              {/* Expansão da Ementa Jurídica Original */}
+              <details className="group pt-1">
+                <summary className="text-xs font-bold text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1.5 select-none list-none">
+                  <FaInfoCircle className="w-3.5 h-3.5 text-primary" />
+                  <span>Ver ementa jurídica oficial da proposta na Câmara</span>
+                  <FaChevronDown className="w-2.5 h-2.5 group-open:rotate-180 transition-transform" />
+                </summary>
+                <div className="mt-2.5 p-4 rounded-xl bg-muted/40 border border-border/80 text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                  {proposition.ementa_detalhada || proposition.ementa}
+                </div>
+              </details>
+            </>
+          ) : (
+            /* Exibição direta da Ementa Oficial */
+            <div className="p-4 sm:p-5 rounded-2xl bg-muted/30 border border-border/60 space-y-2">
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <FaInfoCircle className="w-3.5 h-3.5 text-primary shrink-0" />
+                <span>Ementa Oficial:</span>
+              </span>
+              <p className="text-sm sm:text-base text-foreground leading-relaxed font-normal">
+                {proposition.ementa_detalhada || proposition.ementa}
+              </p>
+            </div>
+          )}
+
+          {/* 2. Deliberação de Mérito Votada no Plenário (Utilizada no Cálculo de Afinidade) */}
+          {primarySession && (
+            <div className="p-4 sm:p-5 rounded-2xl bg-muted/40 border border-border/80 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-black uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                  <FaBolt className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Deliberação de Mérito Principal (Utilizada no Cálculo de Afinidade):</span>
+                </span>
+                <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
+                  Sessão Oficial: {primarySession.id}
+                </span>
+              </div>
+
+              {primarySession.titulo_amigavel && (
+                <p className="text-xs sm:text-sm font-semibold text-primary">
+                  {primarySession.titulo_amigavel}
+                </p>
+              )}
+
+              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                {primarySession.resumo_simplificado || primarySession.descricao || "Votação do texto-base/mérito principal da proposição."}
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Link Oficial da Câmara */}
-        {proposition.url_inteiro_teor && (
-          <div className="pt-2 border-t border-border flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Documento Oficial:</span>
+        {/* Links Oficiais da Câmara dos Deputados */}
+        <div className="pt-3 border-t border-border flex flex-wrap items-center justify-between gap-3 text-xs">
+          <a
+            href={`https://www.camara.leg.br/propostas-legislativas/${proposition.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-primary hover:underline font-bold"
+          >
+            <FaLandmark className="w-3.5 h-3.5" />
+            <span>Ficha de Tramitação no Portal da Câmara</span>
+            <FaExternalLinkAlt className="w-2.5 h-2.5" />
+          </a>
+
+          {proposition.url_inteiro_teor && (
             <a
               href={proposition.url_inteiro_teor}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-primary hover:underline font-bold"
+              className="inline-flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-smooth font-medium"
             >
-              <span>Acessar Inteiro Teor na Câmara</span>
-              <FaExternalLinkAlt className="w-3 h-3" />
+              <FaFileAlt className="w-3.5 h-3.5" />
+              <span>Acessar Inteiro Teor (Documento Oficial)</span>
+              <FaExternalLinkAlt className="w-2.5 h-2.5" />
             </a>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Painel de Opinião do Cidadão */}
         <div className="pt-4 border-t border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-muted/20 -mx-6 -mb-6 sm:-mx-8 sm:-mb-8 p-5 sm:p-6 rounded-b-2xl">
@@ -396,19 +488,19 @@ export default function ProjectDetailsClient({
         </div>
       </div>
 
-      {/* Painel de Deliberações e Votações Nominais */}
-      {nominalSessions.length > 0 ? (
+      {/* Painel Unificado de Deliberações do Plenário (Ordem Cronológica Decrescente) */}
+      {classifiedSessions.length > 0 ? (
         <section className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-border pb-3">
             <div className="flex items-center gap-2">
               <FaVoteYea className="text-primary w-5 h-5" />
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
-                Deliberações Nominais no Plenário
+                Deliberações no Plenário
               </h2>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">
-                {nominalSessions.length} {nominalSessions.length === 1 ? "votação nominal registrada" : "votações nominais registradas"}
+                {classifiedSessions.length} {classifiedSessions.length === 1 ? "deliberação registrada" : "deliberações registradas"}
               </span>
               <Link
                 href="/faq#multiplas-votacoes"
@@ -421,33 +513,35 @@ export default function ProjectDetailsClient({
             </div>
           </div>
 
-          {/* Seletor de Sessões de Votação (Abas / Botões de Seleção) */}
-          {nominalSessions.length > 1 && (
+          {/* Seletor de Sessões de Votação (Abas / Botões em Ordem Cronológica Decrescente) */}
+          {classifiedSessions.length > 1 && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
                   <FaLayerGroup className="w-3 h-3 text-primary" />
-                  <span>Selecione a deliberação para inspecionar os votos:</span>
+                  <span>Selecione a deliberação para inspecionar os detalhes:</span>
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                {nominalSessions.map((s) => {
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {classifiedSessions.map((s) => {
                   const isSelected = s.id === activeSession?.id;
                   const isMain = s.id === primarySession?.id;
                   const sDate = s.data_hora
                     ? new Date(s.data_hora).toLocaleDateString("pt-BR")
                     : "";
+                  const isNominal = s.votesCount > 0;
 
                   return (
                     <button
                       key={s.id}
                       type="button"
                       onClick={() => setSelectedSessionId(s.id)}
-                      className={`p-3 rounded-xl border text-left transition-smooth flex flex-col justify-between gap-2 cursor-pointer ${isSelected
+                      className={`p-3.5 sm:p-4 rounded-xl border text-left transition-smooth flex flex-col justify-between gap-2.5 cursor-pointer ${
+                        isSelected
                           ? "bg-primary/10 border-primary text-foreground shadow-soft ring-1 ring-primary/30"
                           : "bg-card border-border hover:border-border/80 text-muted-foreground hover:text-foreground"
-                        }`}
+                      }`}
                     >
                       <div className="flex items-center justify-between gap-1.5 w-full flex-wrap">
                         <span className={`text-[11px] font-bold px-2 py-0.5 rounded border ${s.classification.badgeClass}`}>
@@ -461,13 +555,25 @@ export default function ProjectDetailsClient({
                         )}
                       </div>
 
-                      <p className="text-xs font-semibold text-foreground line-clamp-2 leading-snug">
-                        {s.titulo_amigavel || s.descricao || "Deliberação em Plenário"}
-                      </p>
+                      <div className="space-y-1.5 w-full">
+                        <h4 className="text-xs sm:text-sm font-bold text-foreground line-clamp-2 leading-snug">
+                          {s.titulo_amigavel || s.descricao || "Deliberação em Plenário"}
+                        </h4>
 
-                      <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/40 w-full">
+                        {s.resumo_simplificado && (
+                          <p className="text-[11px] text-muted-foreground line-clamp-3 leading-relaxed">
+                            {s.resumo_simplificado}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1.5 border-t border-border/40 w-full">
                         <span>{sDate}</span>
-                        <span><strong>{s.votesCount}</strong> votos</span>
+                        {isNominal ? (
+                          <span><strong>{s.votesCount}</strong> votos nominais</span>
+                        ) : (
+                          <span className="italic text-muted-foreground font-medium">Votação Simbólica</span>
+                        )}
                       </div>
                     </button>
                   );
@@ -494,6 +600,12 @@ export default function ProjectDetailsClient({
                       </span>
                     )}
 
+                    {activeSession.votesCount === 0 && (
+                      <span className="text-[11px] font-semibold text-muted-foreground px-2.5 py-1 rounded-lg bg-muted border border-border">
+                        Votação Simbólica
+                      </span>
+                    )}
+
                     <Link
                       href="/faq#multiplas-votacoes"
                       title="Entenda por que a votação principal é a utilizada no cálculo"
@@ -509,8 +621,12 @@ export default function ProjectDetailsClient({
                       <span>Votado em: <strong>{activeDateFormatted}</strong></span>
                     )}
                     {activeSession.resultado && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-muted font-bold text-foreground">
-                        {activeSession.resultado}
+                      <span className={`px-2.5 py-0.5 rounded-full font-bold border ${
+                        activeSession.resultado.toLowerCase().includes("aprovad")
+                          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                          : "bg-rose-500/10 text-rose-700 dark:text-rose-300 border-rose-500/30"
+                      }`}>
+                        Resultado: {activeSession.resultado}
                       </span>
                     )}
                   </div>
@@ -528,9 +644,23 @@ export default function ProjectDetailsClient({
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground pt-1">
-                      <FaRobot className="w-3 h-3 text-primary shrink-0" />
-                      <span>Resumo simplificado gerado por Inteligência Artificial a partir dos registros oficiais da Câmara.</span>
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground pt-1">
+                      <div className="flex items-center gap-1.5">
+                        <FaRobot className="w-3 h-3 text-primary shrink-0" />
+                        <span>Resumo simplificado gerado por Inteligência Artificial a partir dos registros oficiais da Câmara.</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFeedbackSession(activeSession);
+                          setIsFeedbackOpen(true);
+                        }}
+                        title="Relatar inconsistência ou viés no resumo desta deliberação"
+                        className="text-[11px] text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-smooth flex items-center gap-1 cursor-pointer shrink-0 font-medium"
+                      >
+                        <FaFlag className="w-2.5 h-2.5" />
+                        <span>Relatar problema</span>
+                      </button>
                     </div>
 
                     {/* Detalhes para expandir a descrição original */}
@@ -552,208 +682,245 @@ export default function ProjectDetailsClient({
                 )}
               </div>
 
-              {/* Placar e Distribuição da Votação */}
-              <div className="space-y-3 pt-4 border-t border-border">
-                <div className="flex items-center justify-between text-xs font-bold text-muted-foreground">
-                  <span>Placar Nominal dos Deputados Federais ({activeVoteStats.total} votos)</span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
-                    <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase block">
-                      SIM ({activeVoteStats.simPct}%)
-                    </span>
-                    <span className="text-xl sm:text-2xl font-black text-emerald-700 dark:text-emerald-300">
-                      {activeVoteStats.sim}
-                    </span>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-center">
-                    <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase block">
-                      NÃO ({activeVoteStats.naoPct}%)
-                    </span>
-                    <span className="text-xl sm:text-2xl font-black text-rose-700 dark:text-rose-300">
-                      {activeVoteStats.nao}
-                    </span>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-muted text-center border border-border">
-                    <span className="text-[10px] font-bold text-muted-foreground uppercase block">
-                      Outros ({activeVoteStats.outrosPct}%)
-                    </span>
-                    <span className="text-xl sm:text-2xl font-black text-foreground">
-                      {activeVoteStats.outros}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Barra Visual de Proporção */}
-                {activeVoteStats.total > 0 && (
-                  <div className="w-full h-3 rounded-full overflow-hidden flex bg-muted shadow-inner">
-                    <div
-                      style={{ width: `${activeVoteStats.simPct}%` }}
-                      className="bg-emerald-500 h-full transition-all duration-500"
-                      title={`SIM: ${activeVoteStats.sim} (${activeVoteStats.simPct}%)`}
-                    />
-                    <div
-                      style={{ width: `${activeVoteStats.naoPct}%` }}
-                      className="bg-rose-500 h-full transition-all duration-500"
-                      title={`NÃO: ${activeVoteStats.nao} (${activeVoteStats.naoPct}%)`}
-                    />
-                    <div
-                      style={{ width: `${activeVoteStats.outrosPct}%` }}
-                      className="bg-muted-foreground/30 h-full transition-all duration-500"
-                      title={`Outros: ${activeVoteStats.outros} (${activeVoteStats.outrosPct}%)`}
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* Botão para Expandir Lista Nominal de Deputados */}
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowVotesList(!showVotesList)}
-                  className="w-full py-3 px-4 rounded-xl border border-border bg-muted/30 hover:bg-muted/60 transition-smooth font-bold text-xs sm:text-sm text-foreground flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <FaUserTie className="w-4 h-4 text-primary" />
-                  <span>
-                    {showVotesList
-                      ? "Ocultar votos nominais dos deputados"
-                      : `Ver como cada deputado votou nesta sessão (${activeSessionVotes.length} votos)`}
-                  </span>
-                  {showVotesList ? <FaChevronUp className="w-3 h-3" /> : <FaChevronDown className="w-3 h-3" />}
-                </button>
-              </div>
-
-              {/* Tabela/Lista Nominal de Votos dos Deputados (Expandível) */}
-              {showVotesList && (
-                <div className="space-y-4 pt-2 border-t border-border animate-fade-in">
-                  {/* Filtros de Votação Nominal */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
-                    {/* Busca por Nome */}
-                    <div className="flex items-center gap-2 bg-background border border-border rounded-lg px-3 py-1.5 focus-within:ring-2 focus-within:ring-primary/20">
-                      <FaSearch className="text-muted-foreground w-3.5 h-3.5" />
-                      <input
-                        type="text"
-                        placeholder="Buscar deputado..."
-                        value={voteSearch}
-                        onChange={(e) => setVoteSearch(e.target.value)}
-                        className="w-full bg-transparent border-none outline-none text-xs text-foreground placeholder:text-muted-foreground"
-                      />
+              {/* Se a sessão tiver votos nominais, exibe o Placar e a Lista de Deputados */}
+              {activeSession.votesCount > 0 ? (
+                <>
+                  {/* Placar e Distribuição da Votação */}
+                  <div className="space-y-3 pt-4 border-t border-border">
+                    <div className="flex items-center justify-between text-xs font-bold text-muted-foreground">
+                      <span>Placar Nominal dos Deputados Federais ({activeVoteStats.total} votos)</span>
                     </div>
 
-                    {/* Filtro por Partido */}
-                    <div className="flex items-center gap-1.5 bg-background border border-border rounded-lg px-2.5 py-1.5">
-                      <span className="text-muted-foreground font-medium">Partido:</span>
-                      <select
-                        value={filterParty}
-                        onChange={(e) => setFilterParty(e.target.value)}
-                        className="bg-transparent border-none outline-none text-xs text-foreground w-full cursor-pointer font-bold"
-                      >
-                        <option value="ALL">Todos os Partidos</option>
-                        {availableParties.map((p) => (
-                          <option key={p} value={p}>
-                            {p}
-                          </option>
-                        ))}
-                      </select>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
+                        <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase block">
+                          SIM ({activeVoteStats.simPct}%)
+                        </span>
+                        <span className="text-xl sm:text-2xl font-black text-emerald-700 dark:text-emerald-300">
+                          {activeVoteStats.sim}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-center">
+                        <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase block">
+                          NÃO ({activeVoteStats.naoPct}%)
+                        </span>
+                        <span className="text-xl sm:text-2xl font-black text-rose-700 dark:text-rose-300">
+                          {activeVoteStats.nao}
+                        </span>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-muted text-center border border-border">
+                        <span className="text-[10px] font-bold text-muted-foreground uppercase block">
+                          Outros ({activeVoteStats.outrosPct}%)
+                        </span>
+                        <span className="text-xl sm:text-2xl font-black text-foreground">
+                          {activeVoteStats.outros}
+                        </span>
+                      </div>
                     </div>
 
-                    {/* Filtro por Estado */}
-                    <div className="flex items-center gap-1.5 bg-background border border-border rounded-lg px-2.5 py-1.5">
-                      <span className="text-muted-foreground font-medium">UF:</span>
-                      <select
-                        value={filterState}
-                        onChange={(e) => setFilterState(e.target.value)}
-                        className="bg-transparent border-none outline-none text-xs text-foreground w-full cursor-pointer font-bold"
-                      >
-                        <option value="ALL">Todos os Estados</option>
-                        {availableStates.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Filtro por Voto */}
-                    <div className="flex items-center gap-1.5 bg-background border border-border rounded-lg px-2.5 py-1.5">
-                      <span className="text-muted-foreground font-medium">Voto:</span>
-                      <select
-                        value={filterVoteType}
-                        onChange={(e) => setFilterVoteType(e.target.value)}
-                        className="bg-transparent border-none outline-none text-xs text-foreground w-full cursor-pointer font-bold"
-                      >
-                        <option value="ALL">Todos os Votos</option>
-                        <option value="SIM">Apenas SIM</option>
-                        <option value="NAO">Apenas NÃO</option>
-                        <option value="OUTROS">Abstenções / Outros</option>
-                      </select>
-                    </div>
+                    {/* Barra Visual de Proporção */}
+                    {activeVoteStats.total > 0 && (
+                      <div className="w-full h-3 rounded-full overflow-hidden flex bg-muted shadow-inner">
+                        <div
+                          style={{ width: `${activeVoteStats.simPct}%` }}
+                          className="bg-emerald-500 h-full transition-all duration-500"
+                          title={`SIM: ${activeVoteStats.sim} (${activeVoteStats.simPct}%)`}
+                        />
+                        <div
+                          style={{ width: `${activeVoteStats.naoPct}%` }}
+                          className="bg-rose-500 h-full transition-all duration-500"
+                          title={`NÃO: ${activeVoteStats.nao} (${activeVoteStats.naoPct}%)`}
+                        />
+                        <div
+                          style={{ width: `${activeVoteStats.outrosPct}%` }}
+                          className="bg-muted-foreground/30 h-full transition-all duration-500"
+                          title={`Outros: ${activeVoteStats.outros} (${activeVoteStats.outrosPct}%)`}
+                        />
+                      </div>
+                    )}
                   </div>
 
-                  {/* Lista com Virtualização / Grid Responsivo */}
-                  {filteredVotes.length === 0 ? (
-                    <div className="p-8 rounded-xl bg-muted/20 text-center space-y-2 border border-border/60">
-                      <p className="text-sm text-muted-foreground">
-                        Nenhum voto de parlamentar encontrado com os filtros selecionados.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-[420px] overflow-y-auto pr-1">
-                      {filteredVotes.map((v) => {
-                        const norm = normalizeVote(v.voto_original);
-                        const isSim = norm === "SIM";
-                        const isNao = norm === "NÃO";
+                  {/* Botão para Expandir Lista Nominal de Deputados */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowVotesList(!showVotesList)}
+                      className="w-full py-3 px-4 rounded-xl bg-muted/50 hover:bg-muted border border-border font-bold text-xs sm:text-sm text-foreground flex items-center justify-between transition-smooth cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <FaUserTie className="w-4 h-4 text-primary" />
+                        <span>
+                          {showVotesList
+                            ? "Ocultar votos individuais dos deputados"
+                            : `Ver como cada um dos ${activeVoteStats.total} deputados votou nesta deliberação`}
+                        </span>
+                      </div>
+                      {showVotesList ? <FaChevronUp className="w-3.5 h-3.5" /> : <FaChevronDown className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
 
-                        return (
-                          <div
-                            key={v.id}
-                            className="p-2.5 rounded-xl bg-background border border-border/80 flex items-center justify-between gap-2 shadow-soft hover:border-border transition-smooth"
+                  {/* Lista de Votos Expandida com Filtros e Busca */}
+                  {showVotesList && (
+                    <div className="space-y-4 pt-4 border-t border-border animate-fade-in">
+                      {/* Barra de Filtros e Busca */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+                        {/* Busca por Nome */}
+                        <div className="relative">
+                          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-3.5 h-3.5" />
+                          <input
+                            type="text"
+                            placeholder="Buscar parlamentar..."
+                            value={voteSearch}
+                            onChange={(e) => setVoteSearch(e.target.value)}
+                            className="w-full pl-9 pr-3 py-2 rounded-xl bg-background border border-border text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-smooth"
+                          />
+                        </div>
+
+                        {/* Filtro de Partido */}
+                        <div>
+                          <select
+                            value={filterParty}
+                            onChange={(e) => setFilterParty(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-smooth cursor-pointer"
                           >
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              {v.deputado_foto ? (
-                                <img
-                                  src={v.deputado_foto}
-                                  alt={v.deputado_nome}
-                                  className="w-8 h-8 rounded-full object-cover shrink-0 border border-border/60 bg-muted"
-                                  loading="lazy"
-                                />
-                              ) : (
-                                <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0 border border-border/60 text-muted-foreground">
-                                  <FaUserTie className="w-4 h-4" />
+                            <option value="ALL">Todos os Partidos ({availableParties.length})</option>
+                            {availableParties.map((p) => (
+                              <option key={p} value={p}>
+                                {p}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Filtro de Estado */}
+                        <div>
+                          <select
+                            value={filterState}
+                            onChange={(e) => setFilterState(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-smooth cursor-pointer"
+                          >
+                            <option value="ALL">Todos os Estados ({availableStates.length})</option>
+                            {availableStates.map((uf) => (
+                              <option key={uf} value={uf}>
+                                {uf}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Filtro por Tipo de Voto */}
+                        <div>
+                          <select
+                            value={filterVoteType}
+                            onChange={(e) => setFilterVoteType(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl bg-background border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40 transition-smooth cursor-pointer"
+                          >
+                            <option value="ALL">Todos os Votos</option>
+                            <option value="SIM">Apenas SIM ({activeVoteStats.sim})</option>
+                            <option value="NAO">Apenas NÃO ({activeVoteStats.nao})</option>
+                            <option value="OUTROS">Outros / Abstenção ({activeVoteStats.outros})</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Contador de Registros Filtrados */}
+                      <div className="flex items-center justify-between text-xs text-muted-foreground pt-1">
+                        <span>
+                          Exibindo <strong>{filteredVotes.length}</strong> de <strong>{activeSessionVotes.length}</strong> deputados votantes
+                        </span>
+                        {(voteSearch || filterParty !== "ALL" || filterState !== "ALL" || filterVoteType !== "ALL") && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setVoteSearch("");
+                              setFilterParty("ALL");
+                              setFilterState("ALL");
+                              setFilterVoteType("ALL");
+                            }}
+                            className="text-primary hover:underline font-bold cursor-pointer"
+                          >
+                            Limpar Filtros
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Lista com Virtualização / Grid Responsivo */}
+                      {filteredVotes.length === 0 ? (
+                        <div className="p-8 rounded-xl bg-muted/20 text-center space-y-2 border border-border/60">
+                          <p className="text-sm text-muted-foreground">
+                            Nenhum voto de parlamentar encontrado com os filtros selecionados.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-[420px] overflow-y-auto pr-1">
+                          {filteredVotes.map((v) => {
+                            const norm = normalizeVote(v.voto_original);
+                            const isSim = norm === "SIM";
+                            const isNao = norm === "NÃO";
+
+                            return (
+                              <div
+                                key={v.id}
+                                className="p-2.5 rounded-xl bg-background border border-border/80 flex items-center justify-between gap-2 shadow-soft hover:border-border transition-smooth"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  {v.deputado_foto ? (
+                                    <img
+                                      src={v.deputado_foto}
+                                      alt={v.deputado_nome}
+                                      className="w-8 h-8 rounded-full object-cover shrink-0 border border-border/60 bg-muted"
+                                      loading="lazy"
+                                    />
+                                  ) : (
+                                    <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0 border border-border/60 text-muted-foreground">
+                                      <FaUserTie className="w-4 h-4" />
+                                    </div>
+                                  )}
+                                  <div className="min-w-0">
+                                    <Link
+                                      href={`/politicos/${v.deputado_id}`}
+                                      className="text-xs font-bold text-foreground hover:text-primary transition-smooth truncate block"
+                                      title={v.deputado_nome}
+                                    >
+                                      {v.deputado_nome}
+                                    </Link>
+                                    <span className="text-[11px] text-muted-foreground">
+                                      {v.sigla_partido} • {v.deputado_uf}
+                                    </span>
+                                  </div>
                                 </div>
-                              )}
-                              <div className="min-w-0">
-                                <Link
-                                  href={`/politicos/${v.deputado_id}`}
-                                  className="text-xs font-bold text-foreground hover:text-primary transition-smooth truncate block"
-                                  title={v.deputado_nome}
+
+                                <span
+                                  className={`px-2.5 py-0.5 rounded-lg text-[11px] font-black shrink-0 ${
+                                    isSim
+                                      ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
+                                      : isNao
+                                        ? "bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30"
+                                        : "bg-muted text-muted-foreground border border-border"
+                                  }`}
                                 >
-                                  {v.deputado_nome}
-                                </Link>
-                                <span className="text-[11px] text-muted-foreground">
-                                  {v.sigla_partido} • {v.deputado_uf}
+                                  {v.voto_original}
                                 </span>
                               </div>
-                            </div>
-
-                            <span
-                              className={`px-2.5 py-0.5 rounded-lg text-[11px] font-black shrink-0 ${isSim
-                                  ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
-                                  : isNao
-                                    ? "bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30"
-                                    : "bg-muted text-muted-foreground border border-border"
-                                }`}
-                            >
-                              {v.voto_original}
-                            </span>
-                          </div>
-                        );
-                      })}
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
+                </>
+              ) : (
+                /* Nota explicativa para deliberação simbólica selecionada */
+                <div className="p-4 sm:p-5 rounded-xl bg-muted/20 border border-border/60 text-center space-y-2 pt-4 border-t border-border">
+                  <div className="flex items-center justify-center gap-2 text-sm font-bold text-foreground">
+                    <FaLayerGroup className="w-4 h-4 text-primary" />
+                    <span>Deliberação realizada por Votação Simbólica</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground max-w-lg mx-auto leading-relaxed">
+                    Nesta deliberação, as lideranças partidárias firmaram acordo no Plenário e a matéria foi {activeSession.resultado ? activeSession.resultado.toLowerCase() : "deliberada"} por aclamação, dispensando o registro individual no painel eletrônico de votação.
+                  </p>
                 </div>
               )}
             </div>
@@ -763,13 +930,32 @@ export default function ProjectDetailsClient({
         <div className="p-8 rounded-2xl bg-card border border-border text-center space-y-3 shadow-soft">
           <FaVoteYea className="w-8 h-8 text-muted-foreground mx-auto" />
           <h3 className="text-base font-bold text-foreground">
-            Sem votações nominais registradas
+            Sem deliberações registradas
           </h3>
           <p className="text-xs text-muted-foreground max-w-md mx-auto">
-            Esta proposta foi aprovada por votação simbólica ou ainda aguarda deliberação nominal no Plenário da Câmara.
+            Esta proposta ainda não possui registros de deliberação no Plenário da Câmara.
           </p>
         </div>
       )}
+
+      {/* Modal de Relato de Inconsistência em IA */}
+      <AiFeedbackModal
+        isOpen={isFeedbackOpen}
+        onClose={() => {
+          setIsFeedbackOpen(false);
+          setFeedbackSession(null);
+        }}
+        propositionId={proposition.id}
+        propositionTitle={proposition.titulo}
+        sessionId={feedbackSession?.id || primarySession?.id}
+        sessionTitle={feedbackSession?.titulo_amigavel || feedbackSession?.descricao || primarySession?.titulo_amigavel || primarySession?.descricao}
+        reportedSummary={
+          feedbackSession?.resumo_simplificado ||
+          proposition.resumo_geral ||
+          primarySession?.resumo_simplificado ||
+          proposition.ementa
+        }
+      />
     </main>
   );
 }

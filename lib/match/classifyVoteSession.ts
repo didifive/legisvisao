@@ -19,7 +19,46 @@ export interface SessionClassification {
  * 3. Destaques (Prioridade 3): Destaques para Votação em Separado (DTQ / DVS), Manutenção/Supressão de texto.
  * 4. Requerimentos de Pauta (Prioridade 4): Retirada de Pauta, Adiamento, Urgência, Preferência.
  */
-export function classifyVoteSession(descricao?: string | null): SessionClassification {
+export function classifyVoteSession(
+  descricao?: string | null,
+  tipo_deliberacao?: string | null
+): SessionClassification {
+  const tipoUpper = (tipo_deliberacao || "").toUpperCase().trim();
+
+  // Se já classificado explicitamente pelo enriquecimento no banco
+  if (tipoUpper === "MERITO") {
+    return {
+      type: "MERITO",
+      label: "Texto-Base / Mérito Principal",
+      badgeClass: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+      priority: 1,
+    };
+  }
+  if (tipoUpper === "EMENDA") {
+    return {
+      type: "EMENDA",
+      label: "Emenda ao Projeto",
+      badgeClass: "bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30",
+      priority: 2,
+    };
+  }
+  if (tipoUpper === "DESTAQUE") {
+    return {
+      type: "DESTAQUE",
+      label: "Destaque / Votação em Separado",
+      badgeClass: "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30",
+      priority: 3,
+    };
+  }
+  if (tipoUpper === "REQUERIMENTO") {
+    return {
+      type: "REQUERIMENTO",
+      label: "Requerimento de Pauta",
+      badgeClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30",
+      priority: 4,
+    };
+  }
+
   const descUpper = (descricao || "").toUpperCase().trim();
 
   if (!descUpper) {
@@ -123,36 +162,42 @@ export function classifyVoteSession(descricao?: string | null): SessionClassific
  * Ordenador Determinístico de Sessões de Votação Nominal.
  * 
  * Regra de Desempate Estrito:
- * 1. Prioridade do Tipo de Deliberação (Menor número = Maior relevância de mérito: 1=Mérito Principal, 2=Emendas, 3=Destaques, 4=Requerimentos).
- * 2. Presença de votos nominais (prioriza deliberações com votos registrados sobre redações finais meramente simbólicas).
+ * 1. Presença de votos nominais (prioriza deliberações com votos registrados sobre redações finais meramente simbólicas).
+ * 2. Prioridade do Tipo de Deliberação (Menor número = Maior relevância de mérito: 1=Mérito Principal, 2=Emendas, 3=Destaques, 4=Requerimentos).
  * 3. Data e hora mais recente (timestamp decrescente: 2º turno antes de 1º turno).
- * 4. ID único da sessão na Câmara (ordem alfanumérica decrescente).
+ * 4. Total de votos nominais (maior quórum deliberativo).
+ * 5. ID único da sessão na Câmara (ordem alfanumérica decrescente).
  */
 export function sortVoteSessionsDeterministic<T extends {
   id?: string | number;
   data_hora?: string | null;
   descricao?: string | null;
   vote_description?: string | null;
+  tipo_deliberacao?: string | null;
   total_votos?: number | string | null;
+  votesCount?: number | string | null;
   total_sim?: number | string | null;
   total_nao?: number | string | null;
 }>(sessions: T[]): Array<T & { classification: SessionClassification }> {
   const withClass = sessions.map((s) => ({
     ...s,
-    classification: classifyVoteSession(s.vote_description || s.descricao || ""),
+    classification: classifyVoteSession(s.vote_description || s.descricao || "", s.tipo_deliberacao),
   }));
 
   return withClass.sort((a, b) => {
-    // 1. Prioridade do tipo de deliberação (1=Mérito, 2=Emenda, 3=Destaque, 4=Requerimento)
+    // 1. Presença de votos nominais para desempate de mérito (evita redação final simbólica com 0 votos nominais)
+    const votesA = Number(a.total_votos || a.votesCount || (Number(a.total_sim || 0) + Number(a.total_nao || 0)) || 0);
+    const votesB = Number(b.total_votos || b.votesCount || (Number(b.total_sim || 0) + Number(b.total_nao || 0)) || 0);
+    const hasVotesA = votesA > 0 ? 1 : 0;
+    const hasVotesB = votesB > 0 ? 1 : 0;
+    if (hasVotesB !== hasVotesA) {
+      return hasVotesB - hasVotesA;
+    }
+
+    // 2. Prioridade do tipo de deliberação (1=Mérito, 2=Emenda, 3=Destaque, 4=Requerimento)
     if (a.classification.priority !== b.classification.priority) {
       return a.classification.priority - b.classification.priority;
     }
-
-    // 2. Presença de votos nominais para desempate de mérito (evita redação final simbólica com 0 votos nominais)
-    const votesA = Number(a.total_votos || (Number(a.total_sim || 0) + Number(a.total_nao || 0)) || 0);
-    const votesB = Number(b.total_votos || (Number(b.total_sim || 0) + Number(b.total_nao || 0)) || 0);
-    if (votesA > 0 && votesB === 0) return -1;
-    if (votesB > 0 && votesA === 0) return 1;
 
     // 3. Data/hora mais recente (2º turno mais recente que 1º turno)
     const timeA = a.data_hora ? new Date(a.data_hora).getTime() : 0;
@@ -161,7 +206,12 @@ export function sortVoteSessionsDeterministic<T extends {
       return timeB - timeA;
     }
 
-    // 4. ID único para garantia de determinismo absoluto
+    // 4. Quantidade de votos nominais
+    if (votesB !== votesA) {
+      return votesB - votesA;
+    }
+
+    // 5. ID único para garantia de determinismo absoluto
     const idA = String(a.id || "");
     const idB = String(b.id || "");
     return idB.localeCompare(idA);

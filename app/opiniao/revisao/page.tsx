@@ -19,9 +19,14 @@ import {
   FaFilter,
   FaSearch,
   FaLandmark,
+  FaRobot,
+  FaChevronDown,
+  FaVoteYea,
+  FaFlag,
   FaExclamationTriangle,
   FaSyncAlt,
 } from "react-icons/fa";
+import { AiFeedbackModal } from "@/app/components/AiFeedbackModal";
 import {
   getStoredAnswers,
   saveStoredAnswers,
@@ -36,6 +41,7 @@ export default function RevisaoPage() {
   const [selectedYears, setSelectedYears] = useState<number[]>([]);
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [feedbackTarget, setFeedbackTarget] = useState<PropositionWithVoteSession | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -149,6 +155,8 @@ export default function RevisaoPage() {
       list = list.filter(
         (item) =>
           item.proposition.titulo.toLowerCase().includes(q) ||
+          (item.proposition.titulo_amigavel && item.proposition.titulo_amigavel.toLowerCase().includes(q)) ||
+          (item.proposition.resumo_geral && item.proposition.resumo_geral.toLowerCase().includes(q)) ||
           (item.proposition.ementa && item.proposition.ementa.toLowerCase().includes(q)) ||
           (item.proposition.tema && item.proposition.tema.toLowerCase().includes(q))
       );
@@ -503,10 +511,83 @@ export default function RevisaoPage() {
                       </div>
                     </div>
 
-                    {/* Descrição */}
-                    <p className="text-sm text-foreground/90 leading-relaxed font-normal">
-                      {proposition.ementa_detalhada || proposition.ementa}
-                    </p>
+                    {/* 1. Resumo Geral do Projeto de Lei (Linguagem Cidadã por IA) ou Ementa Oficial Direta */}
+                    {proposition.resumo_geral ? (
+                      <>
+                        <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-extrabold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                              <FaRobot className="w-3.5 h-3.5 shrink-0" />
+                              <span>Sobre o Projeto de Lei (Resumo Geral):</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => setFeedbackTarget(proposition)}
+                              title="Relatar inconsistência ou viés no resumo"
+                              className="text-[11px] text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-smooth flex items-center gap-1 cursor-pointer font-medium"
+                            >
+                              <FaFlag className="w-2.5 h-2.5" />
+                              <span className="hidden sm:inline">Relatar problema</span>
+                            </button>
+                          </div>
+                          <p className="text-sm text-foreground leading-relaxed font-normal">
+                            {proposition.resumo_geral}
+                          </p>
+                        </div>
+
+                        {/* Expansor da Ementa Jurídica Oficial */}
+                        <details className="group pt-0.5">
+                          <summary className="text-xs font-bold text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1.5 select-none list-none">
+                            <FaInfoCircle className="w-3 h-3 text-primary" />
+                            <span>Ver ementa jurídica oficial da Câmara</span>
+                            <FaChevronDown className="w-2.5 h-2.5 group-open:rotate-180 transition-transform" />
+                          </summary>
+                          <div className="mt-2 p-3.5 rounded-xl bg-muted/30 border border-border/60 text-xs text-muted-foreground leading-relaxed">
+                            {proposition.ementa_detalhada || proposition.ementa}
+                          </div>
+                        </details>
+                      </>
+                    ) : (
+                      /* Exibição direta da Ementa Oficial */
+                      <div className="p-4 rounded-xl bg-muted/30 border border-border/60 space-y-1.5">
+                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                          <FaInfoCircle className="w-3.5 h-3.5 text-primary shrink-0" />
+                          <span>Ementa Oficial:</span>
+                        </span>
+                        <p className="text-sm text-foreground leading-relaxed font-normal">
+                          {proposition.ementa_detalhada || proposition.ementa}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 2. Deliberação de Mérito Votada no Plenário */}
+                    {proposition.resumo_simplificado && (
+                      <div className="p-4 rounded-xl bg-muted/40 border border-border/80 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                            <FaVoteYea className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <span>Deliberação de Mérito Votada no Plenário:</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setFeedbackTarget(proposition)}
+                            title="Relatar inconsistência ou viés no resumo desta deliberação"
+                            className="text-[11px] text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-smooth flex items-center gap-1 cursor-pointer font-medium"
+                          >
+                            <FaFlag className="w-2.5 h-2.5" />
+                            <span className="hidden sm:inline">Relatar problema</span>
+                          </button>
+                        </div>
+                        {proposition.titulo_amigavel && (
+                          <p className="text-xs font-semibold text-primary">
+                            {proposition.titulo_amigavel}
+                          </p>
+                        )}
+                        <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                          {proposition.resumo_simplificado}
+                        </p>
+                      </div>
+                    )}
 
                     {/* Link Oficial */}
                     <div className="flex items-center justify-between text-xs pt-1">
@@ -583,6 +664,17 @@ export default function RevisaoPage() {
           )}
         </>
       )}
+
+      {/* Modal de Relato de Inconsistência em IA */}
+      <AiFeedbackModal
+        isOpen={Boolean(feedbackTarget)}
+        onClose={() => setFeedbackTarget(null)}
+        propositionId={feedbackTarget?.id}
+        propositionTitle={feedbackTarget?.titulo}
+        sessionId={feedbackTarget?.vote_session_id}
+        sessionTitle={feedbackTarget?.titulo_amigavel || feedbackTarget?.vote_session_description || undefined}
+        reportedSummary={feedbackTarget?.resumo_geral || feedbackTarget?.resumo_simplificado || feedbackTarget?.ementa || undefined}
+      />
     </main>
   );
 }

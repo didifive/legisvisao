@@ -28,11 +28,15 @@ export async function GET(request: NextRequest) {
           p.url_camara,
           p.data_apresentacao,
           p.ultimo_status,
+          p.resumo_geral,
           p.last_updated_at,
           vs.id as vote_session_id,
           vs.data_hora as vote_session_date,
           vs.descricao as vote_session_description,
           vs.resultado as vote_session_result,
+          vs.tipo_deliberacao,
+          vs.titulo_amigavel,
+          vs.resumo_simplificado,
           COALESCE(vs.total_sim, 0) as total_sim,
           COALESCE(vs.total_nao, 0) as total_nao,
           COALESCE(vs.total_outros, 0) as total_outros
@@ -44,14 +48,28 @@ export async function GET(request: NextRequest) {
             v.data_hora,
             v.descricao,
             v.resultado,
+            v.tipo_deliberacao,
+            v.titulo_amigavel,
+            v.resumo_simplificado,
             COUNT(CASE WHEN dv.voto_original ILIKE 'Sim%' THEN 1 END)::int as total_sim,
             COUNT(CASE WHEN dv.voto_original ILIKE 'N%' OR dv.voto_original ILIKE 'Não%' THEN 1 END)::int as total_nao,
             COUNT(CASE WHEN dv.voto_original NOT ILIKE 'Sim%' AND dv.voto_original NOT ILIKE 'N%' THEN 1 END)::int as total_outros
           FROM vote_sessions v
           JOIN deputy_votes dv ON dv.votacao_id = v.id
-          GROUP BY v.id, v.proposicao_id, v.data_hora, v.descricao, v.resultado
+          GROUP BY v.id, v.proposicao_id, v.data_hora, v.descricao, v.resultado, v.tipo_deliberacao, v.titulo_amigavel, v.resumo_simplificado
           HAVING COUNT(CASE WHEN dv.voto_original ILIKE 'Sim%' OR dv.voto_original ILIKE 'N%' OR dv.voto_original ILIKE 'Não%' THEN 1 END) > 0
-          ORDER BY v.proposicao_id, v.data_hora DESC
+          ORDER BY 
+            v.proposicao_id,
+            CASE 
+              WHEN v.tipo_deliberacao = 'MERITO' THEN 1
+              WHEN v.descricao ILIKE '%turno%' OR v.descricao ILIKE '%texto-base%' OR v.descricao ILIKE '%texto base%' OR v.descricao ILIKE '%substitutivo%' OR v.descricao ILIKE '%redação final%' OR v.descricao ILIKE '%redacao final%' THEN 1
+              WHEN v.tipo_deliberacao = 'EMENDA' OR v.descricao ILIKE 'emenda%' THEN 2
+              WHEN v.tipo_deliberacao = 'DESTAQUE' OR v.descricao ILIKE '%destaque%' OR v.descricao ILIKE 'mantido o texto%' OR v.descricao ILIKE 'suprimido o texto%' THEN 3
+              ELSE 4
+            END ASC,
+            v.data_hora DESC,
+            COUNT(CASE WHEN dv.voto_original ILIKE 'Sim%' OR dv.voto_original ILIKE 'N%' OR dv.voto_original ILIKE 'Não%' THEN 1 END) DESC,
+            v.id DESC
         ) vs ON vs.proposicao_id = p.id
         WHERE 1=1
       `;
