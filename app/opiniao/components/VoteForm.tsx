@@ -61,6 +61,7 @@ export default function VoteForm() {
   const [seed, setSeed] = useState<number | null>(null);
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [selectedYears, setSelectedYears] = useState<number[]>([]);
+  const [includeNonMerit, setIncludeNonMerit] = useState(false);
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
   const [loading, setLoading] = useState(true);
   const [feedbackTarget, setFeedbackTarget] = useState<PropositionWithVoteSession | null>(null);
@@ -71,8 +72,12 @@ export default function VoteForm() {
 
     async function load() {
       try {
-        const propsData = await cachedFetch("propositions", () =>
-          fetch("/api/propositions").then((r) => r.json())
+        setLoading(true);
+        const cacheKey = includeNonMerit ? "propositions_all" : "propositions_merit";
+        const url = includeNonMerit ? "/api/propositions?include_all=true" : "/api/propositions?only_merit=true";
+
+        const propsData = await cachedFetch(cacheKey, () =>
+          fetch(url).then((r) => r.json())
         );
 
         const savedAnswers = getStoredAnswers();
@@ -102,7 +107,7 @@ export default function VoteForm() {
       window.removeEventListener("storage-answers-updated", handleStorage);
       window.removeEventListener("storage", handleStorage);
     };
-  }, []);
+  }, [includeNonMerit]);
 
   function toggleShuffle(value: boolean) {
     setShuffle(value);
@@ -137,18 +142,27 @@ export default function VoteForm() {
     setSelectedStatus((prev) =>
       prev.includes(st) ? prev.filter((e) => e !== st) : [...prev, st]
     );
+    setLimit(10);
   }
 
   function toggleYear(year: number) {
     setSelectedYears((prev) =>
       prev.includes(year) ? prev.filter((y) => y !== year) : [...prev, year]
     );
+    setLimit(10);
   }
 
   function resetAllFilters() {
     setSelectedStatus([]);
     setSelectedYears([]);
+    setIncludeNonMerit(false);
     setSearch("");
+    setLimit(10);
+  }
+
+  function handleSearchChange(val: string) {
+    setSearch(val);
+    setLimit(10);
   }
 
   const shuffledPropositions = useMemo(() => {
@@ -160,7 +174,7 @@ export default function VoteForm() {
     return shuffledPropositions.filter((p) => !answers[p.id]);
   }, [shuffledPropositions, answers]);
 
-  const filtered = useMemo(() => {
+  const allFiltered = useMemo(() => {
     let list = [...unvotedPropositions];
 
     // Filtro por busca de texto (título, resumo simplificado por IA, ementa técnica e tema)
@@ -169,10 +183,10 @@ export default function VoteForm() {
       list = list.filter(
         (p) =>
           p.titulo.toLowerCase().includes(q) ||
-          (p.titulo_amigavel && p.titulo_amigavel.toLowerCase().includes(q)) ||
-          (p.resumo_geral && p.resumo_geral.toLowerCase().includes(q)) ||
-          (p.ementa && p.ementa.toLowerCase().includes(q)) ||
-          (p.tema && p.tema.toLowerCase().includes(q))
+          (p.titulo_amigavel?.toLowerCase().includes(q)) ||
+          (p.resumo_geral?.toLowerCase().includes(q)) ||
+          (p.ementa?.toLowerCase().includes(q)) ||
+          (p.tema?.toLowerCase().includes(q))
       );
     }
 
@@ -207,8 +221,12 @@ export default function VoteForm() {
       }
     }
 
-    return list.slice(0, limit);
-  }, [unvotedPropositions, search, limit, sortBy, shuffle, selectedStatus, selectedYears]);
+    return list;
+  }, [unvotedPropositions, search, sortBy, shuffle, selectedStatus, selectedYears]);
+
+  const filtered = useMemo(() => {
+    return allFiltered.slice(0, limit);
+  }, [allFiltered, limit]);
 
   function handleVote(propId: number, opinion: "CONCORDO" | "DISCORDO") {
     const newAnswers = { ...answers, [propId]: opinion };
@@ -217,7 +235,7 @@ export default function VoteForm() {
   }
 
   const opinionsCount = Object.keys(answers).length;
-  const activeFiltersCount = selectedStatus.length + selectedYears.length;
+  const activeFiltersCount = selectedStatus.length + selectedYears.length + (includeNonMerit ? 1 : 0);
 
   if (loading) {
     return (
@@ -266,12 +284,12 @@ export default function VoteForm() {
             type="text"
             placeholder="Buscar proposta por tema, palavra-chave, sigla ou número (ex: PL 2630)..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full bg-background border border-border rounded-xl pl-10 pr-10 py-2.5 text-sm sm:text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-smooth"
           />
           {search && (
             <button
-              onClick={() => setSearch("")}
+              onClick={() => handleSearchChange("")}
               className="absolute right-3 p-1 rounded-md text-muted-foreground hover:text-foreground text-xs hover:bg-muted transition-smooth"
               title="Limpar busca"
             >
@@ -302,11 +320,10 @@ export default function VoteForm() {
             {/* Botão de Toggle do Painel de Filtros */}
             <button
               onClick={() => setShowFilterDrawer(!showFilterDrawer)}
-              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-smooth cursor-pointer font-bold ${
-                activeFiltersCount > 0 || showFilterDrawer
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-smooth cursor-pointer font-bold ${activeFiltersCount > 0 || showFilterDrawer
                   ? "bg-primary text-white border-primary shadow-soft"
                   : "bg-background border-border text-foreground hover:bg-muted"
-              }`}
+                }`}
             >
               <FaFilter className="w-3 h-3" />
               <span>Filtros {activeFiltersCount > 0 ? `(${activeFiltersCount})` : "Avançados"}</span>
@@ -363,11 +380,10 @@ export default function VoteForm() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => setSelectedYears([])}
-                    className={`text-[11px] font-semibold px-2 py-0.5 rounded transition-smooth ${
-                      selectedYears.length === 0
+                    className={`text-[11px] font-semibold px-2 py-0.5 rounded transition-smooth ${selectedYears.length === 0
                         ? "bg-primary/20 text-primary"
                         : "text-muted-foreground hover:text-foreground"
-                    }`}
+                      }`}
                   >
                     Todos os Anos
                   </button>
@@ -390,11 +406,10 @@ export default function VoteForm() {
                     <button
                       key={yr}
                       onClick={() => toggleYear(yr)}
-                      className={`px-3 py-1 rounded-lg border text-xs font-bold transition-smooth cursor-pointer ${
-                        isChecked
+                      className={`px-3 py-1 rounded-lg border text-xs font-bold transition-smooth cursor-pointer ${isChecked
                           ? "bg-primary text-white border-primary shadow-soft"
                           : "bg-background border-border text-muted-foreground hover:text-foreground hover:bg-muted"
-                      }`}
+                        }`}
                     >
                       {yr}
                     </button>
@@ -414,11 +429,10 @@ export default function VoteForm() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => setSelectedStatus([])}
-                    className={`text-[11px] font-semibold px-2 py-0.5 rounded transition-smooth ${
-                      selectedStatus.length === 0
+                    className={`text-[11px] font-semibold px-2 py-0.5 rounded transition-smooth ${selectedStatus.length === 0
                         ? "bg-primary/20 text-primary"
                         : "text-muted-foreground hover:text-foreground"
-                    }`}
+                      }`}
                   >
                     Todas as Situações
                   </button>
@@ -440,11 +454,10 @@ export default function VoteForm() {
                   return (
                     <label
                       key={st}
-                      className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition-smooth ${
-                        isChecked
+                      className={`flex items-center gap-2 p-2 rounded-lg border text-xs cursor-pointer transition-smooth ${isChecked
                           ? "bg-primary/10 border-primary text-foreground font-semibold"
                           : "bg-background border-border/70 text-muted-foreground hover:bg-muted"
-                      }`}
+                        }`}
                     >
                       <input
                         type="checkbox"
@@ -460,12 +473,37 @@ export default function VoteForm() {
                 })}
               </div>
             </div>
+
+            {/* 3. Modo de Consulta: Propostas Simbólicas */}
+            <div className="pt-2 border-t border-border/40 space-y-2">
+              <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <FaLandmark className="text-amber-500 w-3.5 h-3.5" />
+                <span>Escopo de Deliberações:</span>
+              </span>
+
+              <label className="flex items-start gap-3 p-3 rounded-xl bg-background border border-border cursor-pointer hover:border-primary/50 transition-smooth">
+                <input
+                  type="checkbox"
+                  checked={includeNonMerit}
+                  onChange={(e) => setIncludeNonMerit(e.target.checked)}
+                  className="mt-0.5 accent-primary rounded cursor-pointer"
+                />
+                <div className="text-xs space-y-0.5">
+                  <span className="font-bold text-foreground block">
+                    Incluir propostas com deliberação simbólica (modo consulta)
+                  </span>
+                  <span className="text-muted-foreground block text-[11px] leading-relaxed">
+                    Exibe matérias aprovadas ou rejeitadas por aclamação ou acordo de bancada (sem votação nominal eletrônica de deputados). Estas matérias aparecem apenas para leitura e consulta.
+                  </span>
+                </div>
+              </label>
+            </div>
           </div>
         )}
       </div>
 
       {/* Lista de Propostas Pendentes */}
-      {filtered.length === 0 ? (
+      {allFiltered.length === 0 ? (
         <div className="p-8 rounded-xl bg-card border border-border text-center space-y-4 shadow-soft">
           <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mx-auto">
             <FaCheckCircle className="w-6 h-6" />
@@ -493,6 +531,21 @@ export default function VoteForm() {
         </div>
       ) : (
         <div className="space-y-4">
+          <div className="flex items-center justify-between text-xs text-muted-foreground px-1 font-medium">
+            <span>
+              Exibindo <strong>{filtered.length}</strong> de <strong>{allFiltered.length}</strong> {allFiltered.length === 1 ? "proposta pendente" : "propostas pendentes"}
+            </span>
+            {(search || activeFiltersCount > 0) && (
+              <button
+                type="button"
+                onClick={resetAllFilters}
+                className="text-primary hover:underline font-bold"
+              >
+                Limpar Filtros
+              </button>
+            )}
+          </div>
+
           {filtered.map((p) => {
             const situacaoAtual = p.ultimo_status || "Em Tramitação";
             const lastVoteDate = p.vote_session_date
@@ -531,13 +584,12 @@ export default function VoteForm() {
 
                     {/* Badge de Situação */}
                     <span
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border font-bold ${
-                        isAprovado
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border font-bold ${isAprovado
                           ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
                           : isEncerrado
-                          ? "bg-rose-500/10 text-rose-600 border-rose-500/20"
-                          : "bg-secondary/10 text-secondary border-secondary/20"
-                      }`}
+                            ? "bg-rose-500/10 text-rose-600 border-rose-500/20"
+                            : "bg-secondary/10 text-secondary border-secondary/20"
+                        }`}
                     >
                       <FaInfoCircle className="w-3 h-3" />
                       <span>{situacaoAtual}</span>
@@ -548,6 +600,14 @@ export default function VoteForm() {
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-muted text-muted-foreground font-medium">
                         <FaHistory className="w-3 h-3 text-primary" />
                         <span>Deliberado em: {lastVoteDate}</span>
+                      </span>
+                    )}
+
+                    {/* Badge de Deliberação Simbólica / Modo Consulta */}
+                    {!p.is_merit && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-bold">
+                        <FaInfoCircle className="w-3 h-3" />
+                        <span>Deliberação Simbólica (Consulta)</span>
                       </span>
                     )}
                   </div>
@@ -656,33 +716,64 @@ export default function VoteForm() {
                   </Link>
                 </div>
 
-                {/* Área de Posicionamento */}
-                <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-border/60">
-                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                    Qual é o seu posicionamento sobre esta proposta?
-                  </span>
+                {/* Área de Posicionamento ou Modo Consulta */}
+                {p.is_merit ? (
+                  <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-border/60">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                      Qual é o seu posicionamento sobre esta proposta?
+                    </span>
 
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => handleVote(p.id, "CONCORDO")}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-soft transition-smooth cursor-pointer active:scale-95"
-                    >
-                      <FaCheck className="w-3.5 h-3.5" />
-                      <span>CONCORDO</span>
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => handleVote(p.id, "CONCORDO")}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-soft transition-smooth cursor-pointer active:scale-95"
+                      >
+                        <FaCheck className="w-3.5 h-3.5" />
+                        <span>CONCORDO</span>
+                      </button>
 
-                    <button
-                      onClick={() => handleVote(p.id, "DISCORDO")}
-                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-soft transition-smooth cursor-pointer active:scale-95"
-                    >
-                      <FaTimes className="w-3.5 h-3.5" />
-                      <span>DISCORDO</span>
-                    </button>
+                      <button
+                        onClick={() => handleVote(p.id, "DISCORDO")}
+                        className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow-soft transition-smooth cursor-pointer active:scale-95"
+                      >
+                        <FaTimes className="w-3.5 h-3.5" />
+                        <span>DISCORDO</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-border/60">
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <FaInfoCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <span>Matéria deliberada por votação simbólica no Plenário (disponível para leitura e consulta).</span>
+                    </div>
+
+                    <Link
+                      href={`/projetos/${p.id}`}
+                      className="px-3.5 py-1.5 rounded-xl bg-muted hover:bg-muted/80 text-foreground text-xs font-bold flex items-center gap-1.5 transition-smooth border border-border shrink-0 self-end sm:self-auto"
+                    >
+                      <span>Ver Ficha e Tramitação</span>
+                      <FaExternalLinkAlt className="w-2.5 h-2.5" />
+                    </Link>
+                  </div>
+                )}
               </div>
             );
           })}
+
+          {/* Botão de Paginação Incremental */}
+          {limit < allFiltered.length && (
+            <div className="pt-2 text-center">
+              <Button
+                variant="outline"
+                size="default"
+                onClick={() => setLimit((prev) => prev + 10)}
+                className="w-full sm:w-auto font-bold shadow-soft"
+              >
+                Carregar mais 10 propostas ({allFiltered.length - limit} restantes)
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

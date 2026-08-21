@@ -112,6 +112,17 @@ function PartyCard({ party, rank }: PartyCardProps) {
   const totalComp = party.match?.comparable_count ?? 0;
   const totalMatches = party.match?.matches_count ?? 0;
 
+  const partyLogoUrl =
+    party.logo_url ||
+    (() => {
+      const cleanSigla = (party.sigla || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9]/g, "")
+        .toUpperCase();
+      return cleanSigla ? `https://www.camara.leg.br/internet/Deputado/img/partidos/${cleanSigla}.gif` : null;
+    })();
+
   return (
     <Link
       href={`/partidos/${party.id}`}
@@ -128,6 +139,29 @@ function PartyCard({ party, rank }: PartyCardProps) {
           >
             #{rank}
           </span>
+
+          {/* Logo do Partido */}
+          <div className="w-10 h-10 rounded-xl bg-white/90 dark:bg-muted border border-border shrink-0 flex items-center justify-center p-1 overflow-hidden shadow-soft">
+            {partyLogoUrl ? (
+              <img
+                src={partyLogoUrl}
+                alt={`Logo do ${party.sigla}`}
+                className="max-w-full max-h-full object-contain"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = "none";
+                  const fallback = (e.target as HTMLElement).nextElementSibling as HTMLElement;
+                  if (fallback) fallback.style.display = "flex";
+                }}
+              />
+            ) : null}
+            <span
+              style={{ display: partyLogoUrl ? "none" : "flex" }}
+              className="text-[11px] font-black text-primary"
+            >
+              {party.sigla.slice(0, 4)}
+            </span>
+          </div>
+
           <div>
             <h3 className="font-bold text-foreground text-base group-hover:text-primary transition-smooth flex items-center gap-2 flex-wrap">
               <span>{party.nome}</span>

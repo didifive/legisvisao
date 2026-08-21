@@ -1,6 +1,7 @@
 import postgres from "postgres";
 import * as dotenv from "dotenv";
 import * as path from "node:path";
+import packageJson from "../../package.json";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
@@ -37,9 +38,11 @@ export const sql = postgres(connectionString, {
 
 export const CAMARA_API_BASE = "https://dadosabertos.camara.leg.br/api/v2";
 
+export const APP_VERSION = packageJson.version || "1.0";
+
 export const DEFAULT_HEADERS = {
   Accept: "application/json",
-  "User-Agent": "LegisVisao/1.0 (https://legisvisao.com.br; contato@legisvisao.com.br)",
+  "User-Agent": `LegisVisao/${APP_VERSION} (https://legisvisao.com.br; contato@legisvisao.com.br)`,
 };
 
 export async function fetchWithRetry(url: string, maxRetries = 3, delayMs = 1000): Promise<Response> {

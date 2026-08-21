@@ -455,7 +455,7 @@ export default function FAQPage() {
                 <span>1. Mérito / Texto-Base</span>
               </span>
               <p className="text-muted-foreground leading-relaxed text-xs">
-                <strong>Utilizada no cálculo de afinidade.</strong> É a votação substantiva central onde o plenário decide pela aprovação ou rejeição da lei (Texto-Base, Substitutivo ou Projeto de Lei de Conversão). Expressa a posição ideológica direta do parlamentar sobre a matéria.
+                <strong>Utilizada exclusivamente no cálculo de afinidade.</strong> É a votação substantiva central onde o plenário decide pela aprovação ou rejeição da matéria (Texto-Base, Substitutivo, Turnos de PEC ou Projeto de Lei de Conversão com registro nominal individual de votos). Expressa a posição direta do parlamentar sobre a essência da lei.
               </p>
             </div>
 
@@ -465,7 +465,7 @@ export default function FAQPage() {
                 <span>2. Destaques & Emendas</span>
               </span>
               <p className="text-muted-foreground leading-relaxed text-xs">
-                Votações pontuais (DTQ / DVS / Emendas) para manter, suprimir ou alterar artigos, parágrafos ou regras específicas dentro do texto já aprovado.
+                Votações pontuais (DTQ / DVS / Emendas) para manter, suprimir ou alterar artigos, parágrafos ou regras específicas dentro do texto já aprovado. Não são utilizadas no cálculo básico de afinidade para não distorcer a opinião geral.
               </p>
             </div>
 
@@ -481,14 +481,14 @@ export default function FAQPage() {
           </div>
 
           <div className="p-4 sm:p-5 rounded-xl bg-muted/60 border border-border text-xs text-foreground space-y-3">
-            <span className="font-bold text-primary block text-sm">🎯 Por que o Voto de Mérito Principal é o considerado no cálculo de afinidade?</span>
+            <span className="font-bold text-primary block text-sm">🎯 Por que o Voto de Mérito Principal é o único considerado no cálculo de afinidade?</span>
             <p className="text-muted-foreground text-xs leading-relaxed">
-              <strong>A votação principal é utilizada para o cálculo básico de afinidade, por representar a decisão final de mérito da Câmara sobre a matéria.</strong> Quando você responde ao questionário ("Concordo" ou "Discordo"), sua opinião avalia o mérito substantivo da proposta de lei. Vincular sua resposta à deliberação principal evita que manobras puramente procedimentais (como votar "Sim" para adiar sessão) distorçam o índice básico.
+              <strong>Apenas deliberações de mérito com votos nominais válidos integram o cálculo básico de afinidade.</strong> Quando você responde ao questionário ("Concordo" ou "Discordo"), sua opinião avalia o mérito substantivo da proposta de lei como um todo. Vincular sua resposta exclusivamente à deliberação principal de mérito evita distorções graves, como computar uma votação pontual de emenda ou manobra de adiamento como se fosse a aprovação ou rejeição da lei em si.
             </p>
             <div className="pt-1 p-3.5 rounded-lg bg-background/80 border border-border/70 space-y-1.5">
-              <span className="font-semibold text-foreground text-xs block">💡 E as nuances ideológicas em Destaques e Emendas?</span>
+              <span className="font-semibold text-foreground text-xs block">💡 E as proposições deliberadas por votação simbólica?</span>
               <p className="text-muted-foreground text-xs leading-relaxed">
-                Nem sempre a deliberação mais polarizada é o texto-base: em muitas leis, o texto geral é aprovado por consenso e a verdadeira disputa ideológica ocorre em um <strong>Destaque para Votação em Separado (DVS)</strong> para retirar ou manter um artigo polêmico. Por essa razão, o LegisVisão <strong>não oculta nenhuma votação</strong>: na página de cada projeto e no perfil de cada deputado, todo o histórico de emendas e destaques é exibido com crachás visuais explicativos, garantindo total transparência para análises avançadas.
+                Quando o texto-base de um projeto é aprovado ou rejeitado simbolicamente (por aclamação ou acordo de lideranças, sem registro individual no painel eletrônico), a matéria <strong>não possui votação nominal de mérito</strong>. O LegisVisão disponibiliza essas matérias em modo de consulta com histórico completo de emendas e tramitação, mas <strong>não as inclui na simulação de afinidade</strong>, preservando 100% da integridade matemática dos índices.
               </p>
             </div>
           </div>
@@ -504,10 +504,10 @@ export default function FAQPage() {
             </p>
             <ol className="list-decimal pl-4 space-y-1.5 text-muted-foreground text-xs leading-relaxed">
               <li>
-                <strong>Nível 1 (Relevância de Mérito):</strong> Prioridade máxima para deliberações de Mérito e Texto-Base (1º e 2º turnos de PECs, Substitutivos, Projetos de Lei de Conversão e Pareceres de Mérito) sobre Emendas, Destaques ou Requerimentos.
+                <strong>Nível 1 (Relevância de Mérito Estrito):</strong> Prioridade máxima e exclusiva para deliberações de Mérito e Texto-Base (1º e 2º turnos de PECs, Substitutivos, Projetos de Lei de Conversão e Pareceres de Mérito) sobre Emendas, Destaques ou Requerimentos.
               </li>
               <li>
-                <strong>Nível 2 (Presença de Votos Nominais):</strong> Prioriza sessões com votos nominais válidos registrados no painel eletrônico sobre redações finais meramente simbólicas (0 votos nominais).
+                <strong>Nível 2 (Presença Obrigatória de Votos Nominais):</strong> Exige votos nominais válidos registrados no painel eletrônico (Sim/Não), desconsiderando redações finais meramente simbólicas (0 votos nominais).
               </li>
               <li>
                 <strong>Nível 3 (Atualidade e Turno Definitivo):</strong> Em caso de mais de uma deliberação de mérito (como em PECs), seleciona-se a data e hora mais recente (o 2º turno, que consolida a manifestação definitiva da Casa).

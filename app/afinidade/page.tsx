@@ -138,31 +138,35 @@ export default function AfinidadePage() {
           }
         }
 
-        // Identifica a sessão principal de deliberação (mérito / texto-base)
+        // Identifica a sessão principal de deliberação (mérito / texto-base com votos nominais)
         let primarySessionId: string | null = null;
         if (Array.isArray(pd.sessions) && pd.sessions.length > 0) {
           const sessionsWithVotes = pd.sessions
-            .map((s: { id: string | number; data_hora?: string; descricao?: string }) => ({
+            .map((s: { id: string | number; data_hora?: string; descricao?: string; tipo_deliberacao?: string }) => ({
               ...s,
               total_votos: votesBySessionId.get(String(s.id)) || 0,
             }))
-            .filter((s: { total_votos: number }) => (votesBySessionId.size === 0 ? true : s.total_votos > 0));
+            .filter((s: { total_votos: number }) => s.total_votos > 0);
 
           const sortedSessions = sortVoteSessionsDeterministic(
             sessionsWithVotes.length > 0 ? sessionsWithVotes : pd.sessions
           );
-          primarySessionId = sortedSessions[0]?.id ? String(sortedSessions[0].id) : null;
+
+          // CRÍTICO: Só usa para o cálculo de afinidade se a sessão eleita for genuinamente de MÉRITO (Prioridade 1)
+          const elected = sortedSessions[0];
+          if (
+            elected &&
+            elected.classification.type === "MERITO" &&
+            elected.classification.priority === 1 &&
+            (votesBySessionId.get(String(elected.id)) || 0) > 0
+          ) {
+            primarySessionId = String(elected.id);
+          }
         }
 
-        // Se uma sessão principal for identificada, vincula apenas ela. Caso contrário, faz fallback para todas.
+        // Se uma sessão de mérito nominal foi identificada, vincula para comparação
         if (primarySessionId) {
           voteSessionToProposition[primarySessionId] = pId;
-        } else if (Array.isArray(pd.sessions)) {
-          for (const s of pd.sessions) {
-            if (s.id) {
-              voteSessionToProposition[String(s.id)] = pId;
-            }
-          }
         }
 
         if (pd.votes && Array.isArray(pd.votes)) {

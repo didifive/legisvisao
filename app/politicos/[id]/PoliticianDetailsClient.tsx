@@ -19,6 +19,7 @@ import {
   FaChevronDown,
   FaChevronUp,
   FaLayerGroup,
+  FaSearch,
 } from "react-icons/fa";
 import { Button } from "@/app/components/ui/Button";
 import type { Deputy, DeputyVoteDetail } from "@/types/db";
@@ -242,6 +243,9 @@ export default function PoliticianDetailsClient({
   votes,
 }: PoliticianDetailsClientProps) {
   const officialProfileUrl = `https://www.camara.leg.br/deputados/${deputy.id}`;
+  const [searchQuery, setSearchQuery] = useState("");
+  const [visibleCount, setVisibleCount] = useState(10);
+  const PAGE_SIZE = 10;
 
   const groupedPropositions = useMemo(() => {
     const map = new Map<number, {
@@ -270,20 +274,55 @@ export default function PoliticianDetailsClient({
       }
     }
 
-    return Array.from(map.values()).map((item) => {
-      const sorted = sortVoteSessionsDeterministic(item.allVotes);
+    return Array.from(map.values())
+      .map((item) => {
+        const sorted = sortVoteSessionsDeterministic(item.allVotes);
 
-      return {
-        proposicao_id: item.proposicao_id,
-        titulo: item.titulo,
-        ementa: item.ementa,
-        tema: item.tema,
-        url_camara: item.url_camara,
-        primaryVote: sorted[0],
-        otherVotes: sorted.slice(1),
-      };
-    });
+        return {
+          proposicao_id: item.proposicao_id,
+          titulo: item.titulo,
+          ementa: item.ementa,
+          tema: item.tema,
+          url_camara: item.url_camara,
+          primaryVote: sorted[0],
+          otherVotes: sorted.slice(1),
+        };
+      })
+      .sort((a, b) => {
+        const timeA = a.primaryVote?.data_hora ? new Date(a.primaryVote.data_hora).getTime() : 0;
+        const timeB = b.primaryVote?.data_hora ? new Date(b.primaryVote.data_hora).getTime() : 0;
+        return timeB - timeA || b.proposicao_id - a.proposicao_id;
+      });
   }, [votes]);
+
+  const filteredPropositions = useMemo(() => {
+    if (!searchQuery.trim()) return groupedPropositions;
+    const q = searchQuery.toLowerCase().trim();
+    return groupedPropositions.filter((item) => {
+      const matchTitulo = (item.titulo || "").toLowerCase().includes(q);
+      const matchEmenta = (item.ementa || "").toLowerCase().includes(q);
+      const matchTema = (item.tema || "").toLowerCase().includes(q);
+      return matchTitulo || matchEmenta || matchTema;
+    });
+  }, [groupedPropositions, searchQuery]);
+
+  const displayedPropositions = useMemo(() => {
+    return filteredPropositions.slice(0, visibleCount);
+  }, [filteredPropositions, visibleCount]);
+
+  function handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
+    setSearchQuery(e.target.value);
+    setVisibleCount(PAGE_SIZE);
+  }
+
+  function handleClearSearch() {
+    setSearchQuery("");
+    setVisibleCount(PAGE_SIZE);
+  }
+
+  function handleLoadMore() {
+    setVisibleCount((prev) => prev + PAGE_SIZE);
+  }
 
   return (
     <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-10">
@@ -383,9 +422,71 @@ export default function PoliticianDetailsClient({
           </div>
         ) : (
           <div className="space-y-4">
-            {groupedPropositions.map((item) => (
-              <PropositionVoteCard key={item.proposicao_id} item={item} />
-            ))}
+            {/* Barra de Busca Rápida */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 sm:p-4 rounded-xl bg-card border border-border shadow-soft">
+              <div className="relative flex-1">
+                <FaSearch className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground w-3.5 h-3.5" />
+                <input
+                  type="text"
+                  placeholder="Buscar por título (ex: PL 2630), ementa ou tema..."
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  className="w-full pl-9 pr-8 py-2 rounded-lg bg-background border border-border text-xs sm:text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-smooth"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 rounded transition-smooth"
+                    title="Limpar busca"
+                  >
+                    <FaTimes className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              <div className="text-xs text-muted-foreground shrink-0 font-medium">
+                Exibindo <strong>{displayedPropositions.length}</strong> de <strong>{filteredPropositions.length}</strong> {filteredPropositions.length === 1 ? "proposta" : "propostas"}
+              </div>
+            </div>
+
+            {/* Lista Filtrada de Proposições */}
+            {filteredPropositions.length === 0 ? (
+              <div className="p-8 rounded-xl bg-card border border-border text-center space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma proposição encontrada para o termo de busca &ldquo;{searchQuery}&rdquo;.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="text-xs text-primary hover:underline font-bold"
+                >
+                  Limpar busca
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  {displayedPropositions.map((item) => (
+                    <PropositionVoteCard key={item.proposicao_id} item={item} />
+                  ))}
+                </div>
+
+                {/* Botão de Paginação Incremental */}
+                {visibleCount < filteredPropositions.length && (
+                  <div className="pt-2 text-center">
+                    <Button
+                      variant="outline"
+                      size="default"
+                      onClick={handleLoadMore}
+                      className="w-full sm:w-auto font-bold shadow-soft"
+                    >
+                      Ver mais 10 propostas ({filteredPropositions.length - visibleCount} restantes)
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </section>

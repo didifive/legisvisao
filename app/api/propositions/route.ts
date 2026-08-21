@@ -10,10 +10,14 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get("query") || "";
     const sort = searchParams.get("sort") || "relevance";
+    const onlyMerit = searchParams.get("only_merit") || "false";
+    const includeAll = searchParams.get("include_all") === "true";
 
-    const cacheKey = `propositions_${query}_${sort}`;
+    const cacheKey = `propositions_${query}_${sort}_${onlyMerit}_${includeAll}`;
 
     const data = await withServerCache(cacheKey, async () => {
+      const joinType = includeAll ? "LEFT JOIN" : "INNER JOIN";
+
       let sqlQuery = `
         SELECT 
           p.id,
@@ -37,11 +41,12 @@ export async function GET(request: NextRequest) {
           vs.tipo_deliberacao,
           vs.titulo_amigavel,
           vs.resumo_simplificado,
+          COALESCE(vs.is_merit, false) as is_merit,
           COALESCE(vs.total_sim, 0) as total_sim,
           COALESCE(vs.total_nao, 0) as total_nao,
           COALESCE(vs.total_outros, 0) as total_outros
         FROM propositions p
-        INNER JOIN (
+        ${joinType} (
           SELECT DISTINCT ON (v.proposicao_id)
             v.proposicao_id,
             v.id,
@@ -51,6 +56,21 @@ export async function GET(request: NextRequest) {
             v.tipo_deliberacao,
             v.titulo_amigavel,
             v.resumo_simplificado,
+            (CASE 
+              WHEN v.tipo_deliberacao = 'MERITO' THEN 1
+              WHEN v.tipo_deliberacao = 'EMENDA' THEN 2
+              WHEN v.tipo_deliberacao = 'DESTAQUE' THEN 3
+              WHEN v.tipo_deliberacao = 'REQUERIMENTO' THEN 4
+              -- 1. Requerimentos Procedimentais (Prioridade 4)
+              WHEN v.descricao ILIKE '%requerimento%' OR v.descricao ILIKE '%retirada de pauta%' OR v.descricao ILIKE '%adiamento%' OR v.descricao ILIKE '%urgência%' OR v.descricao ILIKE '%urgencia%' OR v.descricao ILIKE '%preferência%' OR v.descricao ILIKE '%preferencia%' THEN 4
+              -- 2. Destaques / Votação em Separado (Prioridade 3) - Não usar %destaque% solto para não pegar 'ressalvado o destaque'
+              WHEN v.descricao ILIKE 'destaque%' OR v.descricao ILIKE '%votação do destaque%' OR v.descricao ILIKE '%votação dos destaques%' OR v.descricao ILIKE '%votação de destaque%' OR v.descricao ILIKE '%dtq%' OR v.descricao ILIKE '%dvs%' OR v.descricao ILIKE '%votação em separado%' OR v.descricao ILIKE '%votacao em separado%' OR v.descricao ILIKE 'mantido o texto%' OR v.descricao ILIKE 'suprimido o texto%' THEN 3
+              -- 3. Emendas ao Projeto (Prioridade 2)
+              WHEN (v.descricao ILIKE '%emenda%' OR v.descricao ILIKE '%subemenda%') AND NOT (v.descricao ILIKE '%subemenda substitutiva global%' OR v.descricao ILIKE '%substitutiva global%') THEN 2
+              -- 4. Mérito / Texto-Base (Prioridade 1 Máxima)
+              WHEN v.descricao ILIKE '%substitutivo%' OR v.descricao ILIKE '%texto-base%' OR v.descricao ILIKE '%texto base%' OR v.descricao ILIKE '%turno%' OR v.descricao ILIKE '%projeto de lei%' OR v.descricao ILIKE '%proposta de emenda%' OR v.descricao ILIKE '%medida provis%' OR v.descricao ILIKE '%redação final%' OR v.descricao ILIKE '%redacao final%' THEN 1
+              ELSE 5
+            END = 1) as is_merit,
             COUNT(CASE WHEN dv.voto_original ILIKE 'Sim%' THEN 1 END)::int as total_sim,
             COUNT(CASE WHEN dv.voto_original ILIKE 'N%' OR dv.voto_original ILIKE 'Não%' THEN 1 END)::int as total_nao,
             COUNT(CASE WHEN dv.voto_original NOT ILIKE 'Sim%' AND dv.voto_original NOT ILIKE 'N%' THEN 1 END)::int as total_outros
@@ -62,13 +82,21 @@ export async function GET(request: NextRequest) {
             v.proposicao_id,
             CASE 
               WHEN v.tipo_deliberacao = 'MERITO' THEN 1
-              WHEN v.descricao ILIKE '%turno%' OR v.descricao ILIKE '%texto-base%' OR v.descricao ILIKE '%texto base%' OR v.descricao ILIKE '%substitutivo%' OR v.descricao ILIKE '%redação final%' OR v.descricao ILIKE '%redacao final%' THEN 1
-              WHEN v.tipo_deliberacao = 'EMENDA' OR v.descricao ILIKE 'emenda%' THEN 2
-              WHEN v.tipo_deliberacao = 'DESTAQUE' OR v.descricao ILIKE '%destaque%' OR v.descricao ILIKE 'mantido o texto%' OR v.descricao ILIKE 'suprimido o texto%' THEN 3
-              ELSE 4
+              WHEN v.tipo_deliberacao = 'EMENDA' THEN 2
+              WHEN v.tipo_deliberacao = 'DESTAQUE' THEN 3
+              WHEN v.tipo_deliberacao = 'REQUERIMENTO' THEN 4
+              -- 1. Requerimentos Procedimentais (Prioridade 4)
+              WHEN v.descricao ILIKE '%requerimento%' OR v.descricao ILIKE '%retirada de pauta%' OR v.descricao ILIKE '%adiamento%' OR v.descricao ILIKE '%urgência%' OR v.descricao ILIKE '%urgencia%' OR v.descricao ILIKE '%preferência%' OR v.descricao ILIKE '%preferencia%' THEN 4
+              -- 2. Destaques / Votação em Separado (Prioridade 3) - Não usar %destaque% solto para não pegar 'ressalvado o destaque'
+              WHEN v.descricao ILIKE 'destaque%' OR v.descricao ILIKE '%votação do destaque%' OR v.descricao ILIKE '%votação dos destaques%' OR v.descricao ILIKE '%votação de destaque%' OR v.descricao ILIKE '%dtq%' OR v.descricao ILIKE '%dvs%' OR v.descricao ILIKE '%votação em separado%' OR v.descricao ILIKE '%votacao em separado%' OR v.descricao ILIKE 'mantido o texto%' OR v.descricao ILIKE 'suprimido o texto%' THEN 3
+              -- 3. Emendas ao Projeto (Prioridade 2)
+              WHEN (v.descricao ILIKE '%emenda%' OR v.descricao ILIKE '%subemenda%') AND NOT (v.descricao ILIKE '%subemenda substitutiva global%' OR v.descricao ILIKE '%substitutiva global%') THEN 2
+              -- 4. Mérito / Texto-Base (Prioridade 1 Máxima)
+              WHEN v.descricao ILIKE '%substitutivo%' OR v.descricao ILIKE '%texto-base%' OR v.descricao ILIKE '%texto base%' OR v.descricao ILIKE '%turno%' OR v.descricao ILIKE '%projeto de lei%' OR v.descricao ILIKE '%proposta de emenda%' OR v.descricao ILIKE '%medida provis%' OR v.descricao ILIKE '%redação final%' OR v.descricao ILIKE '%redacao final%' THEN 1
+              ELSE 5
             END ASC,
-            v.data_hora DESC,
             COUNT(CASE WHEN dv.voto_original ILIKE 'Sim%' OR dv.voto_original ILIKE 'N%' OR dv.voto_original ILIKE 'Não%' THEN 1 END) DESC,
+            v.data_hora DESC,
             v.id DESC
         ) vs ON vs.proposicao_id = p.id
         WHERE 1=1
@@ -76,6 +104,10 @@ export async function GET(request: NextRequest) {
 
       const params: string[] = [];
       let paramIndex = 1;
+
+      if (!includeAll && onlyMerit === "true") {
+        sqlQuery += ` AND vs.is_merit = TRUE`;
+      }
 
       if (query) {
         sqlQuery += ` AND (p.titulo ILIKE $${paramIndex} OR p.ementa ILIKE $${paramIndex} OR p.tema ILIKE $${paramIndex})`;

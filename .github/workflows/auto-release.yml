@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   release:
-    name: Create Semantic Release
+    name: 📦 Create Semantic Release
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     environment: prd
