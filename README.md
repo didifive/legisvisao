@@ -365,7 +365,7 @@ erDiagram
 ### 1. Cálculo Aritmético de Afinidade
 O motor de cálculo (`lib/match/`) cruza determinística e pontualmente cada resposta do usuário com os votos nominais dos deputados:
 
-$$\text{Índice de Afinidade (\%)} = \left( \frac{\text{Concordâncias}}{\text{Votações Comparáveis}} \right) \times 100$$
+$$\text{Índice de Afinidade (\\%)} = \left( \frac{\text{Concordâncias}}{\text{Votações Comparáveis}} \right) \times 100$$
 
 - **Concordância**: Usuário **CONCORDO** $\leftrightarrow$ Deputado **SIM** / Usuário **DISCORDO** $\leftrightarrow$ Deputado **NÃO**.
 - **Divergência**: Usuário **CONCORDO** $\leftrightarrow$ Deputado **NÃO** / Usuário **DISCORDO** $\leftrightarrow$ Deputado **SIM**.
