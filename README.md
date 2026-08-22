@@ -3,7 +3,7 @@
 # 🏛️ LegisVisão
 ### Plataforma Cívica de Transparência Legislativa e Análise de Afinidade
 
-[![Next.js](https://img.shields.io/badge/Next.js-16.3-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16.3.2-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
 [![TailwindCSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?style=for-the-badge&logo=tailwind-css)](https://tailwindcss.com/)
@@ -394,8 +394,8 @@ Esta seção detalha as principais decisões de design de software e infraestrut
 
 ### 1. Estratégia de Cache Multi-Camadas (Client-Side + BFF + PostgreSQL Indexado)
 - **Implementação Técnica:**
-  - **Camada 1 (Client-Side):** `sessionStorage` no navegador com TTL de 3 minutos para catálogo de deputados, propostas e legendas, evitando requisições repetidas na mesma navegação.
-  - **Camada 2 (Server-Side / BFF):** Cache em memória nas rotas de API do Next.js com invalidação inteligente orientada a eventos. O servidor monitora a coluna `dataset_version` da tabela `sync_control` a cada 15 minutos; se o dataset não foi modificado, as consultas são resolvidas em memória (sub-5ms) sem onerar o PostgreSQL.
+  - **Camada 1 (Client-Side):** `sessionStorage` no navegador com TTL de 3 minutos (ou 30s em desenvolvimento) para catálogo de deputados, propostas e legendas, evitando requisições repetidas na mesma navegação.
+  - **Camada 2 (Server-Side / BFF):** Cache em memória nas rotas de API do Next.js com invalidação inteligente orientada a eventos. O servidor monitora a versão ativa na tabela `sync_control` a cada 10s em desenvolvimento (ou 30s em produção) através de uma consulta leve (<1ms); se o dataset não foi modificado, as consultas são resolvidas instantaneamente em memória sem onerar o pool de conexões do PostgreSQL.
   - **Camada 3 (Database):** PostgreSQL atua como repositório persistente indexado com driver `postgres.js` configurado em modo direto (`prepare: false`) para operação ideal com poolers de transação.
 - **Justificativa de Negócio:**
   - Custo operacional de infraestrutura próximo de zero, permitindo manter o projeto 100% no free-tier.
@@ -444,11 +444,15 @@ Esta seção detalha as principais decisões de design de software e infraestrut
 ### 7. Pipeline Assíncrono de Enriquecimento por IA (Google AI Studio Free-Tier + GitHub Actions)
 - **Implementação Técnica:**
   - **Processamento em Lote Desacoplado (Offline/Background):** Script TypeScript (`scripts/sync/enrich-sessions-ai.ts`) orquestrado diariamente por cron do GitHub Actions (`.github/workflows/enrich-ai.yml`) às 04:00 UTC, desacoplando totalmente a geração de resumos da navegação em tempo real do usuário.
-  - **Ingestão Multimodal e Agrupamento por Projeto:** O script efetua o download em memória do PDF oficial do inteiro teor direto da Câmara e envia em uma única requisição multimodal a lei e todas as suas sessões vinculadas para a família Gemini (`gemini-3.5-flash-lite`, `gemini-3.5-flash`), reduzindo até 80% do consumo de requisições (RPM).
+  - **Ingestão Multimodal e Agrupamento por Projeto:** O script efetua o download em memória do PDF oficial do inteiro teor direto da Câmara e envia em uma única requisição multimodal a lei e todas as suas sessões vinculadas para a família Gemini (`gemini-2.5-flash`, `gemini-1.5-flash`), reduzindo até 80% do consumo de requisições (RPM).
+  - **Diretrizes Estruturadas de Prompt Cívico:**
+    - `resumo_geral`: Limitado a **até 4 frases**, puramente descritivo e explicativo do impacto prático e alterações da lei, com exemplos concretos e sem viés de voto.
+    - `sessoes.resumo_simplificado`: Descreve o objeto exato da deliberação sem destacar placar ou antecipar resultado (ex: *"Sessão que trata da votação do texto-base geral..."*), incorporando o subsídio para opinião ("CONCORDO" / "DISCORDO").
+    - `sessoes.pergunta_cidadao`: Pergunta neutra e contextualizada para reflexão do cidadão.
   - **Seleção Incremental e Resiliência de Quota:** O banco de dados PostgreSQL persiste os resumos nas tabelas `propositions` (`resumo_geral`) e `vote_sessions` (`tipo_deliberacao`, `titulo_amigavel`, `resumo_simplificado`, `pergunta_cidadao`), sinalizando `ai_processed = TRUE`. O pipeline busca automaticamente apenas matérias pendentes, garantindo que novas sessões ou leis adicionadas sejam capturadas sem reprocessar o histórico existente.
 - **Justificativa de Negócio:**
   - Traduz o jargão legislativo hermético e ementas burocráticas para uma linguagem cidadã clara, acessível e rigorosamente neutra.
-  - Mantém o custo de inteligência artificial em **R$ 0,00**, aproveitando a cota gratuita diária do Google AI Studio (500 requisições/dia) alimentada progressivamente pela automação.
+  - Mantém o custo de inteligência artificial em **R$ 0,00**, aproveitando a cota gratuita diária do Google AI Studio alimentada progressivamente pela automação.
 
 ### 8. Canal de Auditoria Cívica Integrado ao GitHub (Transparência Pública Sem Custos de Servidor)
 - **Implementação Técnica:**
@@ -510,7 +514,7 @@ npm run build
 
 ## 🛠️ Tecnologias Utilizadas
 
-- **Frontend**: [Next.js 16.3 (Turbopack)](https://nextjs.org/) + [React 19](https://react.dev/)
+- **Frontend**: [Next.js 16.3.2 (Turbopack)](https://nextjs.org/) + [React 19](https://react.dev/)
 - **Estilização**: [TailwindCSS v4](https://tailwindcss.com/) com paleta HSL dinâmica e suporte a tema Claro/Escuro (`next-themes`)
 - **Testes Automatizados**: [Vitest](https://vitest.dev/) + [@testing-library/react](https://testing-library.com/) + [jsdom](https://github.com/jsdom/jsdom)
 - **Ícones**: [React Icons (FontAwesome)](https://react-icons.github.io/react-icons/)
@@ -518,7 +522,7 @@ npm run build
 - **Banco de Dados**: [PostgreSQL](https://www.postgresql.org/) hospedado no [Supabase](https://supabase.com/)
 - **Driver de Conexão**: [postgres.js](https://github.com/porsager/postgres) com pool de conexões otimizado (`prepare: false` para transaction pooler)
 - **Pipeline de Ingestão**: Scripts TypeScript com `tsx`, rate limiting nativo e paginação completa até 40 páginas
-- **SEO & Metadados**: OpenGraph dinâmico com `@vercel/og`, sitemap XML dinâmico e Web App Manifest (PWA)
+- **SEO & Metadados**: OpenGraph dinâmico com `@vercel/og` (com logotipo oficial e suporte a formato horizontal 1200x630 e quadrado 600x600 via `?format=square`), sitemap XML dinâmico e Web App Manifest (PWA)
 
 ---
 
@@ -575,7 +579,7 @@ npm run build
 │   ├── cache.ts             # Cache client-side (sessionStorage) com TTL de 3 minutos
 │   ├── db.ts                # Conexão singleton com PostgreSQL (postgres.js)
 │   ├── metadata.ts          # Configurações globais de SEO e Open Graph
-│   ├── server-cache.ts      # Cache server-side em memória com TTL de 15 minutos
+│   ├── server-cache.ts      # Cache server-side em memória com TTL dinâmico
 │   ├── storage.ts           # Gerenciamento Local-First de votos (localStorage com retrocompatibilidade)
 │   └── urls.ts              # Configuração centralizada de URLs e contatos
 ├── public/
@@ -682,6 +686,7 @@ npm run start
 | `/api/system-status` | `GET` | Indicador de prontidão do sistema para a interface |
 | `/api/metadata` | `GET` | Versão do dataset e metadados de atualização |
 | `/api/feedback` | `POST` | Dispara issues no GitHub com relatos de inconsistências em resumos de IA |
+| `/og-image` | `GET` | Gerador dinâmico de imagem Open Graph (`?format=square` para 600x600) |
 
 ---
 
