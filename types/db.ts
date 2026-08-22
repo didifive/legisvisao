@@ -155,6 +155,7 @@ export interface PropositionWithVoteSession extends Proposition {
   tipo_deliberacao?: string | null;
   titulo_amigavel?: string | null;
   resumo_simplificado?: string | null;
+  pergunta_cidadao?: string | null;
   total_sim?: number;
   total_nao?: number;
   total_outros?: number;

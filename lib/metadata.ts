@@ -63,6 +63,13 @@ export const defaultMetadata: Metadata = {
         alt: siteConfig.title,
         type: "image/png",
       },
+      {
+        url: "/og-image?format=square",
+        width: 600,
+        height: 600,
+        alt: siteConfig.title,
+        type: "image/png",
+      },
     ],
   },
   twitter: {

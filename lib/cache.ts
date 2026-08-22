@@ -5,8 +5,9 @@
 const CACHE_VERSION_KEY = "legisvisao_dataset_version";
 const CACHE_TIMESTAMP_KEY = "legisvisao_version_check_ts";
 
-// TTL do cache no frontend: 3 minutos (180.000 ms)
-export const CLIENT_CACHE_TTL_MS = 3 * 60 * 1000;
+const isDev = process.env.NODE_ENV === "development";
+// TTL do cache no frontend: 30s em dev ou 3 minutos em produção
+export const CLIENT_CACHE_TTL_MS = isDev ? 30 * 1000 : 3 * 60 * 1000;
 
 interface CachedSessionItem<T> {
   data: T;

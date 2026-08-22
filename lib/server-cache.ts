@@ -12,10 +12,12 @@ const memoryCache = new Map<string, ServerCacheEntry<unknown>>();
 let lastVersionCheck = 0;
 let cachedDatasetVersion: string | null = null;
 
-// Checa o banco a cada 15 minutos (900.000 ms)
-const VERSION_CHECK_INTERVAL_MS = 15 * 60 * 1000;
-// TTL máximo para expiração automática em memória (15 minutos)
-const CACHE_TTL_MS = 15 * 60 * 1000;
+const isDev = process.env.NODE_ENV === "development";
+
+// Checa o banco com intervalo ágil: 10s em dev ou 30s em produção (<1ms de query)
+const VERSION_CHECK_INTERVAL_MS = isDev ? 10 * 1000 : 30 * 1000;
+// TTL máximo para expiração em memória
+const CACHE_TTL_MS = isDev ? 60 * 1000 : 5 * 60 * 1000;
 
 /**
  * Obtém a versão ativa do dataset na tabela sync_control com intervalo de 15 minutos
