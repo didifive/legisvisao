@@ -1,7 +1,116 @@
 import { ImageResponse } from "next/og";
+import fs from "node:fs";
+import path from "node:path";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const isSquare =
+      searchParams.has("square") ||
+      searchParams.get("aspect") === "square" ||
+      searchParams.get("type") === "square";
+
+    let logoBase64: string | null = null;
+    try {
+      const logoPath = path.join(process.cwd(), "public", "logo.png");
+      if (fs.existsSync(logoPath)) {
+        const logoBuffer = fs.readFileSync(logoPath);
+        logoBase64 = `data:image/png;base64,${logoBuffer.toString("base64")}`;
+      }
+    } catch {
+      // Fallback gracioso caso o arquivo não possa ser lido
+    }
+
+    if (isSquare) {
+      return new ImageResponse(
+        (
+          <div
+            style={{
+              height: "100%",
+              width: "100%",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "#0d1f14",
+              backgroundImage:
+                "radial-gradient(circle at 50% 40%, rgba(34, 197, 94, 0.28) 0%, transparent 65%), radial-gradient(circle at 85% 85%, rgba(16, 185, 129, 0.20) 0%, transparent 50%)",
+              color: "#ffffff",
+              padding: "60px",
+              fontFamily: "sans-serif",
+              position: "relative",
+            }}
+          >
+            {/* Borda interna decorativa */}
+            <div
+              style={{
+                position: "absolute",
+                top: 28,
+                left: 28,
+                right: 28,
+                bottom: 28,
+                border: "1px solid rgba(52, 211, 153, 0.25)",
+                borderRadius: 36,
+                display: "flex",
+              }}
+            />
+
+            {/* Logo acima */}
+            {logoBase64 ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoBase64}
+                alt="LegisVisão Logo"
+                width={260}
+                height={260}
+                style={{
+                  borderRadius: 56,
+                  objectFit: "contain",
+                  marginBottom: 44,
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 260,
+                  height: 260,
+                  borderRadius: 56,
+                  background:
+                    "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 130,
+                  marginBottom: 44,
+                }}
+              >
+                🏛️
+              </div>
+            )}
+
+            {/* Nome abaixo */}
+            <div
+              style={{
+                fontSize: 94,
+                fontWeight: 900,
+                letterSpacing: "-0.03em",
+                background:
+                  "linear-gradient(90deg, #a7f3d0 0%, #34d399 100%)",
+                backgroundClip: "text",
+                color: "transparent",
+              }}
+            >
+              LegisVisão
+            </div>
+          </div>
+        ),
+        {
+          width: 1080,
+          height: 1080,
+        }
+      );
+    }
+
     return new ImageResponse(
       (
         <div
@@ -40,30 +149,46 @@ export async function GET() {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 16,
+              gap: 20,
               marginBottom: 16,
             }}
           >
-            <div
-              style={{
-                width: 60,
-                height: 60,
-                borderRadius: 16,
-                background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 32,
-              }}
-            >
-              ⚖️
-            </div>
+            {logoBase64 ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={logoBase64}
+                alt="LegisVisão Logo"
+                width={72}
+                height={72}
+                style={{
+                  borderRadius: 18,
+                  objectFit: "contain",
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: 18,
+                  background:
+                    "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 38,
+                }}
+              >
+                🏛️
+              </div>
+            )}
             <div
               style={{
                 fontSize: 68,
                 fontWeight: 900,
                 letterSpacing: "-0.03em",
-                background: "linear-gradient(90deg, #a7f3d0 0%, #34d399 100%)",
+                background:
+                  "linear-gradient(90deg, #a7f3d0 0%, #34d399 100%)",
                 backgroundClip: "text",
                 color: "transparent",
               }}
@@ -153,7 +278,9 @@ export async function GET() {
             }}
           >
             <div>Desenvolvido por Luis Zancanela • zancanela.dev.br</div>
-            <div style={{ color: "#34d399", fontWeight: 700 }}>legisvisao.com.br</div>
+            <div style={{ color: "#34d399", fontWeight: 700 }}>
+              legisvisao.com.br
+            </div>
           </div>
         </div>
       ),
