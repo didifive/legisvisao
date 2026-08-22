@@ -23,6 +23,7 @@ import {
   FaChevronDown,
   FaVoteYea,
   FaFlag,
+  FaQuestionCircle,
   FaExclamationTriangle,
   FaSyncAlt,
 } from "react-icons/fa";
@@ -609,14 +610,15 @@ export default function RevisaoPage() {
                       </div>
                     </div>
 
-                    {/* Resumo ou Ementa */}
-                    {proposition.resumo_geral ? (
+                    {/* 1. Quadro Unificado de Análise por Inteligência Artificial ou Ementa Oficial Direta */}
+                    {proposition.resumo_geral || (isMerit && proposition.resumo_simplificado) ? (
                       <>
-                        <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 space-y-2">
-                          <div className="flex items-center justify-between gap-2">
+                        <div className="p-4 sm:p-5 rounded-2xl bg-primary/5 border border-primary/20 space-y-3.5 shadow-soft">
+                          {/* Cabeçalho do Quadro de IA */}
+                          <div className="flex items-center justify-between gap-2 border-b border-primary/15 pb-2">
                             <span className="text-xs font-extrabold uppercase tracking-wider text-primary flex items-center gap-1.5">
                               <FaRobot className="w-3.5 h-3.5 shrink-0" />
-                              <span>Sobre o Projeto de Lei (Resumo Geral):</span>
+                              <span>Análise e Resumo Cidadão por IA</span>
                             </span>
                             <button
                               type="button"
@@ -628,72 +630,102 @@ export default function RevisaoPage() {
                               <span className="hidden sm:inline">Relatar problema</span>
                             </button>
                           </div>
-                          <p className="text-sm text-foreground leading-relaxed font-normal">
-                            {proposition.resumo_geral}
-                          </p>
+
+                          {/* Resumo Geral da Proposição de Lei (até 4 frases) */}
+                          {proposition.resumo_geral && (
+                            <div className="space-y-1">
+                              <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">
+                                Sobre o Projeto de Lei:
+                              </span>
+                              <p className="text-sm text-foreground leading-relaxed font-normal">
+                                {proposition.resumo_geral}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Deliberação Principal Integrada da Sessão de Votação */}
+                          {isMerit ? (
+                            (proposition.titulo_amigavel || proposition.resumo_simplificado || proposition.pergunta_cidadao) && (
+                              <div className="pt-3 border-t border-primary/15 space-y-2">
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                                  <FaVoteYea className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                  <span>
+                                    {proposition.titulo_amigavel || "Deliberação Principal Votada no Plenário"}
+                                  </span>
+                                </div>
+
+                                {proposition.resumo_simplificado && (
+                                  <p className="text-xs sm:text-sm text-foreground/90 leading-relaxed font-normal">
+                                    {proposition.resumo_simplificado}
+                                  </p>
+                                )}
+
+                                {/* Pergunta Direta para Reflexão do Cidadão */}
+                                {proposition.pergunta_cidadao && (
+                                  <div className="mt-2.5 p-3 rounded-xl bg-primary/10 border border-primary/20 text-xs sm:text-sm font-semibold text-primary flex items-start gap-2">
+                                    <FaQuestionCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                                    <span>{proposition.pergunta_cidadao}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          ) : (
+                            <div className="pt-3 border-t border-primary/15 space-y-1.5">
+                              <div className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-400">
+                                <FaInfoCircle className="w-3.5 h-3.5 shrink-0" />
+                                <span>Deliberação Simbólica (Desconsiderada no Cálculo de Afinidade)</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground leading-relaxed">
+                                O texto principal desta matéria foi aprovado ou rejeitado por <strong>votação simbólica</strong> em Plenário (sem registro nominal individual de votos no painel eletrônico). Esta proposição não possui votação de mérito e <strong>não pontua no cálculo de afinidade</strong>.
+                              </p>
+                            </div>
+                          )}
                         </div>
 
+                        {/* Expansor das Ementas e Textos Oficiais da Câmara */}
                         <details className="group pt-0.5">
                           <summary className="text-xs font-bold text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1.5 select-none list-none">
                             <FaInfoCircle className="w-3 h-3 text-primary" />
-                            <span>Ver ementa jurídica oficial da Câmara</span>
+                            <span>Ver ementa do projeto e descrição oficial da votação da Câmara</span>
                             <FaChevronDown className="w-2.5 h-2.5 group-open:rotate-180 transition-transform" />
                           </summary>
-                          <div className="mt-2 p-3.5 rounded-xl bg-muted/30 border border-border/60 text-xs text-muted-foreground leading-relaxed">
-                            {proposition.ementa_detalhada || proposition.ementa}
+                          <div className="mt-2 p-3.5 sm:p-4 rounded-xl bg-muted/30 border border-border/60 text-xs text-muted-foreground leading-relaxed space-y-2.5">
+                            <div>
+                              <strong className="text-foreground block mb-0.5">Ementa Oficial do Projeto:</strong>
+                              <p>{proposition.ementa_detalhada || proposition.ementa}</p>
+                            </div>
+                            {proposition.vote_session_description && (
+                              <div className="pt-2 border-t border-border/40">
+                                <strong className="text-foreground block mb-0.5">Descrição Oficial da Votação no Plenário:</strong>
+                                <p>{proposition.vote_session_description}</p>
+                              </div>
+                            )}
                           </div>
                         </details>
                       </>
                     ) : (
-                      <div className="p-4 rounded-xl bg-muted/30 border border-border/60 space-y-1.5">
-                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                          <FaInfoCircle className="w-3.5 h-3.5 text-primary shrink-0" />
-                          <span>Ementa Oficial:</span>
-                        </span>
-                        <p className="text-sm text-foreground leading-relaxed font-normal">
-                          {proposition.ementa_detalhada || proposition.ementa}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* 2. Deliberação de Mérito Votada no Plenário ou Aviso Simbólico */}
-                    {isMerit ? (
-                      proposition.resumo_simplificado && (
-                        <div className="p-4 rounded-xl bg-muted/40 border border-border/80 space-y-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
-                              <FaVoteYea className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                              <span>Deliberação de Mérito Votada no Plenário:</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setFeedbackTarget(proposition)}
-                              title="Relatar inconsistência ou viés no resumo desta deliberação"
-                              className="text-[11px] text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-smooth flex items-center gap-1 cursor-pointer font-medium"
-                            >
-                              <FaFlag className="w-2.5 h-2.5" />
-                              <span className="hidden sm:inline">Relatar problema</span>
-                            </button>
-                          </div>
-                          {proposition.titulo_amigavel && (
-                            <p className="text-xs font-semibold text-primary">
-                              {proposition.titulo_amigavel}
-                            </p>
-                          )}
-                          <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                            {proposition.resumo_simplificado}
+                      /* Exibição direta das Ementas Oficiais caso não haja IA processada */
+                      <div className="p-4 rounded-xl bg-muted/30 border border-border/60 space-y-2">
+                        <div>
+                          <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                            <FaInfoCircle className="w-3.5 h-3.5 text-primary shrink-0" />
+                            <span>Ementa Oficial do Projeto:</span>
+                          </span>
+                          <p className="text-sm text-foreground leading-relaxed font-normal mt-1">
+                            {proposition.ementa_detalhada || proposition.ementa}
                           </p>
                         </div>
-                      )
-                    ) : (
-                      <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1.5">
-                        <div className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-400">
-                          <FaInfoCircle className="w-3.5 h-3.5 shrink-0" />
-                          <span>Deliberação Simbólica (Desconsiderada no Cálculo de Afinidade)</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground leading-relaxed">
-                          O texto principal desta matéria foi aprovado ou rejeitado por <strong>votação simbólica</strong> em Plenário (sem registro nominal individual de votos no painel eletrônico). Esta proposição não possui votação de mérito e <strong>não pontua no cálculo de afinidade</strong>.
-                        </p>
+                        {proposition.vote_session_description && (
+                          <div className="pt-2 border-t border-border/40">
+                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                              <FaVoteYea className="w-3.5 h-3.5 text-primary shrink-0" />
+                              <span>Descrição da Votação no Plenário:</span>
+                            </span>
+                            <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed mt-1">
+                              {proposition.vote_session_description}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
 

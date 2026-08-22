@@ -22,6 +22,7 @@ import {
   FaRobot,
   FaChevronDown,
   FaFlag,
+  FaQuestionCircle,
   FaExclamationTriangle,
   FaSyncAlt,
 } from "react-icons/fa";
@@ -235,7 +236,8 @@ export default function VoteForm() {
   }
 
   const opinionsCount = Object.keys(answers).length;
-  const activeFiltersCount = selectedStatus.length + selectedYears.length + (includeNonMerit ? 1 : 0);
+  const hasActiveFilters = Boolean(search.trim() || selectedStatus.length > 0 || selectedYears.length > 0 || includeNonMerit);
+  const activeFiltersCount = selectedStatus.length + selectedYears.length + (includeNonMerit ? 1 : 0) + (search.trim() ? 1 : 0);
 
   if (loading) {
     return (
@@ -509,19 +511,24 @@ export default function VoteForm() {
             <FaCheckCircle className="w-6 h-6" />
           </div>
           <h3 className="text-lg font-bold text-foreground">
-            {search.trim() || activeFiltersCount > 0
+            {hasActiveFilters
               ? "Nenhuma proposta encontrada para os filtros selecionados."
               : "Você já expressou sua opinião sobre todas as propostas listadas!"}
           </h3>
           <p className="text-sm text-muted-foreground max-w-md mx-auto">
-            {activeFiltersCount > 0
-              ? "Experimente selecionar outros anos, situações ou limpar os filtros de busca."
+            {hasActiveFilters
+              ? "Experimente selecionar outros anos, situações ou limpar os filtros de busca para visualizar mais matérias."
               : "Você pode revisar suas opiniões registradas ou conferir o ranking de afinidade com os deputados e partidos."}
           </p>
-          <div className="flex justify-center gap-3 pt-2">
-            {activeFiltersCount > 0 && (
-              <Button variant="outline" onClick={resetAllFilters}>
-                Limpar Todos os Filtros
+          <div className="flex flex-wrap justify-center items-center gap-3 pt-2">
+            {hasActiveFilters && (
+              <Button variant="outline" onClick={resetAllFilters} className="font-bold">
+                Limpar Filtros
+              </Button>
+            )}
+            {opinionsCount > 0 && (
+              <Button variant="outline" href="/opiniao/revisao" className="font-semibold">
+                Revisar Opiniões ({opinionsCount})
               </Button>
             )}
             <Button variant="hero" href="/afinidade">
@@ -613,14 +620,15 @@ export default function VoteForm() {
                   </div>
                 </div>
 
-                {/* 1. Resumo Geral do Projeto de Lei (Linguagem Cidadã por IA) ou Ementa Oficial Direta */}
-                {p.resumo_geral ? (
+                {/* 1. Quadro Unificado de Análise por Inteligência Artificial ou Ementa Oficial Direta */}
+                {p.resumo_geral || p.resumo_simplificado ? (
                   <>
-                    <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 space-y-2">
-                      <div className="flex items-center justify-between gap-2">
+                    <div className="p-4 sm:p-5 rounded-2xl bg-primary/5 border border-primary/20 space-y-3.5 shadow-soft">
+                      {/* Cabeçalho do Quadro de IA */}
+                      <div className="flex items-center justify-between gap-2 border-b border-primary/15 pb-2">
                         <span className="text-xs font-extrabold uppercase tracking-wider text-primary flex items-center gap-1.5">
                           <FaRobot className="w-3.5 h-3.5 shrink-0" />
-                          <span>Sobre o Projeto de Lei (Resumo Geral):</span>
+                          <span>Análise e Resumo Cidadão por IA</span>
                         </span>
                         <button
                           type="button"
@@ -632,62 +640,90 @@ export default function VoteForm() {
                           <span className="hidden sm:inline">Relatar problema</span>
                         </button>
                       </div>
-                      <p className="text-sm text-foreground leading-relaxed font-normal">
-                        {p.resumo_geral}
-                      </p>
+
+                      {/* Resumo Geral da Proposição de Lei (até 4 frases) */}
+                      {p.resumo_geral && (
+                        <div className="space-y-1">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">
+                            Sobre o Projeto de Lei:
+                          </span>
+                          <p className="text-sm text-foreground leading-relaxed font-normal">
+                            {p.resumo_geral}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Deliberação Principal Integrada da Sessão de Votação */}
+                      {(p.titulo_amigavel || p.resumo_simplificado || p.pergunta_cidadao) && (
+                        <div className="pt-3 border-t border-primary/15 space-y-2">
+                          <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                            <FaVoteYea className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                            <span>
+                              {p.titulo_amigavel || "Deliberação Principal Votada no Plenário"}
+                            </span>
+                          </div>
+
+                          {p.resumo_simplificado && (
+                            <p className="text-xs sm:text-sm text-foreground/90 leading-relaxed font-normal">
+                              {p.resumo_simplificado}
+                            </p>
+                          )}
+
+                          {/* Pergunta Direta para Reflexão e Voto do Cidadão */}
+                          {p.pergunta_cidadao && (
+                            <div className="mt-2.5 p-3 rounded-xl bg-primary/10 border border-primary/20 text-xs sm:text-sm font-semibold text-primary flex items-start gap-2">
+                              <FaQuestionCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                              <span>{p.pergunta_cidadao}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
-                    {/* Expansor da Ementa Jurídica Oficial */}
+                    {/* Expansor das Ementas e Textos Oficiais da Câmara */}
                     <details className="group pt-0.5">
                       <summary className="text-xs font-bold text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1.5 select-none list-none">
                         <FaInfoCircle className="w-3 h-3 text-primary" />
-                        <span>Ver ementa jurídica oficial da Câmara</span>
+                        <span>Ver ementa do projeto e descrição oficial da votação da Câmara</span>
                         <FaChevronDown className="w-2.5 h-2.5 group-open:rotate-180 transition-transform" />
                       </summary>
-                      <div className="mt-2 p-3.5 rounded-xl bg-muted/30 border border-border/60 text-xs text-muted-foreground leading-relaxed">
-                        {p.ementa_detalhada || p.ementa}
+                      <div className="mt-2 p-3.5 sm:p-4 rounded-xl bg-muted/30 border border-border/60 text-xs text-muted-foreground leading-relaxed space-y-2.5">
+                        <div>
+                          <strong className="text-foreground block mb-0.5">Ementa Oficial do Projeto:</strong>
+                          <p>{p.ementa_detalhada || p.ementa}</p>
+                        </div>
+                        {p.vote_session_description && (
+                          <div className="pt-2 border-t border-border/40">
+                            <strong className="text-foreground block mb-0.5">Descrição Oficial da Votação no Plenário:</strong>
+                            <p>{p.vote_session_description}</p>
+                          </div>
+                        )}
                       </div>
                     </details>
                   </>
                 ) : (
-                  /* Exibição direta da Ementa Oficial */
-                  <div className="p-4 rounded-xl bg-muted/30 border border-border/60 space-y-1.5">
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                      <FaInfoCircle className="w-3.5 h-3.5 text-primary shrink-0" />
-                      <span>Ementa Oficial:</span>
-                    </span>
-                    <p className="text-sm text-foreground leading-relaxed font-normal">
-                      {p.ementa_detalhada || p.ementa}
-                    </p>
-                  </div>
-                )}
-
-                {/* 2. Deliberação de Mérito Votada no Plenário */}
-                {p.resumo_simplificado && (
-                  <div className="p-4 rounded-xl bg-muted/40 border border-border/80 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
-                        <FaVoteYea className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                        <span>Deliberação de Mérito Votada no Plenário:</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setFeedbackTarget(p)}
-                        title="Relatar inconsistência ou viés no resumo desta deliberação"
-                        className="text-[11px] text-muted-foreground hover:text-amber-600 dark:hover:text-amber-400 transition-smooth flex items-center gap-1 cursor-pointer font-medium"
-                      >
-                        <FaFlag className="w-2.5 h-2.5" />
-                        <span className="hidden sm:inline">Relatar problema</span>
-                      </button>
-                    </div>
-                    {p.titulo_amigavel && (
-                      <p className="text-xs font-semibold text-primary">
-                        {p.titulo_amigavel}
+                  /* Exibição direta das Ementas Oficiais caso não haja IA processada */
+                  <div className="p-4 rounded-xl bg-muted/30 border border-border/60 space-y-2">
+                    <div>
+                      <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                        <FaInfoCircle className="w-3.5 h-3.5 text-primary shrink-0" />
+                        <span>Ementa Oficial do Projeto:</span>
+                      </span>
+                      <p className="text-sm text-foreground leading-relaxed font-normal mt-1">
+                        {p.ementa_detalhada || p.ementa}
                       </p>
+                    </div>
+                    {p.vote_session_description && (
+                      <div className="pt-2 border-t border-border/40">
+                        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                          <FaVoteYea className="w-3.5 h-3.5 text-primary shrink-0" />
+                          <span>Descrição da Votação no Plenário:</span>
+                        </span>
+                        <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed mt-1">
+                          {p.vote_session_description}
+                        </p>
+                      </div>
                     )}
-                    <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                      {p.resumo_simplificado}
-                    </p>
                   </div>
                 )}
 

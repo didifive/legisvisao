@@ -346,14 +346,15 @@ export default function ProjectDetailsClient({
             </div>
           </div>
 
-          {/* 1. Resumo Geral do Projeto de Lei (Linguagem Cidadã por IA) ou Ementa Oficial Direta */}
-          {proposition.resumo_geral ? (
+          {/* 1. Quadro Unificado de Análise por Inteligência Artificial ou Ementa Oficial Direta */}
+          {proposition.resumo_geral || (primarySession && (primarySession.resumo_simplificado || primarySession.titulo_amigavel)) ? (
             <>
-              <div className="p-4 sm:p-5 rounded-2xl bg-primary/5 border border-primary/20 space-y-2.5">
-                <div className="flex items-center justify-between gap-2">
+              <div className="p-4 sm:p-5 rounded-2xl bg-primary/5 border border-primary/20 space-y-3.5 shadow-soft">
+                {/* Cabeçalho do Quadro de IA */}
+                <div className="flex items-center justify-between gap-2 border-b border-primary/15 pb-2">
                   <span className="text-xs font-extrabold uppercase tracking-wider text-primary flex items-center gap-1.5">
-                    <FaRobot className="w-3.5 h-3.5" />
-                    <span>Sobre o Projeto de Lei (Resumo Geral):</span>
+                    <FaRobot className="w-3.5 h-3.5 shrink-0" />
+                    <span>Análise e Resumo Cidadão por IA</span>
                   </span>
                   <button
                     type="button"
@@ -368,68 +369,103 @@ export default function ProjectDetailsClient({
                     <span className="hidden sm:inline">Relatar problema</span>
                   </button>
                 </div>
-                <p className="text-sm sm:text-base text-foreground leading-relaxed font-normal">
-                  {proposition.resumo_geral}
-                </p>
+
+                {/* Resumo Geral da Proposição de Lei (até 4 frases) */}
+                {proposition.resumo_geral && (
+                  <div className="space-y-1">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground block">
+                      Sobre o Projeto de Lei:
+                    </span>
+                    <p className="text-sm sm:text-base text-foreground leading-relaxed font-normal">
+                      {proposition.resumo_geral}
+                    </p>
+                  </div>
+                )}
+
+                {/* Deliberação Principal Integrada da Sessão de Votação */}
+                {primarySession && primarySession.classification.type === "MERITO" && (primarySession.votesCount ?? 0) > 0 ? (
+                  <div className="pt-3 border-t border-primary/15 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
+                        <FaBolt className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                        <span>
+                          {primarySession.titulo_amigavel || "Deliberação de Mérito Principal"}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
+                        Sessão Oficial: {primarySession.id}
+                      </span>
+                    </div>
+
+                    <p className="text-xs sm:text-sm text-foreground/90 leading-relaxed font-normal">
+                      {primarySession.resumo_simplificado || primarySession.descricao || "Votação do texto-base/mérito principal da proposição."}
+                    </p>
+
+                    {/* Pergunta Direta para Reflexão do Cidadão */}
+                    {primarySession.pergunta_cidadao && (
+                      <div className="mt-2.5 p-3 rounded-xl bg-primary/10 border border-primary/20 text-xs sm:text-sm font-semibold text-primary flex items-start gap-2">
+                        <FaQuestionCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <span>{primarySession.pergunta_cidadao}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : !primarySession || (primarySession.votesCount ?? 0) === 0 ? (
+                  <div className="pt-3 border-t border-primary/15 space-y-1.5">
+                    <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-bold text-xs">
+                      <FaInfoCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>Texto-Base Deliberado por Votação Simbólica</span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                      O texto principal desta matéria foi aprovado ou rejeitado por <strong>votação simbólica</strong> em Plenário (sem registro nominal individual de votos no painel eletrônico).
+                    </p>
+                  </div>
+                ) : null}
               </div>
 
-              {/* Expansão da Ementa Jurídica Original */}
-              <details className="group pt-1">
+              {/* Expansor das Ementas e Textos Oficiais da Câmara */}
+              <details className="group pt-0.5">
                 <summary className="text-xs font-bold text-muted-foreground hover:text-foreground cursor-pointer flex items-center gap-1.5 select-none list-none">
                   <FaInfoCircle className="w-3.5 h-3.5 text-primary" />
-                  <span>Ver ementa jurídica oficial da proposta na Câmara</span>
+                  <span>Ver ementa do projeto e descrição oficial da votação da Câmara</span>
                   <FaChevronDown className="w-2.5 h-2.5 group-open:rotate-180 transition-transform" />
                 </summary>
-                <div className="mt-2.5 p-4 rounded-xl bg-muted/40 border border-border/80 text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                  {proposition.ementa_detalhada || proposition.ementa}
+                <div className="mt-2 p-3.5 sm:p-4 rounded-xl bg-muted/40 border border-border/80 text-xs sm:text-sm text-muted-foreground leading-relaxed space-y-2.5">
+                  <div>
+                    <strong className="text-foreground block mb-0.5">Ementa Oficial da Proposição na Câmara:</strong>
+                    <p>{proposition.ementa_detalhada || proposition.ementa}</p>
+                  </div>
+                  {primarySession?.descricao && (
+                    <div className="pt-2 border-t border-border/40">
+                      <strong className="text-foreground block mb-0.5">Descrição Oficial da Deliberação Principal:</strong>
+                      <p>{primarySession.descricao}</p>
+                    </div>
+                  )}
                 </div>
               </details>
             </>
           ) : (
-            /* Exibição direta da Ementa Oficial */
+            /* Exibição direta das Ementas Oficiais */
             <div className="p-4 sm:p-5 rounded-2xl bg-muted/30 border border-border/60 space-y-2">
-              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-                <FaInfoCircle className="w-3.5 h-3.5 text-primary shrink-0" />
-                <span>Ementa Oficial:</span>
-              </span>
-              <p className="text-sm sm:text-base text-foreground leading-relaxed font-normal">
-                {proposition.ementa_detalhada || proposition.ementa}
-              </p>
-            </div>
-          )}
-
-          {/* 2. Deliberação de Mérito Votada no Plenário ou Aviso de Votação Simbólica */}
-          {primarySession && primarySession.classification.type === "MERITO" && (primarySession.votesCount ?? 0) > 0 ? (
-            <div className="p-4 sm:p-5 rounded-2xl bg-muted/40 border border-border/80 space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-black uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                  <FaBolt className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span>Deliberação de Mérito Principal (Utilizada no Cálculo de Afinidade):</span>
+              <div>
+                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <FaInfoCircle className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <span>Ementa Oficial do Projeto:</span>
                 </span>
-                <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
-                  Sessão Oficial: {primarySession.id}
-                </span>
-              </div>
-
-              {primarySession.titulo_amigavel && (
-                <p className="text-xs sm:text-sm font-semibold text-primary">
-                  {primarySession.titulo_amigavel}
+                <p className="text-sm sm:text-base text-foreground leading-relaxed font-normal mt-1">
+                  {proposition.ementa_detalhada || proposition.ementa}
                 </p>
-              )}
-
-              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                {primarySession.resumo_simplificado || primarySession.descricao || "Votação do texto-base/mérito principal da proposição."}
-              </p>
-            </div>
-          ) : (
-            <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2">
-              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400 font-bold text-xs sm:text-sm">
-                <FaInfoCircle className="w-4 h-4 shrink-0" />
-                <span>Texto-Base Deliberado por Votação Simbólica</span>
               </div>
-              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                O texto principal desta proposição foi aprovado/rejeitado por <strong>votação simbólica</strong> em Plenário (sem registro nominal individual de votos no painel eletrônico). As votações registradas abaixo referem-se a emendas, destaques ou requerimentos pontuais.
-              </p>
+              {primarySession?.descricao && (
+                <div className="pt-2 border-t border-border/40">
+                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <FaVoteYea className="w-3.5 h-3.5 text-primary shrink-0" />
+                    <span>Descrição da Votação no Plenário:</span>
+                  </span>
+                  <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed mt-1">
+                    {primarySession.descricao}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -678,9 +714,18 @@ export default function ProjectDetailsClient({
                       <h4 className="text-base sm:text-lg font-extrabold text-foreground">
                         {activeSession.titulo_amigavel || activeSession.descricao}
                       </h4>
-                      <p className="text-xs sm:text-sm text-foreground/90 leading-relaxed font-normal">
-                        {activeSession.resumo_simplificado}
-                      </p>
+                      {activeSession.resumo_simplificado && (
+                        <p className="text-xs sm:text-sm text-foreground/90 leading-relaxed font-normal">
+                          {activeSession.resumo_simplificado}
+                        </p>
+                      )}
+
+                      {activeSession.pergunta_cidadao && (
+                        <div className="mt-2 p-2.5 rounded-xl bg-primary/10 border border-primary/20 text-xs sm:text-sm font-semibold text-primary flex items-start gap-2">
+                          <FaQuestionCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                          <span>{activeSession.pergunta_cidadao}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground pt-1">

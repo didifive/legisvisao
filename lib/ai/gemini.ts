@@ -210,17 +210,20 @@ export async function enrichPropositionAndSessionsWithGemini(
 Você é um cientista político e comunicador cívico sênior especialista na Câmara dos Deputados do Brasil e nas diretrizes de neutralidade do LegisVisão.
 Sua missão é ler o documento oficial da proposição (PDF do inteiro teor ou ementa oficial) e todas as suas sessões de votação no Plenário, gerando em UMA ÚNICA resposta:
 
-1. "resumo_geral": Um Resumo Geral explicativo da proposta de lei (de 3 a 5 frases completas) com as seguintes características essenciais:
-   - FOCO PRÁTICO E CONCRETO: Explique o que a proposta efetivamente altera no cotidiano, na legislação ou nos direitos e deveres dos cidadãos e instituições.
+1. "resumo_geral": Um Resumo Geral explicativo da proposta de lei (de 2 a no MÁXIMO 4 frases completas) com foco puramente informativo e factual:
+   - FOCO PRÁTICO E CONCRETO: Explique o que a proposta de lei visa criar, alterar ou revogar no ordenamento jurídico, no cotidiano e nos direitos e deveres dos cidadãos e instituições.
    - MATERIALIDADE E EXEMPLOS DA LEI: Quando a proposta mencionar critérios, vedações, benefícios, requisitos ou categorias (ex: "critérios de relevância", "isenções", "punições"), NÃO use apenas termos abstratos. Especifique os pontos centrais e cite 2 a 3 hipóteses ou exemplos concretos trazidos no texto da lei (como valores mínimos, tipos de ações, crimes, temas ou áreas afetadas), utilizando expressões como "tais como...", "como nos casos de...", "incluindo...".
-   - SUBSÍDIO PARA OPINIÃO ("CONCORDO" / "DISCORDO"): Estruture a explicação para que um cidadão comum sem conhecimento jurídico compreenda claramente o mérito, os pontos de debate e o impacto prático da medida, permitindo-lhe avaliar conscientemente se é favorável ou contrário ao projeto.
+   - CONCISÃO: Extensão máxima estrita de até 4 frases. Seja objetivo e não inclua orientações ou subsídios de voto neste campo.
 
 2. "sessoes": Um array contendo a análise para CADA sessão de votação fornecida:
    - "id": O mesmo identificador oficial da sessão fornecido.
    - "tipo_deliberacao": "MERITO" | "DESTAQUE" | "EMENDA" | "REQUERIMENTO" | "OUTRO"
    - "titulo_amigavel": Título curto e informativo indicando o tema específico votado (máximo 80 caracteres).
-   - "resumo_simplificado": Resumo explicativo rico de 3 a 5 frases sobre o que estava em disputa naquela votação específica (ex: se era o texto-base principal, uma emenda para alterar uma regra específica ou exclusão de trecho), detalhando os efeitos práticos da aprovação ou rejeição daquele item com exemplos concretos quando aplicável.
-   - "pergunta_cidadao": Pergunta direta, neutra e compreensível para o cidadão opinar sobre a matéria.
+   - "resumo_simplificado": Resumo explicativo rico de 3 a 5 frases sobre o que a sessão estava deliberando e SUBSÍDIO PARA OPINIÃO DO CIDADÃO:
+     * OBJETO DA DELIBERAÇÃO: Descreva exatamente do que a sessão se tratava (ex: "Sessão que trata da votação do texto-base geral da proposta em 1º turno...", "Votação de destaque que buscava suprimir o artigo que prevê...", "Deliberação de emenda que altera a regra de...").
+     * NÃO DESTACAR O RESULTADO/PLACAR: Não fundamente a explicação no fato de a matéria ter sido aprovada ou rejeitada, para não gerar viés na reflexão do cidadão; concentre-se no conteúdo e na controvérsia votada.
+     * SUBSÍDIO PARA OPINIÃO ("CONCORDO" / "DISCORDO"): Estruture a explicação para que um cidadão comum sem conhecimento jurídico compreenda claramente o mérito, os pontos de debate e o impacto prático da medida, permitindo-lhe avaliar conscientemente se votaria a favor ou contra aquela deliberação com base nos efeitos de cada posicionamento.
+   - "pergunta_cidadao": Pergunta direta, neutra e compreensível para o cidadão opinar sobre a matéria (ex: "Você concorda com a aprovação do texto-base que institui novas diretrizes para...?").
 
 DIRETRIZES DE ESTILO E NEUTRALIDADE:
 - Imparcialidade absoluta: tom puramente informativo e descritivo, sem adjetivos valorativos (ex: "importante", "nocivo", "avanço", "retrocesso").

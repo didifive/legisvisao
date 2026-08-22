@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
           vs.tipo_deliberacao,
           vs.titulo_amigavel,
           vs.resumo_simplificado,
+          vs.pergunta_cidadao,
           COALESCE(vs.is_merit, false) as is_merit,
           COALESCE(vs.total_sim, 0) as total_sim,
           COALESCE(vs.total_nao, 0) as total_nao,
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest) {
             v.tipo_deliberacao,
             v.titulo_amigavel,
             v.resumo_simplificado,
+            v.pergunta_cidadao,
             (CASE 
               WHEN v.tipo_deliberacao = 'MERITO' THEN 1
               WHEN v.tipo_deliberacao = 'EMENDA' THEN 2
@@ -76,7 +78,7 @@ export async function GET(request: NextRequest) {
             COUNT(CASE WHEN dv.voto_original NOT ILIKE 'Sim%' AND dv.voto_original NOT ILIKE 'N%' THEN 1 END)::int as total_outros
           FROM vote_sessions v
           JOIN deputy_votes dv ON dv.votacao_id = v.id
-          GROUP BY v.id, v.proposicao_id, v.data_hora, v.descricao, v.resultado, v.tipo_deliberacao, v.titulo_amigavel, v.resumo_simplificado
+          GROUP BY v.id, v.proposicao_id, v.data_hora, v.descricao, v.resultado, v.tipo_deliberacao, v.titulo_amigavel, v.resumo_simplificado, v.pergunta_cidadao
           HAVING COUNT(CASE WHEN dv.voto_original ILIKE 'Sim%' OR dv.voto_original ILIKE 'N%' OR dv.voto_original ILIKE 'Não%' THEN 1 END) > 0
           ORDER BY 
             v.proposicao_id,
