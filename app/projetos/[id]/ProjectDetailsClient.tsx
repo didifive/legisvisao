@@ -305,9 +305,18 @@ export default function ProjectDetailsClient({
             </span>
 
             {proposition.tema && (
-              <span className="px-3 py-1 rounded-full bg-secondary/10 text-secondary border border-secondary/20 text-xs font-bold">
-                {proposition.tema}
-              </span>
+              proposition.tema
+                .split(/[•,]/)
+                .map((t) => t.trim())
+                .filter(Boolean)
+                .map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-3 py-1 rounded-full bg-secondary/10 text-secondary border border-secondary/20 text-xs font-bold"
+                  >
+                    {tag}
+                  </span>
+                ))
             )}
 
             <span

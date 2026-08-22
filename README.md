@@ -294,7 +294,7 @@ erDiagram
         varchar titulo "Identificação (ex: PL 2630/2020)"
         text ementa "Ementa resumida"
         text ementa_detalhada "Texto explicativo"
-        varchar tema "Classificação temática"
+        text tema "Classificação temática oficial da Câmara (tags)"
         text url_inteiro_teor "Link para PDF oficial"
         text url_camara "Página da proposição na Câmara"
         date data_apresentacao "Data de apresentação"
@@ -352,7 +352,7 @@ erDiagram
 |---|---|---|---|
 | **Partidos Políticos** | Câmara dos Deputados | `/partidos` | Identificação das legendas e agregação da média partidária |
 | **Deputados Federais** | Câmara dos Deputados | `/deputados` | 513 parlamentares da 57ª Legislatura, fotos oficiais e e-mails |
-| **Proposições Legislativas** | Câmara dos Deputados | `/proposicoes` e `/proposicoes/{id}` | Projetos com deliberação no Plenário, ementas e íntegras |
+| **Proposições Legislativas** | Câmara dos Deputados | `/proposicoes`, `/proposicoes/{id}` e `/proposicoes/{id}/temas` | Projetos com deliberação no Plenário, ementas, tags temáticas oficiais e íntegras |
 | **Sessões de Votação** | Câmara dos Deputados | `/votacoes` e `/votacoes/{id}` | Data, hora, resultado e descrição oficial do objeto deliberado |
 | **Votos Nominais** | Câmara dos Deputados | `/votacoes/{id}/votos` | Registros auditáveis de cada deputado (Sim, Não, Abstenção) |
 
@@ -365,7 +365,7 @@ erDiagram
 ### 1. Cálculo Aritmético de Afinidade
 O motor de cálculo (`lib/match/`) cruza determinística e pontualmente cada resposta do usuário com os votos nominais dos deputados:
 
-$$\text{Índice de Afinidade}\;(\%) = \left( \frac{\text{Concordâncias}}{\text{Votações Comparáveis}} \right) \times 100$$
+$$\text{Índice de Afinidade (\%)} = \left( \frac{\text{Concordâncias}}{\text{Votações Comparáveis}} \right) \times 100$$
 
 - **Concordância**: Usuário **CONCORDO** $\leftrightarrow$ Deputado **SIM** / Usuário **DISCORDO** $\leftrightarrow$ Deputado **NÃO**.
 - **Divergência**: Usuário **CONCORDO** $\leftrightarrow$ Deputado **NÃO** / Usuário **DISCORDO** $\leftrightarrow$ Deputado **SIM**.

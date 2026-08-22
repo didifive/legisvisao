@@ -150,6 +150,7 @@ export async function syncPropositions(): Promise<{
     titulo: string;
     ementa: string;
     ementa_detalhada: string;
+    tema: string | null;
     url_inteiro_teor: string | null;
     url_camara: string;
     data_apresentacao: string | null;
@@ -167,7 +168,11 @@ export async function syncPropositions(): Promise<{
 
     await mapConcurrent(propIdsToEnrich, 25, async (propId) => {
       try {
-        const propRes = await fetchWithRetry(`${CAMARA_API_BASE}/proposicoes/${propId}`, 2, 200);
+        const [propRes, temasRes] = await Promise.all([
+          fetchWithRetry(`${CAMARA_API_BASE}/proposicoes/${propId}`, 2, 200),
+          fetchWithRetry(`${CAMARA_API_BASE}/proposicoes/${propId}/temas`, 2, 200).catch(() => null),
+        ]);
+
         if (propRes.ok) {
           const pJson = await propRes.json();
           const pd: CamaraPropositionSummary | undefined = pJson.dados;
@@ -183,6 +188,15 @@ export async function syncPropositions(): Promise<{
             const dataApresentacao = pd.dataApresentacao ? pd.dataApresentacao.substring(0, 10) : null;
             const ultimoStatus = pd.statusProposicao?.descricaoSituacao || pd.statusProposicao?.descricaoTramitacao || null;
 
+            let tema: string | null = null;
+            if (temasRes && temasRes.ok) {
+              const tJson = await temasRes.json();
+              const tList: Array<{ tema: string }> = tJson.dados || [];
+              if (tList.length > 0) {
+                tema = Array.from(new Set(tList.map((t) => t.tema.trim()))).join(", ");
+              }
+            }
+
             propsMapToInsert.set(propId, {
               id: propId,
               sigla_tipo: siglaTipo,
@@ -191,6 +205,7 @@ export async function syncPropositions(): Promise<{
               titulo,
               ementa,
               ementa_detalhada: ementa,
+              tema,
               url_inteiro_teor: urlInteiroTeor,
               url_camara: urlCamara,
               data_apresentacao: dataApresentacao,
@@ -230,6 +245,7 @@ export async function syncPropositions(): Promise<{
         "titulo",
         "ementa",
         "ementa_detalhada",
+        "tema",
         "url_inteiro_teor",
         "url_camara",
         "data_apresentacao",
@@ -241,6 +257,7 @@ export async function syncPropositions(): Promise<{
         ano = EXCLUDED.ano,
         titulo = EXCLUDED.titulo,
         ementa = EXCLUDED.ementa,
+        tema = COALESCE(EXCLUDED.tema, propositions.tema),
         url_inteiro_teor = COALESCE(EXCLUDED.url_inteiro_teor, propositions.url_inteiro_teor),
         url_camara = EXCLUDED.url_camara,
         data_apresentacao = COALESCE(EXCLUDED.data_apresentacao, propositions.data_apresentacao),

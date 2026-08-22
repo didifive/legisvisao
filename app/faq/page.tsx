@@ -159,15 +159,14 @@ export default function FAQPage() {
                         {src.source}
                       </span>
                       <span
-                        className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full ${
-                          isSuccess
+                        className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full ${isSuccess
                             ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
                             : isRunning
-                            ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 animate-pulse"
-                            : isPending
-                            ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                            : "bg-rose-500/10 text-rose-600 border border-rose-500/20"
-                        }`}
+                              ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 animate-pulse"
+                              : isPending
+                                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                                : "bg-rose-500/10 text-rose-600 border border-rose-500/20"
+                          }`}
                       >
                         {isSuccess && (
                           <>
@@ -547,7 +546,7 @@ export default function FAQPage() {
                 1. Papel Estrito de Tradução Cívica
               </span>
               <p className="text-muted-foreground leading-relaxed text-xs">
-                A Inteligência Artificial (Google AI Studio) atua exclusivamente como uma ferramenta de simplificação de linguagem. A partir do texto integral em PDF ou da ementa detalhada da Câmara, a IA gera um <strong>Resumo Geral do Projeto</strong> (de até 5 frases) e a contextualização de cada votação nominal em linguagem simples e direta.
+                A Inteligência Artificial (Google AI Studio) atua exclusivamente como uma ferramenta de simplificação de linguagem. A partir do texto integral em PDF ou da ementa detalhada da Câmara, a IA gera um <strong>Resumo Geral do Projeto</strong> (de até 4 frases) e a contextualização de cada votação nominal em linguagem simples e direta.
               </p>
             </div>
 
@@ -561,13 +560,15 @@ export default function FAQPage() {
             </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 text-xs space-y-2 text-foreground">
-            <span className="font-bold text-primary block">
-              🔍 Transparência Total e Acesso à Fonte Original
-            </span>
-            <p className="text-muted-foreground leading-relaxed text-xs">
-              A IA nunca substitui a fonte primária. Em todos os cartões de votação e páginas de projetos, o cidadão pode expandir e conferir a <strong>ementa jurídica oficial</strong> e acessar o link direto para o <strong>inteiro teor do documento no portal da Câmara dos Deputados</strong>.
-            </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 text-xs space-y-2 text-foreground">
+              <span className="font-bold text-primary block">
+                🔍 Transparência Total e Acesso à Fonte Original
+              </span>
+              <p className="text-muted-foreground leading-relaxed text-xs">
+                A IA nunca substitui a fonte primária. Em todos os cartões de votação e páginas de projetos, o cidadão pode conferir a <strong>ementa jurídica oficial</strong> e acessar o link direto para o <strong>inteiro teor do documento no portal oficial da Câmara dos Deputados</strong>.
+              </p>
+            </div>
           </div>
         </div>
       </section>
@@ -580,10 +581,10 @@ export default function FAQPage() {
           </div>
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-foreground">
-              Aviso de Neutralidade Cívica
+              Aviso de Neutralidade Cívica & Transparência
             </h2>
             <span className="text-xs text-muted-foreground">
-              Compromisso cívico e de transparência
+              Compromisso cívico, apartidário e de dados abertos
             </span>
           </div>
         </div>
@@ -591,6 +592,9 @@ export default function FAQPage() {
         <div className="space-y-3 text-xs sm:text-sm text-muted-foreground leading-relaxed">
           <p className="p-3.5 rounded-xl bg-background/80 border border-amber-500/20 text-foreground font-medium">
             ⚖️ <strong>Esta ferramenta não recomenda representantes. Apenas compara dados públicos.</strong> O LegisVisão não emite juízo de valor sobre votos certos ou errados e não direciona o usuário a nenhum partido ou parlamentar.
+          </p>
+          <p>
+            Os resumos em linguagem cidadã são gerados por modelos de Inteligência Artificial com instruções públicas no repositório de código aberto. Cada cartão de projeto conta com link para a fonte oficial na Câmara dos Deputados, texto integral da ementa e botão de relato para garantir auditoria contínua da sociedade.
           </p>
         </div>
       </section>

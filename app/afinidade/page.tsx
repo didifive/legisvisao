@@ -27,6 +27,7 @@ export default function AfinidadePage() {
   const { isReady } = useSystemStatus();
   const [loading, setLoading] = useState(false);
   const [stateFilter, setStateFilter] = useState<string | null>(null);
+  const [partyFilter, setPartyFilter] = useState<string | null>(null);
   const [calculatedParties, setCalculatedParties] = useState<Array<Party & { match: PartyMatchResult }>>([]);
   const [allCalculatedDeputies, setAllCalculatedDeputies] = useState<DeputyMatch[]>([]);
   const [availableStates, setAvailableStates] = useState<string[]>([]);
@@ -306,6 +307,8 @@ export default function AfinidadePage() {
         stateFilter={stateFilter}
         availableStates={availableStates}
         onStateChange={setStateFilter}
+        partyFilter={partyFilter}
+        onPartyChange={setPartyFilter}
       />
     </div>
   );

@@ -16,6 +16,7 @@ import {
   FaExternalLinkAlt,
   FaHistory,
   FaInfoCircle,
+  FaTag,
   FaFilter,
   FaLandmark,
   FaVoteYea,
@@ -60,6 +61,7 @@ export default function VoteForm() {
   const [sortBy, setSortBy] = useState<"relevance" | "recent" | "oldest">("relevance");
   const [shuffle, setShuffle] = useState(false);
   const [seed, setSeed] = useState<number | null>(null);
+  const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [selectedYears, setSelectedYears] = useState<number[]>([]);
   const [includeNonMerit, setIncludeNonMerit] = useState(false);
@@ -119,6 +121,20 @@ export default function VoteForm() {
     }
   }
 
+  // Lista dinâmica de temas disponíveis nas proposições
+  const availableThemes = useMemo(() => {
+    const themeSet = new Set<string>();
+    for (const p of propositions) {
+      if (p.tema) {
+        const parts = p.tema.split(/[•,]/).map((t) => t.trim()).filter(Boolean);
+        for (const part of parts) {
+          themeSet.add(part);
+        }
+      }
+    }
+    return Array.from(themeSet).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [propositions]);
+
   // Lista dinâmica de situações disponíveis nas proposições
   const availableStatus = useMemo(() => {
     const statusSet = new Set<string>();
@@ -139,6 +155,13 @@ export default function VoteForm() {
     return Array.from(yearsSet).sort((a, b) => b - a);
   }, [propositions]);
 
+  function toggleTheme(th: string) {
+    setSelectedThemes((prev) =>
+      prev.includes(th) ? prev.filter((e) => e !== th) : [...prev, th]
+    );
+    setLimit(10);
+  }
+
   function toggleStatus(st: string) {
     setSelectedStatus((prev) =>
       prev.includes(st) ? prev.filter((e) => e !== st) : [...prev, st]
@@ -154,6 +177,7 @@ export default function VoteForm() {
   }
 
   function resetAllFilters() {
+    setSelectedThemes([]);
     setSelectedStatus([]);
     setSelectedYears([]);
     setIncludeNonMerit(false);
@@ -191,6 +215,15 @@ export default function VoteForm() {
       );
     }
 
+    // Filtro por temas oficiais
+    if (selectedThemes.length > 0) {
+      list = list.filter((p) => {
+        if (!p.tema) return false;
+        const pThemes = p.tema.split(/[•,]/).map((t) => t.trim()).filter(Boolean);
+        return selectedThemes.some((th) => pThemes.includes(th));
+      });
+    }
+
     // Filtro por situação
     if (selectedStatus.length > 0) {
       list = list.filter((p) => {
@@ -223,7 +256,7 @@ export default function VoteForm() {
     }
 
     return list;
-  }, [unvotedPropositions, search, sortBy, shuffle, selectedStatus, selectedYears]);
+  }, [unvotedPropositions, search, sortBy, shuffle, selectedThemes, selectedStatus, selectedYears]);
 
   const filtered = useMemo(() => {
     return allFiltered.slice(0, limit);
@@ -236,8 +269,8 @@ export default function VoteForm() {
   }
 
   const opinionsCount = Object.keys(answers).length;
-  const hasActiveFilters = Boolean(search.trim() || selectedStatus.length > 0 || selectedYears.length > 0 || includeNonMerit);
-  const activeFiltersCount = selectedStatus.length + selectedYears.length + (includeNonMerit ? 1 : 0) + (search.trim() ? 1 : 0);
+  const hasActiveFilters = Boolean(search.trim() || selectedThemes.length > 0 || selectedStatus.length > 0 || selectedYears.length > 0 || includeNonMerit);
+  const activeFiltersCount = selectedThemes.length + selectedStatus.length + selectedYears.length + (includeNonMerit ? 1 : 0) + (search.trim() ? 1 : 0);
 
   if (loading) {
     return (
@@ -476,7 +509,58 @@ export default function VoteForm() {
               </div>
             </div>
 
-            {/* 3. Modo de Consulta: Propostas Simbólicas */}
+            {/* 3. Filtro por Tema Oficial */}
+            {availableThemes.length > 0 && (
+              <div className="space-y-2 pt-2 border-t border-border/40">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                    <FaTag className="text-primary w-3.5 h-3.5" />
+                    <span>Área Temática Oficial:</span>
+                  </span>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSelectedThemes([])}
+                      className={`text-[11px] font-semibold px-2 py-0.5 rounded transition-smooth ${selectedThemes.length === 0
+                          ? "bg-primary/20 text-primary"
+                          : "text-muted-foreground hover:text-foreground"
+                        }`}
+                    >
+                      Todos os Temas
+                    </button>
+                    {selectedThemes.length > 0 && (
+                      <button
+                        onClick={() => setSelectedThemes([])}
+                        className="text-[11px] text-destructive hover:underline"
+                      >
+                        Limpar temas
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+                  {availableThemes.map((th) => {
+                    const isChecked = selectedThemes.includes(th);
+
+                    return (
+                      <button
+                        key={th}
+                        onClick={() => toggleTheme(th)}
+                        className={`px-2.5 py-1 rounded-lg border text-xs transition-smooth cursor-pointer ${isChecked
+                            ? "bg-primary text-white border-primary shadow-soft font-bold"
+                            : "bg-background border-border text-muted-foreground hover:text-foreground hover:bg-muted font-medium"
+                          }`}
+                      >
+                        {th}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 4. Modo de Consulta: Propostas Simbólicas */}
             <div className="pt-2 border-t border-border/40 space-y-2">
               <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
                 <FaLandmark className="text-amber-500 w-3.5 h-3.5" />
@@ -561,6 +645,10 @@ export default function VoteForm() {
             const isAprovado = situacaoAtual.toLowerCase().includes("aprovad") || situacaoAtual.toLowerCase().includes("lei") || situacaoAtual.toLowerCase().includes("norma");
             const isEncerrado = situacaoAtual.toLowerCase().includes("arquivad") || situacaoAtual.toLowerCase().includes("rejeitad") || situacaoAtual.toLowerCase().includes("encerrad");
 
+            const temaTags = p.tema
+              ? p.tema.split(/[•,]/).map((t) => t.trim()).filter(Boolean)
+              : [];
+
             return (
               <div
                 key={p.id}
@@ -576,9 +664,22 @@ export default function VoteForm() {
                       <h3 className="font-extrabold text-foreground text-base sm:text-lg">
                         {p.titulo}
                       </h3>
-                      <span className="text-xs text-muted-foreground">
-                        {p.sigla_tipo} nº {p.numero}/{p.ano}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                        {temaTags.length > 0 ? (
+                          temaTags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-muted/80 text-muted-foreground border border-border"
+                            >
+                              {tag}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            {p.sigla_tipo} nº {p.numero}/{p.ano}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 

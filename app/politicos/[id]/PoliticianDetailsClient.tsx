@@ -76,9 +76,18 @@ function PropositionVoteCard({ item }: PropositionVoteCardProps) {
             </Link>
 
             {item.tema && (
-              <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/50">
-                {item.tema}
-              </span>
+              item.tema
+                .split(/[•,]/)
+                .map((t) => t.trim())
+                .filter(Boolean)
+                .map((tag) => (
+                  <span
+                    key={tag}
+                    className="text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-muted text-muted-foreground border border-border/50"
+                  >
+                    {tag}
+                  </span>
+                ))
             )}
           </div>
 

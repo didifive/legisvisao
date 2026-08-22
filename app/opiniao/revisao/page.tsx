@@ -16,6 +16,7 @@ import {
   FaCalendarAlt,
   FaExternalLinkAlt,
   FaHistory,
+  FaTag,
   FaFilter,
   FaSearch,
   FaLandmark,
@@ -38,6 +39,7 @@ export default function RevisaoPage() {
   const [propositions, setPropositions] = useState<PropositionWithVoteSession[]>([]);
   const [answers, setAnswers] = useState<StoredAnswers>({});
   const [search, setSearch] = useState("");
+  const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [selectedYears, setSelectedYears] = useState<number[]>([]);
   const [showFilterDrawer, setShowFilterDrawer] = useState(false);
@@ -111,6 +113,20 @@ export default function RevisaoPage() {
     return list;
   }, [answers, propsById]);
 
+  // Temas presentes nas proposições respondidas
+  const availableThemes = useMemo(() => {
+    const themeSet = new Set<string>();
+    for (const item of answeredPropositions) {
+      if (item.proposition.tema) {
+        const parts = item.proposition.tema.split(/[•,]/).map((t) => t.trim()).filter(Boolean);
+        for (const part of parts) {
+          themeSet.add(part);
+        }
+      }
+    }
+    return Array.from(themeSet).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [answeredPropositions]);
+
   // Situações presentes nas proposições respondidas
   const availableStatus = useMemo(() => {
     const statusSet = new Set<string>();
@@ -131,6 +147,13 @@ export default function RevisaoPage() {
     return Array.from(yearsSet).sort((a, b) => b - a);
   }, [answeredPropositions]);
 
+  function toggleTheme(th: string) {
+    setSelectedThemes((prev) =>
+      prev.includes(th) ? prev.filter((e) => e !== th) : [...prev, th]
+    );
+    setVisibleCount(PAGE_SIZE);
+  }
+
   function toggleStatus(st: string) {
     setSelectedStatus((prev) =>
       prev.includes(st) ? prev.filter((e) => e !== st) : [...prev, st]
@@ -146,6 +169,7 @@ export default function RevisaoPage() {
   }
 
   function resetAllFilters() {
+    setSelectedThemes([]);
     setSelectedStatus([]);
     setSelectedYears([]);
     setSearch("");
@@ -177,6 +201,14 @@ export default function RevisaoPage() {
       );
     }
 
+    if (selectedThemes.length > 0) {
+      list = list.filter((item) => {
+        if (!item.proposition.tema) return false;
+        const pThemes = item.proposition.tema.split(/[•,]/).map((t) => t.trim()).filter(Boolean);
+        return selectedThemes.some((th) => pThemes.includes(th));
+      });
+    }
+
     if (selectedStatus.length > 0) {
       list = list.filter((item) => {
         const st = item.proposition.ultimo_status || "Em Tramitação";
@@ -198,7 +230,7 @@ export default function RevisaoPage() {
     });
 
     return list;
-  }, [answeredPropositions, search, selectedStatus, selectedYears]);
+  }, [answeredPropositions, search, selectedThemes, selectedStatus, selectedYears]);
 
   const displayedList = useMemo(() => {
     return filteredList.slice(0, visibleCount);
@@ -220,7 +252,7 @@ export default function RevisaoPage() {
   const concordoCount = Object.values(answers).filter((a) => a === "CONCORDO").length;
   const discordoCount = Object.values(answers).filter((a) => a === "DISCORDO").length;
   const totalCount = Object.keys(answers).length;
-  const activeFiltersCount = selectedStatus.length + selectedYears.length;
+  const activeFiltersCount = selectedThemes.length + selectedStatus.length + selectedYears.length;
 
   const nonMeritAnsweredCount = useMemo(() => {
     return answeredPropositions.filter((item) => !item.proposition.is_merit).length;
@@ -493,6 +525,45 @@ export default function RevisaoPage() {
                     })}
                   </div>
                 </div>
+
+                {/* Filtro por Tema Oficial */}
+                {availableThemes.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-border/40">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                        <FaTag className="text-primary w-3.5 h-3.5" />
+                        <span>Área Temática Oficial:</span>
+                      </span>
+                      {selectedThemes.length > 0 && (
+                        <button
+                          onClick={() => setSelectedThemes([])}
+                          className="text-[11px] text-destructive hover:underline"
+                        >
+                          Limpar temas
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+                      {availableThemes.map((th) => {
+                        const isChecked = selectedThemes.includes(th);
+                        return (
+                          <button
+                            key={th}
+                            onClick={() => toggleTheme(th)}
+                            className={`px-2.5 py-1 rounded-lg border text-xs transition-smooth cursor-pointer ${
+                              isChecked
+                                ? "bg-primary text-white border-primary shadow-soft font-bold"
+                                : "bg-background border-border text-muted-foreground hover:text-foreground hover:bg-muted font-medium"
+                            }`}
+                          >
+                            {th}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -569,9 +640,26 @@ export default function RevisaoPage() {
                           <h3 className="font-extrabold text-foreground text-base sm:text-lg">
                             {proposition.titulo}
                           </h3>
-                          <span className="text-xs text-muted-foreground">
-                            {proposition.sigla_tipo} nº {proposition.numero}/{proposition.ano}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                            {proposition.tema ? (
+                              proposition.tema
+                                .split(/[•,]/)
+                                .map((t) => t.trim())
+                                .filter(Boolean)
+                                .map((tag) => (
+                                  <span
+                                    key={tag}
+                                    className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-muted/80 text-muted-foreground border border-border"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))
+                            ) : (
+                              <span className="text-xs text-muted-foreground">
+                                {proposition.sigla_tipo} nº {proposition.numero}/{proposition.ano}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
 

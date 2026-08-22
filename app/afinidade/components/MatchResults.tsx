@@ -11,6 +11,7 @@ import {
   FaInfoCircle,
   FaGlobeAmericas,
   FaBalanceScale,
+  FaFilter,
 } from "react-icons/fa";
 import type { Party } from "@/types/db";
 import type { DeputyMatch, PartyMatchResult } from "@/lib/match/types";
@@ -26,6 +27,8 @@ export interface MatchResultsProps {
   stateFilter: string | null;
   availableStates: string[];
   onStateChange: (state: string | null) => void;
+  partyFilter?: string | null;
+  onPartyChange?: (party: string | null) => void;
 }
 
 interface NormalizedParty extends Party {
@@ -253,6 +256,8 @@ export default function MatchResults({
   stateFilter,
   availableStates,
   onStateChange,
+  partyFilter,
+  onPartyChange,
 }: MatchResultsProps) {
   if (loading) return <LoadingState />;
   if (!results) return <EmptyState />;
@@ -266,20 +271,39 @@ export default function MatchResults({
       .sort(sortRankingEntities);
   }, [results.parties]);
 
+  const availableParties = useMemo(() => {
+    const partiesSet = new Set<string>();
+    for (const d of results.deputies || []) {
+      if (d.sigla_partido) partiesSet.add(d.sigla_partido.toUpperCase().trim());
+    }
+    for (const p of results.parties || []) {
+      if (p.sigla) partiesSet.add(p.sigla.toUpperCase().trim());
+    }
+    return Array.from(partiesSet).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [results.deputies, results.parties]);
+
   const validDeputies: DeputyMatch[] = useMemo(() => {
     const raw: DeputyMatch[] = (results.deputies || []).map((dep) => ({
       ...dep,
       adherence: clamp01(dep.adherence ?? null),
     }));
 
-    const filtered = stateFilter
-      ? raw.filter((d) => (d.sigla_uf || "").toUpperCase() === stateFilter.toUpperCase())
-      : raw;
+    let filtered = raw;
+
+    if (stateFilter) {
+      filtered = filtered.filter((d) => (d.sigla_uf || "").toUpperCase() === stateFilter.toUpperCase());
+    }
+
+    if (partyFilter) {
+      filtered = filtered.filter((d) => (d.sigla_partido || "").toUpperCase() === partyFilter.toUpperCase());
+    }
 
     return filtered
       .filter((p) => (p.comparable_count ?? 0) > 0 && p.adherence !== null)
       .sort(sortRankingEntities);
-  }, [results.deputies, stateFilter]);
+  }, [results.deputies, stateFilter, partyFilter]);
+
+  const hasActiveDeputyFilters = Boolean(stateFilter || partyFilter);
 
   return (
     <div className="space-y-12">
@@ -329,33 +353,68 @@ export default function MatchResults({
         )}
       </section>
 
-      {/* 2. SELETOR DE ESTADO (UF) */}
-      <section className="p-6 rounded-2xl bg-card border border-border shadow-soft flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      {/* 2. SELETOR DE ESTADO (UF) E PARTIDO */}
+      <section className="p-6 rounded-2xl bg-card border border-border shadow-soft flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <FaMapMarkerAlt className="text-primary w-4 h-4" />
+            <FaFilter className="text-primary w-4 h-4" />
             <h3 className="font-bold text-foreground text-base">
-              Filtrar Deputados Federais por Estado (UF)
+              Filtrar Deputados Federais por Estado e Partido
             </h3>
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            Selecione seu estado para ver a afinidade com os deputados federais da sua bancada estadual.
+            Filtre os deputados pela bancada do seu estado (UF) e/ou por legenda partidária.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <select
-            value={stateFilter ?? ""}
-            onChange={(e) => onStateChange(e.target.value || null)}
-            className="bg-background border border-border rounded-lg px-3 py-2 text-sm text-foreground font-semibold focus:ring-2 focus:ring-primary/20 outline-none w-full sm:w-48 cursor-pointer shadow-soft"
-          >
-            <option value="">Todos os Estados</option>
-            {availableStates.map((state) => (
-              <option key={state} value={state}>
-                {state}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          {/* Seletor de Estado */}
+          <div className="flex-1 sm:flex-initial">
+            <select
+              value={stateFilter ?? ""}
+              onChange={(e) => onStateChange(e.target.value || null)}
+              className="bg-background border border-border rounded-lg px-3 py-2 text-xs sm:text-sm text-foreground font-semibold focus:ring-2 focus:ring-primary/20 outline-none w-full sm:w-44 cursor-pointer shadow-soft"
+              aria-label="Filtrar por estado"
+            >
+              <option value="">Todos os Estados</option>
+              {availableStates.map((state) => (
+                <option key={state} value={state}>
+                  {state}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Seletor de Partido */}
+          <div className="flex-1 sm:flex-initial">
+            <select
+              value={partyFilter ?? ""}
+              onChange={(e) => onPartyChange ? onPartyChange(e.target.value || null) : undefined}
+              className="bg-background border border-border rounded-lg px-3 py-2 text-xs sm:text-sm text-foreground font-semibold focus:ring-2 focus:ring-primary/20 outline-none w-full sm:w-44 cursor-pointer shadow-soft"
+              aria-label="Filtrar por partido"
+            >
+              <option value="">Todos os Partidos</option>
+              {availableParties.map((sigla) => (
+                <option key={sigla} value={sigla}>
+                  {sigla}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Botão Limpar Filtros */}
+          {hasActiveDeputyFilters && (
+            <button
+              type="button"
+              onClick={() => {
+                onStateChange(null);
+                if (onPartyChange) onPartyChange(null);
+              }}
+              className="text-xs text-destructive hover:underline font-bold px-2 py-1 transition-smooth cursor-pointer"
+            >
+              Limpar
+            </button>
+          )}
         </div>
       </section>
 
@@ -364,7 +423,7 @@ export default function MatchResults({
         <div className="border-b border-border pb-3">
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
             <FaUserTie className="text-secondary w-5 h-5" />
-            Deputados Federais {stateFilter ? `(${stateFilter})` : ""}
+            Deputados Federais {stateFilter ? `(${stateFilter})` : ""} {partyFilter ? `• ${partyFilter}` : ""}
           </h2>
           <p className="text-xs sm:text-sm text-muted-foreground">
             Parlamentares da Câmara dos Deputados com votações nominais registradas nas propostas analisadas.
