@@ -45,12 +45,20 @@ Este documento estabelece as regras obrigatórias e princípios arquiteturais qu
 
 ---
 
-## 🏛️ 4. Papel da Base de Dados e Origem da Informação
+## 🗄️ 4. Governança do Banco de Dados, Migrations e Ingestão de Dados
 
 - **Apenas Cache Persistente das Fontes Oficiais**:
   - A base de dados PostgreSQL/Supabase existe primariamente para evitar requisições constantes e sobrecarga às APIs dos órgãos oficiais (**Câmara dos Deputados**, **Senado Federal** e **TSE**).
   - **Nenhum dado legislativo é inventado ou mockado**.
   - A atualização do banco de dados ocorre exclusivamente através dos scripts em `scripts/sync/`, disparados periodicamente pela esteira do **GitHub Actions** (`.github/workflows/sync-data.yml`) ou manualmente.
+
+- **Proibição Absoluta de Alterações Estruturais Diretas (DDL)**:
+  - **NUNCA** execute scripts ou comandos ad-hoc para alterar a estrutura de tabelas ou do banco de dados diretamente (ex: `ALTER TABLE`, `CREATE TABLE`, `DROP COLUMN`, `ADD COLUMN`).
+  - Qualquer alteração de esquema/estrutura deve ser realizada **exclusivamente via arquivos de migração versionados** dentro do diretório `supabase/migrations/` (com timestamp e descrição no nome do arquivo SQL).
+
+- **Protocolo para Ingestão, Manipulação ou Exclusão de Dados (DML)**:
+  - Para tarefas de ingestão, reset, manipulação ou exclusão de registros no banco de dados, o agente **NÃO deve executar comandos destrutivos ou mutações em massa de forma autônoma**.
+  - O agente deve **apenas fornecer o script SQL correspondente e perguntar/confirmar o caminho e autorização** com o usuário antes de qualquer ação.
 
 ---
 
@@ -66,5 +74,6 @@ Este documento estabelece as regras obrigatórias e princípios arquiteturais qu
 ## 💻 6. Qualidade de Código, Estilo e Build
 
 - Todo código desenvolvido deve passar no `npm run build` e `npx tsc --noEmit` sem erros de tipagem TypeScript ou quebras de renderização estática.
+- **Boas Práticas de Código e SonarQube (typescript:S6582)**: Sempre priorizar o uso de encadeamento opcional (*optional chaining*, ex: `objeto?.propriedade`, `array?.[index]`, `funcao?.()`) em vez de encadeamento redundante com operador lógico AND (`objeto && objeto.propriedade`), mantendo o código mais conciso, limpo e legível.
 - Preservar os padrões visuais e a paleta de cores HSL alinhados ao ecossistema do desenvolvedor Luis Zancanela.
 - Não utilizar travessão em textos de cópia e documentação.

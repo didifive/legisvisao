@@ -187,13 +187,16 @@ export const Footer = () => {
         </div>
 
         {/* Aviso Legal Cívico */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/5 dark:bg-amber-950/20 border border-amber-500/20 text-xs text-muted-foreground space-y-2 mb-6">
+        <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/5 dark:bg-amber-950/20 border border-amber-500/20 text-xs text-muted-foreground space-y-2.5 mb-6">
           <div className="flex items-center gap-2 font-bold text-foreground text-sm">
             <FaBalanceScale className="text-amber-600 dark:text-amber-400 w-4 h-4 shrink-0" />
-            <span>Aviso Legal Cívico</span>
+            <span>Aviso Legal Cívico & Transparência de IA</span>
           </div>
           <p className="leading-relaxed">
             <strong>Esta ferramenta não recomenda representantes. Apenas compara dados públicos.</strong> O LegisVisão é uma iniciativa cívica independente, de código aberto e apartidária, sem qualquer vínculo com partidos, coligações ou órgãos estatais.
+          </p>
+          <p className="leading-relaxed">
+            Os resumos simplificados e perguntas reflexivas são gerados por Inteligência Artificial (com código-fonte e prompts públicos no repositório GitHub para auditoria independente). Cada resumo é acompanhado de botão para relatar inconsistências, além da ementa original e do link direto para o projeto no portal oficial da Câmara dos Deputados.
           </p>
         </div>
 
