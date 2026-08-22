@@ -1,17 +1,21 @@
 import { ImageResponse } from "next/og";
-import { NextRequest } from "next/server";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const format = searchParams.get("format") || searchParams.get("size") || searchParams.get("type");
-    const isSquare = format === "square" || format === "1:1";
+    const format =
+      searchParams.get("format") ||
+      searchParams.get("size") ||
+      searchParams.get("type") ||
+      searchParams.get("aspect");
+    const isSquare =
+      searchParams.has("square") || format === "square" || format === "1:1";
 
-    const logoFilePath = path.join(process.cwd(), "public", "logo.png");
     let logoDataUrl = "";
     try {
+      const logoFilePath = path.join(process.cwd(), "public", "logo.png");
       const logoBuffer = await fs.readFile(logoFilePath);
       logoDataUrl = `data:image/png;base64,${logoBuffer.toString("base64")}`;
     } catch {
@@ -33,7 +37,7 @@ export async function GET(request: NextRequest) {
               backgroundImage:
                 "radial-gradient(circle at 50% 35%, rgba(34, 197, 94, 0.28) 0%, transparent 65%), radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.18) 0%, transparent 50%)",
               color: "#ffffff",
-              padding: "40px",
+              padding: "60px",
               fontFamily: "sans-serif",
               position: "relative",
             }}
@@ -42,12 +46,12 @@ export async function GET(request: NextRequest) {
             <div
               style={{
                 position: "absolute",
-                top: 18,
-                left: 18,
-                right: 18,
-                bottom: 18,
+                top: 28,
+                left: 28,
+                right: 28,
+                bottom: 28,
                 border: "1px solid rgba(52, 211, 153, 0.25)",
-                borderRadius: 28,
+                borderRadius: 36,
                 display: "flex",
               }}
             />
@@ -55,42 +59,44 @@ export async function GET(request: NextRequest) {
             {/* Container do Logo com glow */}
             <div
               style={{
-                width: 140,
-                height: 140,
-                borderRadius: 32,
-                background: "linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(5, 150, 105, 0.4) 100%)",
+                width: 220,
+                height: 220,
+                borderRadius: 48,
+                background:
+                  "linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(5, 150, 105, 0.4) 100%)",
                 border: "2px solid rgba(52, 211, 153, 0.4)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                marginBottom: 24,
-                boxShadow: "0 12px 32px rgba(16, 185, 129, 0.25)",
-                padding: 16,
+                marginBottom: 36,
+                padding: 24,
               }}
             >
               {logoDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={logoDataUrl}
                   alt="LegisVisão Logo"
-                  width={108}
-                  height={108}
+                  width={170}
+                  height={170}
                   style={{ objectFit: "contain" }}
                 />
               ) : (
-                <span style={{ fontSize: 64 }}>⚖️</span>
+                <span style={{ fontSize: 96 }}>⚖️</span>
               )}
             </div>
 
             {/* Nome LegisVisão */}
             <div
               style={{
-                fontSize: 54,
+                fontSize: 84,
                 fontWeight: 900,
                 letterSpacing: "-0.03em",
-                background: "linear-gradient(90deg, #a7f3d0 0%, #34d399 100%)",
+                background:
+                  "linear-gradient(90deg, #a7f3d0 0%, #34d399 100%)",
                 backgroundClip: "text",
                 color: "transparent",
-                marginBottom: 12,
+                marginBottom: 18,
               }}
             >
               LegisVisão
@@ -99,32 +105,32 @@ export async function GET(request: NextRequest) {
             {/* Subtítulo */}
             <div
               style={{
-                fontSize: 20,
+                fontSize: 32,
                 fontWeight: 600,
                 color: "#e2e8f0",
                 textAlign: "center",
-                maxWidth: 480,
-                lineHeight: 1.4,
-                marginBottom: 24,
+                maxWidth: 780,
+                lineHeight: 1.35,
+                marginBottom: 36,
               }}
             >
-              Afinidade Política com Deputados Federais
+              Descubra quais Deputados Federais e Partidos votam como você
             </div>
 
             {/* Badge de Destaque */}
             <div
               style={{
                 display: "flex",
-                gap: 8,
+                gap: 12,
                 alignItems: "center",
                 background: "rgba(16, 185, 129, 0.15)",
                 color: "#6ee7b7",
                 border: "1px solid rgba(52, 211, 153, 0.3)",
-                padding: "8px 20px",
+                padding: "12px 32px",
                 borderRadius: 999,
-                fontSize: 16,
+                fontSize: 24,
                 fontWeight: 700,
-                marginBottom: 20,
+                marginBottom: 36,
               }}
             >
               🔒 100% Local-First e Privado
@@ -133,7 +139,7 @@ export async function GET(request: NextRequest) {
             {/* Rodapé / URL */}
             <div
               style={{
-                fontSize: 15,
+                fontSize: 24,
                 color: "#34d399",
                 fontWeight: 700,
                 letterSpacing: "0.02em",
@@ -144,8 +150,8 @@ export async function GET(request: NextRequest) {
           </div>
         ),
         {
-          width: 600,
-          height: 600,
+          width: 1080,
+          height: 1080,
         }
       );
     }
@@ -198,7 +204,8 @@ export async function GET(request: NextRequest) {
                 width: 76,
                 height: 76,
                 borderRadius: 20,
-                background: "linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(5, 150, 105, 0.4) 100%)",
+                background:
+                  "linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(5, 150, 105, 0.4) 100%)",
                 border: "1.5px solid rgba(52, 211, 153, 0.35)",
                 display: "flex",
                 alignItems: "center",
@@ -207,6 +214,7 @@ export async function GET(request: NextRequest) {
               }}
             >
               {logoDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={logoDataUrl}
                   alt="LegisVisão Logo"
@@ -223,7 +231,8 @@ export async function GET(request: NextRequest) {
                 fontSize: 68,
                 fontWeight: 900,
                 letterSpacing: "-0.03em",
-                background: "linear-gradient(90deg, #a7f3d0 0%, #34d399 100%)",
+                background:
+                  "linear-gradient(90deg, #a7f3d0 0%, #34d399 100%)",
                 backgroundClip: "text",
                 color: "transparent",
               }}
@@ -313,7 +322,9 @@ export async function GET(request: NextRequest) {
             }}
           >
             <div>Desenvolvido por Luis Zancanela • zancanela.dev.br</div>
-            <div style={{ color: "#34d399", fontWeight: 700 }}>legisvisao.com.br</div>
+            <div style={{ color: "#34d399", fontWeight: 700 }}>
+              legisvisao.com.br
+            </div>
           </div>
         </div>
       ),
