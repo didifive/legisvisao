@@ -17,13 +17,17 @@ Este documento estabelece as regras obrigatórias e princípios arquiteturais qu
 
 ---
 
-## 🔄 2. Retrocompatibilidade Estrita e Migração de Dados (Import/Export)
+## 🔄 2. Retrocompatibilidade Estrita e Migração de Dados (Import/Export e LocalStorage)
 
 - **Tolerância Absoluta a Versões Anteriores (Legado)**:
-  - O sistema opera no modelo *Local-First* onde os usuários realizam backup e restauração dos seus votos em formato JSON.
-  - **Qualquer nova versão deve ser 100% retrocompatível** com arquivos exportados em versões anteriores.
+  - O sistema opera no modelo *Local-First* onde os usuários realizam backup, restauração e persistência de dados localmente (localStorage / arquivos JSON exportados).
+  - **Qualquer nova versão deve ser 100% retrocompatível** com arquivos exportados em versões anteriores e com schemas salvos no `localStorage` de usuários de versões passadas.
+- **Protocolo de Verificação Preventiva e Alinhamento Obrigatório**:
+  - Antes de implementar qualquer alteração em tipos, chaves de armazenamento, formatos de serialização ou fluxo de dados de usuário, o agente **DEVE avaliar o risco de quebra de retrocompatibilidade**.
+  - **Sempre perguntar e validar com o usuário**: Caso uma alteração pretendida possa tocar em chaves do `localStorage`, formato de import/export de votos ou estrutura de respostas salvas, o agente deve alertar explicitamente o usuário, apresentar os possíveis impactos e propor os caminhos viáveis (ex: manter suporte direto ou introduzir migração/conversão automática transparente).
 - **Adaptação Obrigatória em Mudanças Estruturantes**:
   - Caso haja qualquer alteração estruturante no esquema de dados ou formato de respostas, o parser e serializador em `lib/storage.ts` **deve ser adaptado para converter automaticamente os dados antigos**.
+  - O estado carregado do `localStorage` deve ser normalizado graciosamente durante a leitura, garantindo que usuários com dados legados no navegador não sofram travamento (white-screen), erros silenciosos ou perda das informações já salvas.
 - **Regras do Parser de Importação (`lib/storage.ts`)**:
   1. Reconhecer formatos legados (ex: dicionário plano `{ "1": "SIM", "2": "NAO" }` e formato estruturado `{ version: "1.0", answers: { ... } }`).
   2. Fazer fallback gracioso e coerção segura de tipos (IDs numéricos vs strings, strings legadas como "SIM"/"NAO" para "CONCORDO"/"DISCORDO").
@@ -74,6 +78,9 @@ Este documento estabelece as regras obrigatórias e princípios arquiteturais qu
 ## 💻 6. Qualidade de Código, Estilo e Build
 
 - Todo código desenvolvido deve passar no `npm run build` e `npx tsc --noEmit` sem erros de tipagem TypeScript ou quebras de renderização estática.
+- **Cobertura Máxima e Relevância de Testes Unitários**:
+  - Sempre buscar e manter a máxima cobertura de testes unitários nas lógicas de aplicação, cálculo de afinidade, parsers, hooks e utilitários.
+  - **Foco no Domínio e Valor de Negócio**: Evitar testes puramente superficiais ou meramente cosméticos. Os testes unitários devem exercitar cenários reais de negócio, casos de borda legislativos, formatos legados, coerção de dados e robustez de fluxo do usuário.
 - **Boas Práticas de Código e SonarQube (typescript:S6582)**: Sempre priorizar o uso de encadeamento opcional (*optional chaining*, ex: `objeto?.propriedade`, `array?.[index]`, `funcao?.()`) em vez de encadeamento redundante com operador lógico AND (`objeto && objeto.propriedade`), mantendo o código mais conciso, limpo e legível.
 - Preservar os padrões visuais e a paleta de cores HSL alinhados ao ecossistema do desenvolvedor Luis Zancanela.
 - Não utilizar travessão em textos de cópia e documentação.
