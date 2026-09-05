@@ -81,6 +81,11 @@ Este documento estabelece as regras obrigatórias e princípios arquiteturais qu
 - **Cobertura Máxima e Relevância de Testes Unitários**:
   - Sempre buscar e manter a máxima cobertura de testes unitários nas lógicas de aplicação, cálculo de afinidade, parsers, hooks e utilitários.
   - **Foco no Domínio e Valor de Negócio**: Evitar testes puramente superficiais ou meramente cosméticos. Os testes unitários devem exercitar cenários reais de negócio, casos de borda legislativos, formatos legados, coerção de dados e robustez de fluxo do usuário.
-- **Boas Práticas de Código e SonarQube (typescript:S6582)**: Sempre priorizar o uso de encadeamento opcional (*optional chaining*, ex: `objeto?.propriedade`, `array?.[index]`, `funcao?.()`) em vez de encadeamento redundante com operador lógico AND (`objeto && objeto.propriedade`), mantendo o código mais conciso, limpo e legível.
+- **Boas Práticas de Código e SonarQube**:
+  - **typescript:S6582**: Sempre priorizar o uso de encadeamento opcional (*optional chaining*, ex: `objeto?.propriedade`, `array?.[index]`, `funcao?.()`) em vez de encadeamento redundante com operador lógico AND (`objeto && objeto.propriedade`), mantendo o código mais conciso, limpo e legível.
+  - **Complexidade Cognitiva**: Manter funções com complexidade cognitiva reduzida (limite recomendado <= 15). Extrair blocos lógicos de parsing, validação, coerção e transformações em funções auxiliares puras e isoladas.
+  - **Web APIs Modernas (DOM & File/Blob)**:
+    - Preferir `childNode.remove()` diretamente em vez de `parentNode.removeChild(childNode)`.
+    - Preferir `await file.text()` ou `await blob.text()` (Promises modernas) em vez do padrão legado com eventos assíncronos de `FileReader#readAsText()`.
 - Preservar os padrões visuais e a paleta de cores HSL alinhados ao ecossistema do desenvolvedor Luis Zancanela.
 - Não utilizar travessão em textos de cópia e documentação.
