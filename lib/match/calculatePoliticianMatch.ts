@@ -1,8 +1,8 @@
 // ====================================================================
 // LegisVisão - Cálculo de Afinidade de Deputado Federal Individual
 // ====================================================================
-import { normalizeVote } from "./normalizeVotes";
-import type { UserVotes, VoteDetailWithProposition, DeputyMatch } from "./types";
+import { evaluateVotesList, calculateAdherencePercent } from "./evaluateVotes";
+import type { UserVotes, GranularUserVotes, VoteDetailWithProposition, DeputyMatch } from "./types";
 import type { DeputySearchResult } from "@/types/db";
 
 /**
@@ -15,33 +15,12 @@ import type { DeputySearchResult } from "@/types/db";
  * - Fórmula: Índice = Concordâncias / Total de Comparações Válidas * 100.
  */
 export function calculatePoliticianMatch(
-  userVotes: UserVotes,
+  userVotes: GranularUserVotes | UserVotes,
   votesOfDeputy: VoteDetailWithProposition[],
   deputy: DeputySearchResult
 ): DeputyMatch {
-  let matches = 0;
-  let comparable = 0;
-
-  for (const pv of votesOfDeputy) {
-    const propId = pv.proposicao_id;
-    if (typeof propId !== "number") continue;
-
-    const userRaw = userVotes[propId];
-    const userVote = normalizeVote(userRaw);
-    const polRaw = pv.voto_original;
-    const deputyVote = normalizeVote(polRaw);
-
-    if (!userVote || !deputyVote) continue;
-
-    if (deputyVote === "SIM" || deputyVote === "NÃO") {
-      comparable++;
-      if (deputyVote === userVote) {
-        matches++;
-      }
-    }
-  }
-
-  const adherence = comparable > 0 ? Number(((matches / comparable) * 100).toFixed(2)) : null;
+  const { matches, comparable } = evaluateVotesList(userVotes, votesOfDeputy);
+  const adherence = calculateAdherencePercent(matches, comparable);
 
   return {
     ...deputy,

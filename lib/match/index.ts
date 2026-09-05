@@ -4,6 +4,7 @@
 export * from "./attachPropositionId";
 export * from "./calculatePoliticianMatch";
 export * from "./calculatePartyMatch";
+export * from "./evaluateVotes";
 export * from "./normalizeVotes";
 export * from "./classifyVoteSession";
 export * from "./types";

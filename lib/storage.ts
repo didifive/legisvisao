@@ -7,7 +7,7 @@
 export type UserVote = "CONCORDO" | "DISCORDO";
 
 export interface StoredAnswers {
-  [projectId: number]: UserVote;
+  [projectId: number | string]: UserVote;
 }
 
 export interface StoredGranularAnswers {

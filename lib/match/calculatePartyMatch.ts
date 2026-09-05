@@ -1,8 +1,8 @@
 // ====================================================================
 // LegisVisão - Cálculo de Afinidade Partidária (Média dos Deputados)
 // ====================================================================
-import { normalizeVote } from "./normalizeVotes";
-import type { UserVotes, PartyMatchResult, VoteDetailWithProposition } from "./types";
+import { evaluateVotesList, calculateAdherencePercent } from "./evaluateVotes";
+import type { UserVotes, GranularUserVotes, PartyMatchResult, VoteDetailWithProposition } from "./types";
 
 /**
  * Calcula a afinidade de um partido político com base estritamente na média
@@ -14,32 +14,11 @@ import type { UserVotes, PartyMatchResult, VoteDetailWithProposition } from "./t
  * - Índice de Afinidade = Total de Concordâncias dos Deputados / Total de Votos Comparáveis dos Deputados * 100.
  */
 export function calculatePartyMatch(
-  userVotes: UserVotes,
+  userVotes: GranularUserVotes | UserVotes,
   deputyVotesForParty: VoteDetailWithProposition[]
 ): PartyMatchResult {
-  let matches = 0;
-  let comparable = 0;
-
-  for (const pv of deputyVotesForParty) {
-    const propId = pv.proposicao_id;
-    if (typeof propId !== "number") continue;
-
-    const userRaw = userVotes[propId];
-    const userVote = normalizeVote(userRaw);
-    const polRaw = pv.voto_original;
-    const deputyVote = normalizeVote(polRaw);
-
-    if (!userVote || !deputyVote) continue;
-
-    if (deputyVote === "SIM" || deputyVote === "NÃO") {
-      comparable++;
-      if (deputyVote === userVote) {
-        matches++;
-      }
-    }
-  }
-
-  const adherence = comparable > 0 ? Number(((matches / comparable) * 100).toFixed(2)) : null;
+  const { matches, comparable } = evaluateVotesList(userVotes, deputyVotesForParty);
+  const adherence = calculateAdherencePercent(matches, comparable);
 
   return {
     matches_count: matches,

@@ -47,6 +47,14 @@ export interface Proposition {
   last_updated_at?: string | null;
 }
 
+export type VoteSessionDeliberationType =
+  | "MERITO"
+  | "DESTAQUE"
+  | "EMENDA"
+  | "REQUERIMENTO"
+  | "OUTRO"
+  | (string & {});
+
 // 4. Sessões de Votação Nominal do Plenário
 export interface VoteSession {
   id: string;
@@ -55,7 +63,7 @@ export interface VoteSession {
   descricao: string;
   resultado?: string | null;
   sigla_orgao: string;
-  tipo_deliberacao?: "MERITO" | "DESTAQUE" | "EMENDA" | "REQUERIMENTO" | "OUTRO" | string | null;
+  tipo_deliberacao?: VoteSessionDeliberationType | null;
   titulo_amigavel?: string | null;
   resumo_simplificado?: string | null;
   pergunta_cidadao?: string | null;
@@ -160,6 +168,8 @@ export interface PropositionWithVoteSession extends Proposition {
   total_nao?: number;
   total_outros?: number;
   is_merit?: boolean;
+  has_merit?: boolean;
+  total_nominal_sessions?: number;
 }
 
 export interface PropositionDetail extends PropositionWithVoteSession {
