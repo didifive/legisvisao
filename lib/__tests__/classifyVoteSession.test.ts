@@ -69,6 +69,32 @@ describe("classifyVoteSession - Classificação Determinística Regimental", () 
     expect(sorted[2].classification.type).toBe("DESTAQUE");
   });
 
+  it("elege o 2º turno de uma PEC como deliberação principal mesmo quando o 1º turno teve maior quórum de votos nominais", () => {
+    const sessionsPEC = [
+      {
+        id: "sess-1-turno",
+        descricao: "Votação do texto-base em primeiro turno da PEC",
+        data_hora: "2026-03-04T15:00:00Z",
+        total_votos: 503,
+        total_sim: 400,
+        total_nao: 103,
+      },
+      {
+        id: "sess-2-turno",
+        descricao: "Votação em segundo turno da PEC de segurança pública",
+        data_hora: "2026-03-04T18:00:00Z", // Mais recente
+        total_votos: 475, // Menor quórum que o 1º turno
+        total_sim: 390,
+        total_nao: 85,
+      },
+    ];
+
+    const sorted = sortVoteSessionsDeterministic(sessionsPEC);
+    expect(sorted[0].id).toBe("sess-2-turno");
+    expect(sorted[0].classification.type).toBe("MERITO");
+    expect(sorted[1].id).toBe("sess-1-turno");
+  });
+
   it("classifica turnos de PEC, redação final e projetos de lei de conversão como Mérito", () => {
     expect(classifyVoteSession("Votação em 1º Turno da Proposta de Emenda à Constituição nº 45/2019").type).toBe("MERITO");
     expect(classifyVoteSession("Votação em 2º Turno da Proposta de Emenda à Constituição nº 45/2019").type).toBe("MERITO");

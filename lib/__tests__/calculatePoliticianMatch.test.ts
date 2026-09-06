@@ -196,4 +196,37 @@ describe("lib/match/calculatePoliticianMatch.ts - Afinidade Individual Granular"
     expect(result.comparable_count).toBe(2);
     expect(result.adherence).toBe(100);
   });
+
+  it("isola estritamente os votos granulares de uma proposição sem permitir que fallback legado contamine sessões não votadas", () => {
+    // Proposição 2500080 tem 2 sessões nominais: 2500080-320 e 2500080-330
+    // Usuário votou apenas na 2500080-330 (CONCORDO), mas no legado tinha 2500080 = CONCORDO
+    const mixedUserVotes = {
+      "2500080": "CONCORDO" as const,
+      "2500080-330": "CONCORDO" as const,
+    };
+
+    const votesOfDeputy: VoteDetailWithProposition[] = [
+      {
+        deputado_id: 100,
+        proposicao_id: 2500080,
+        votacao_id: "2500080-320", // Usuário não votou nesta sessão
+        voto_original: "Não",
+        sigla_partido: "PARTIDO_A",
+      },
+      {
+        deputado_id: 100,
+        proposicao_id: 2500080,
+        votacao_id: "2500080-330", // Usuário votou CONCORDO nesta sessão
+        voto_original: "Sim",
+        sigla_partido: "PARTIDO_A",
+      },
+    ];
+
+    const result = calculatePoliticianMatch(mixedUserVotes, votesOfDeputy, mockDeputy);
+
+    // Deve comparar apenas a sessão 2500080-330
+    expect(result.comparable_count).toBe(1);
+    expect(result.matches_count).toBe(1);
+    expect(result.adherence).toBe(100);
+  });
 });

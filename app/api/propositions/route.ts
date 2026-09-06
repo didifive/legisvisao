@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
           COALESCE(vs.is_merit, false) as is_merit,
           COALESCE(p_stats.has_merit, false) as has_merit,
           COALESCE(p_stats.total_nominal_sessions, 0) as total_nominal_sessions,
+          COALESCE(p_stats.nominal_session_ids, ARRAY[]::text[]) as nominal_session_ids,
           COALESCE(vs.total_sim, 0) as total_sim,
           COALESCE(vs.total_nao, 0) as total_nao,
           COALESCE(vs.total_outros, 0) as total_outros
@@ -100,16 +101,21 @@ export async function GET(request: NextRequest) {
               WHEN v.descricao ILIKE '%substitutivo%' OR v.descricao ILIKE '%texto-base%' OR v.descricao ILIKE '%texto base%' OR v.descricao ILIKE '%turno%' OR v.descricao ILIKE '%projeto de lei%' OR v.descricao ILIKE '%proposta de emenda%' OR v.descricao ILIKE '%medida provis%' OR v.descricao ILIKE '%redação final%' OR v.descricao ILIKE '%redacao final%' THEN 1
               ELSE 5
             END ASC,
-            COUNT(CASE WHEN dv.voto_original ILIKE 'Sim%' OR dv.voto_original ILIKE 'N%' OR dv.voto_original ILIKE 'Não%' THEN 1 END) DESC,
             v.data_hora DESC,
+            COUNT(CASE WHEN dv.voto_original ILIKE 'Sim%' OR dv.voto_original ILIKE 'N%' OR dv.voto_original ILIKE 'Não%' THEN 1 END) DESC,
             v.id DESC
         ) vs ON vs.proposicao_id = p.id
         LEFT JOIN (
           SELECT 
-            v2.proposicao_id,
-            COUNT(DISTINCT v2.id)::int as total_nominal_sessions,
-            BOOL_OR(
-              CASE 
+            v_nominal.proposicao_id,
+            COUNT(DISTINCT v_nominal.id)::int as total_nominal_sessions,
+            BOOL_OR(v_nominal.is_merit) as has_merit,
+            ARRAY_AGG(DISTINCT v_nominal.id)::text[] as nominal_session_ids
+          FROM (
+            SELECT 
+              v2.id,
+              v2.proposicao_id,
+              (CASE 
                 WHEN v2.tipo_deliberacao = 'MERITO' THEN true
                 WHEN v2.tipo_deliberacao IN ('EMENDA', 'DESTAQUE', 'REQUERIMENTO') THEN false
                 WHEN v2.descricao ILIKE '%requerimento%' OR v2.descricao ILIKE '%retirada de pauta%' OR v2.descricao ILIKE '%adiamento%' OR v2.descricao ILIKE '%urgência%' OR v2.descricao ILIKE '%urgencia%' OR v2.descricao ILIKE '%preferência%' OR v2.descricao ILIKE '%preferencia%' THEN false
@@ -117,12 +123,13 @@ export async function GET(request: NextRequest) {
                 WHEN (v2.descricao ILIKE '%emenda%' OR v2.descricao ILIKE '%subemenda%') AND NOT (v2.descricao ILIKE '%subemenda substitutiva global%' OR v2.descricao ILIKE '%substitutiva global%') THEN false
                 WHEN v2.descricao ILIKE '%substitutivo%' OR v2.descricao ILIKE '%texto-base%' OR v2.descricao ILIKE '%texto base%' OR v2.descricao ILIKE '%turno%' OR v2.descricao ILIKE '%projeto de lei%' OR v2.descricao ILIKE '%proposta de emenda%' OR v2.descricao ILIKE '%medida provis%' OR v2.descricao ILIKE '%redação final%' OR v2.descricao ILIKE '%redacao final%' THEN true
                 ELSE false
-              END
-            ) as has_merit
-          FROM vote_sessions v2
-          JOIN deputy_votes dv2 ON dv2.votacao_id = v2.id
-          GROUP BY v2.proposicao_id
-          HAVING COUNT(CASE WHEN dv2.voto_original ILIKE 'Sim%' OR dv2.voto_original ILIKE 'N%' OR dv2.voto_original ILIKE 'Não%' THEN 1 END) > 0
+              END) as is_merit
+            FROM vote_sessions v2
+            JOIN deputy_votes dv2 ON dv2.votacao_id = v2.id
+            GROUP BY v2.id, v2.proposicao_id, v2.tipo_deliberacao, v2.descricao
+            HAVING COUNT(CASE WHEN dv2.voto_original ILIKE 'Sim%' OR dv2.voto_original ILIKE 'N%' OR dv2.voto_original ILIKE 'Não%' THEN 1 END) > 0
+          ) v_nominal
+          GROUP BY v_nominal.proposicao_id
         ) p_stats ON p_stats.proposicao_id = p.id
         WHERE 1=1
       `;

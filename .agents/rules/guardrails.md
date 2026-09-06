@@ -82,8 +82,15 @@ Este documento estabelece as regras obrigatórias e princípios arquiteturais qu
   - Sempre buscar e manter a máxima cobertura de testes unitários nas lógicas de aplicação, cálculo de afinidade, parsers, hooks e utilitários.
   - **Foco no Domínio e Valor de Negócio**: Evitar testes puramente superficiais ou meramente cosméticos. Os testes unitários devem exercitar cenários reais de negócio, casos de borda legislativos, formatos legados, coerção de dados e robustez de fluxo do usuário.
 - **Boas Práticas de Código e SonarQube**:
-  - **typescript:S6582**: Sempre priorizar o uso de encadeamento opcional (*optional chaining*, ex: `objeto?.propriedade`, `array?.[index]`, `funcao?.()`) em vez de encadeamento redundante com operador lógico AND (`objeto && objeto.propriedade`), mantendo o código mais conciso, limpo e legível.
-  - **Complexidade Cognitiva**: Manter funções com complexidade cognitiva reduzida (limite recomendado <= 15). Extrair blocos lógicos de parsing, validação, coerção e transformações em funções auxiliares puras e isoladas.
+  - **Complexidade Cognitiva (<= 15)**: Manter funções e componentes com complexidade cognitiva reduzida (limite estrito <= 15).
+    - Extrair blocos lógicos de parsing, validação, ordenação e coerção em funções utilitárias puras fora do componente.
+    - Em componentes com renderização extensa de cartões ou listas (ex: `RevisaoPage`, `VoteForm`, `ProjectDetailsClient`), extrair subcomponentes dedicados (ex: `AnsweredPropositionCard`, `UnvotedPropositionCard`, `SessionsSelectorGrid`).
+  - **typescript:S3358 (Operadores Ternários Aninhados)**: Proibido o uso de operadores ternários aninhados (`cond1 ? a : cond2 ? b : c`). Extrair funções utilitárias isoladas (`getStatusBadgeClass`, `getToastTypeClass`) com cláusulas `if/return` claras.
+  - **typescript:S6582 (Encadeamento Opcional)**: Sempre priorizar o uso de encadeamento opcional (*optional chaining*, ex: `objeto?.propriedade`, `array?.[index]`, `funcao?.()`) em vez de encadeamento redundante com operador lógico AND (`objeto && objeto.propriedade`), mantendo o código mais conciso, limpo e legível.
+  - **typescript:S6571 (Ordenação com localeCompare)**: Ao utilizar `.sort()` em listas de strings, fornecer obrigatoriamente um comparador com `a.localeCompare(b, "pt-BR")` para assegurar ordenação correta e sensível a acentos no idioma português.
+  - **typescript:S6578 (Busca com Set.has)**: Em filtros que buscam pertinência em arrays dentro de iterações, converter coleções para `new Set(...)` e utilizar `set.has(item)` em vez de `array.includes(item)`.
+  - **typescript:S6557 (Type Aliases para Uniões)**: Criar `type` aliases explícitos para uniões de literais repetidas (ex: `type SortOption = "relevance" | "recent" | "oldest";`).
+  - **Espaçamento Explícito em JSX**: Evitar espaços soltos ao final de linhas antes de tags inline (`<strong>`, `<span>`). Utilizar `{" "}` explicitamente para prevenir avisos de espaçamento ambíguo.
   - **Web APIs Modernas (DOM & File/Blob)**:
     - Preferir `childNode.remove()` diretamente em vez de `parentNode.removeChild(childNode)`.
     - Preferir `await file.text()` ou `await blob.text()` (Promises modernas) em vez do padrão legado com eventos assíncronos de `FileReader#readAsText()`.

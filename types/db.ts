@@ -170,6 +170,7 @@ export interface PropositionWithVoteSession extends Proposition {
   is_merit?: boolean;
   has_merit?: boolean;
   total_nominal_sessions?: number;
+  nominal_session_ids?: string[];
 }
 
 export interface PropositionDetail extends PropositionWithVoteSession {
@@ -214,3 +215,18 @@ export interface CamaraPropositionSummary {
     descricaoTramitacao?: string;
   };
 }
+
+export interface PropositionDetailResponse {
+  proposition?: { id: number };
+  project?: { id: number };
+  sessions?: Array<{ id: string | number }>;
+  votes?: Array<{
+    deputado_id?: number;
+    politician_id?: number;
+    votacao_id?: string;
+    vote_session_id?: string;
+    voto_original: string;
+    sigla_partido?: string | null;
+    party_sigla?: string | null;
+  }>;
+}

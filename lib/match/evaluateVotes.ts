@@ -10,8 +10,10 @@ export interface MatchEvaluation {
 }
 
 /**
- * Extrai a opinião do usuário para um voto nominal do deputado,
- * priorizando o código da seção (granular) com fallback para o ID do projeto (legado).
+ * Extrai a opinião do usuário para um voto nominal do deputado.
+ * Prioriza o código da seção (granular). Caso a proposição possua votos
+ * granulares registrados, restringe a avaliação estritamente às sessões
+ * votadas pelo usuário, sem aplicar o voto geral legado como curinga.
  */
 export function resolveUserVoteForDetail(
   userVotes: GranularUserVotes | UserVotes,
@@ -24,6 +26,13 @@ export function resolveUserVoteForDetail(
 
   const propId = pv.proposicao_id;
   if (propId !== undefined && propId in userVotes) {
+    const hasGranularForProp = Object.keys(userVotes).some(
+      (k) => k.startsWith(`${propId}-`)
+    );
+    if (hasGranularForProp) {
+      return undefined;
+    }
+
     return userVotes[propId];
   }
 
@@ -86,3 +95,33 @@ export function evaluateVotesList(
 export function calculateAdherencePercent(matches: number, comparable: number): number | null {
   return comparable > 0 ? Number(((matches / comparable) * 100).toFixed(2)) : null;
 }
+
+/**
+ * Normaliza valores de adesão para a escala decimal [0, 1].
+ * Suporta entradas nulas, percentuais [0, 100] ou decimais [0, 1].
+ */
+export function normalizeAdherence(raw?: number | null): number | null {
+  if (raw === null || raw === undefined) return null;
+  const v = Number(raw);
+  if (Number.isNaN(v)) return null;
+  if (v >= 0 && v <= 1) return v;
+  if (v > 1 && v <= 100) return Math.min(1, v / 100);
+  if (v > 100) return Math.min(1, v / 10000);
+  return Math.max(0, Math.min(1, v));
+}
+
+/**
+ * Calcula o score bayesiano de ordenação para classificação justa de afinidade.
+ * Protege contra distorções onde parlamentares com apenas 1 voto comparável
+ * superariam parlamentares com dezenas de votos consistentes.
+ */
+export function calculateBayesianScore(
+  matches: number,
+  comparable: number,
+  prior = 0.5,
+  weight = 2
+): number {
+  if (comparable <= 0) return -1;
+  return (matches + prior * weight) / (comparable + weight);
+}
+

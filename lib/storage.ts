@@ -26,7 +26,6 @@ export interface StoredOpinionsExport {
 
 const STORAGE_KEY = "legisvisao_user_opinions";
 const GRANULAR_STORAGE_KEY = "legisvisao_user_granular_opinions";
-const MIGRATION_V3_KEY = "legisvisao_migration_v3_done";
 
 // --------------------------------------------------------------------
 // Opiniões Gerais sobre Projetos de Lei
@@ -79,11 +78,47 @@ export function saveStoredGranularAnswer(
   saveStoredGranularAnswers(updated);
 }
 
-export function removeStoredGranularAnswer(sessionId: string): void {
-  const current = getStoredGranularAnswers();
-  if (sessionId in current) {
-    const { [sessionId]: _, ...rest } = current;
-    saveStoredGranularAnswers(rest);
+export function removeStoredAnswer(projectId: number | string): void {
+  const current = getStoredAnswers();
+  const idNum = Number(projectId);
+  const idStr = String(projectId);
+  if (idNum in current || idStr in current) {
+    const copy = { ...current };
+    delete copy[idNum];
+    delete copy[idStr];
+    saveStoredAnswers(copy);
+  }
+}
+
+export function removeStoredGranularAnswer(sessionId: string, propositionId?: number | string): void {
+  const currentGranular = getStoredGranularAnswers();
+  let hasGranularChanges = false;
+  const nextGranular = { ...currentGranular };
+
+  if (sessionId in nextGranular) {
+    delete nextGranular[sessionId];
+    hasGranularChanges = true;
+  }
+
+  if (propositionId !== undefined) {
+    const propKey = String(propositionId);
+    if (propKey in nextGranular) {
+      delete nextGranular[propKey];
+      hasGranularChanges = true;
+    }
+  }
+
+  if (hasGranularChanges) {
+    saveStoredGranularAnswers(nextGranular);
+  }
+
+  // Limpa também do armazenamento legado se presente
+  if (propositionId !== undefined) {
+    removeStoredAnswer(propositionId);
+  }
+  const currentLegacy = getStoredAnswers();
+  if (sessionId in currentLegacy || Number(sessionId) in currentLegacy) {
+    removeStoredAnswer(sessionId);
   }
 }
 
@@ -91,18 +126,161 @@ export function removeStoredGranularAnswer(sessionId: string): void {
 // Contadores e Limpeza
 // --------------------------------------------------------------------
 
-export function getStoredAnswersCount(): number {
-  const generalCount = Object.keys(getStoredAnswers()).length;
-  const granularCount = Object.keys(getStoredGranularAnswers()).length;
-  return generalCount + granularCount;
+/**
+ * Calcula a contagem de opiniões únicas e válidas, impedindo que propostas
+ * registradas no formato legado sejam somadas em duplicidade com sessões granulares.
+ */
+export function calculateUniqueOpinionsCount(
+  answers: StoredAnswers,
+  granular: StoredGranularAnswers,
+  validSessionIds?: Set<string>
+): number {
+  const representedPropIds = new Set<string>();
+  let granularCount = 0;
+
+  for (const key of Object.keys(granular)) {
+    if (validSessionIds && !validSessionIds.has(key)) {
+      continue;
+    }
+    granularCount++;
+    const prefix = key.split("-")[0];
+    representedPropIds.add(prefix);
+    representedPropIds.add(key);
+  }
+
+  let generalCount = 0;
+  for (const propId of Object.keys(answers)) {
+    if (!representedPropIds.has(String(propId))) {
+      generalCount++;
+    }
+  }
+
+  return granularCount + generalCount;
 }
 
-export function getStoredGeneralAnswersCount(): number {
-  return Object.keys(getStoredAnswers()).length;
+export function getStoredAnswersCount(validSessionIds?: Set<string>): number {
+  return calculateUniqueOpinionsCount(
+    getStoredAnswers(),
+    getStoredGranularAnswers(),
+    validSessionIds
+  );
 }
 
-export function getStoredGranularAnswersCount(): number {
-  return Object.keys(getStoredGranularAnswers()).length;
+function filterValidGranularAnswers(
+  currentGranular: StoredGranularAnswers,
+  validSessionIds: Set<string>
+): { nextGranular: StoredGranularAnswers; removed: string[] } {
+  const nextGranular: StoredGranularAnswers = {};
+  const removed: string[] = [];
+
+  for (const [sId, opinion] of Object.entries(currentGranular)) {
+    if (validSessionIds.has(sId)) {
+      nextGranular[sId] = opinion;
+    } else {
+      removed.push(sId);
+    }
+  }
+
+  return { nextGranular, removed };
+}
+
+function migrateLegacyToGranular(
+  currentLegacy: StoredAnswers,
+  validSessionIds: Set<string>,
+  nextGranular: StoredGranularAnswers,
+  propositionToSessionMap?: Record<number, string>
+): { migrated: number; remainingLegacy: StoredAnswers } {
+  let migrated = 0;
+  const remainingLegacy: StoredAnswers = {};
+
+  for (const [propIdStr, opinion] of Object.entries(currentLegacy)) {
+    const propId = Number(propIdStr);
+    const targetSessionId =
+      propositionToSessionMap?.[propId] ?? (validSessionIds.has(propIdStr) ? propIdStr : undefined);
+
+    if (targetSessionId && validSessionIds.has(targetSessionId)) {
+      if (!nextGranular[targetSessionId]) {
+        nextGranular[targetSessionId] = opinion;
+        migrated++;
+      }
+    } else if (!targetSessionId) {
+      remainingLegacy[propIdStr] = opinion;
+    }
+  }
+
+  return { migrated, remainingLegacy };
+}
+
+function persistSanitizationChanges(
+  nextGranular: StoredGranularAnswers,
+  remainingLegacy: StoredAnswers,
+  currentGranular: StoredGranularAnswers,
+  currentLegacy: StoredAnswers,
+  hasRemovalsOrMigrations: boolean
+): void {
+  const hasGranularChanged =
+    hasRemovalsOrMigrations ||
+    Object.keys(nextGranular).length !== Object.keys(currentGranular).length;
+
+  const hasLegacyChanged = Object.keys(remainingLegacy).length !== Object.keys(currentLegacy).length;
+
+  if (hasGranularChanged) {
+    localStorage.setItem(GRANULAR_STORAGE_KEY, JSON.stringify(nextGranular));
+  }
+
+  if (hasLegacyChanged) {
+    if (Object.keys(remainingLegacy).length === 0) {
+      localStorage.removeItem(STORAGE_KEY);
+    } else {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(remainingLegacy));
+    }
+  }
+
+  if (hasGranularChanged || hasLegacyChanged) {
+    window.dispatchEvent(new Event("storage-answers-updated"));
+  }
+}
+
+/**
+ * Higieniza, converte e consolida o armazenamento local:
+ * 1. Converte automaticamente quaisquer opiniões legadas de 'answers' (por proposicao_id)
+ *    para o formato canônico 'granularAnswers' (por votacao_id da sessão nominal),
+ *    eliminando duplicatas e débitos técnicos de versões legadas.
+ * 2. Expulga do 'granularAnswers' votos em sessões simbólicas que não possuem votação nominal.
+ * 3. Remove de 'answers' as opiniões que já foram migradas ou que sejam conhecidas,
+ *    garantindo que o sistema passe a rodar 100% sobre o formato canônico.
+ *
+ * @param validSessionIds Conjunto de IDs de sessões de votação nominais válidas
+ * @param propositionToSessionMap Mapeamento opcional proposicao_id -> votacao_id (sessão principal)
+ */
+export function sanitizeStoredAnswers(
+  validSessionIds: Set<string>,
+  propositionToSessionMap?: Record<number, string>
+): { removed: string[]; migrated: number } {
+  if (typeof window === "undefined" || !validSessionIds || validSessionIds.size === 0) {
+    return { removed: [], migrated: 0 };
+  }
+
+  const currentGranular = getStoredGranularAnswers();
+  const currentLegacy = getStoredAnswers();
+
+  const { nextGranular, removed } = filterValidGranularAnswers(currentGranular, validSessionIds);
+  const { migrated, remainingLegacy } = migrateLegacyToGranular(
+    currentLegacy,
+    validSessionIds,
+    nextGranular,
+    propositionToSessionMap
+  );
+
+  persistSanitizationChanges(
+    nextGranular,
+    remainingLegacy,
+    currentGranular,
+    currentLegacy,
+    removed.length > 0 || migrated > 0
+  );
+
+  return { removed, migrated };
 }
 
 export function clearStoredAnswers(): void {
@@ -112,91 +290,56 @@ export function clearStoredAnswers(): void {
   window.dispatchEvent(new Event("storage-answers-updated"));
 }
 
-// --------------------------------------------------------------------
-// Migração v3: Opiniões por proposicao_id → votacao_id (Seção)
-// --------------------------------------------------------------------
-
 /**
- * Verifica se a migração automática de opiniões v2 → v3 já foi executada.
+ * Aplica respostas importadas (legadas e/ou granulares) ao armazenamento local.
+ * Suporta modo 'replace' (padrão) e 'merge'.
  */
-export function isMigrationV3Done(): boolean {
-  if (typeof window === "undefined") return true;
-  return localStorage.getItem(MIGRATION_V3_KEY) === "true";
-}
-
-/**
- * Reseta o flag de migração v3 para forçar re-execução.
- * Utilizado quando o usuário importa um arquivo v1/v2 que contém
- * opiniões no formato antigo (por proposicao_id) que precisam ser
- * convertidas para o formato granular (por votacao_id).
- */
-export function resetMigrationV3Flag(): void {
+export function applyImportedAnswers(
+  answers?: StoredAnswers,
+  granularAnswers?: StoredGranularAnswers,
+  mode: "replace" | "merge" = "replace"
+): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(MIGRATION_V3_KEY);
-}
 
-/**
- * Migra opiniões armazenadas no formato legado (por proposicao_id)
- * para o formato granular (por votacao_id da seção de votação).
- *
- * Requer um mapeamento proposicao_id → votacao_id fornecido pelo
- * componente que possui os dados das proposições carregadas da API.
- *
- * A migração é idempotente: não sobrescreve opiniões granulares
- * já existentes e marca-se como concluída após a primeira execução.
- *
- * @param propositionToSessionMap Mapa { proposicao_id: votacao_id }
- * @returns Contagem de opiniões migradas e ignoradas
- */
-export function migrateStoredAnswersToGranular(
-  propositionToSessionMap: Record<number, string>
-): { migrated: number; skipped: number } {
-  if (typeof window === "undefined") return { migrated: 0, skipped: 0 };
-
-  if (isMigrationV3Done()) {
-    return { migrated: 0, skipped: 0 };
-  }
-
-  const oldAnswers = getStoredAnswers();
-  const existingGranular = getStoredGranularAnswers();
-  let migrated = 0;
-  let skipped = 0;
-
-  for (const [propIdStr, opinion] of Object.entries(oldAnswers)) {
-    const propId = Number(propIdStr);
-    const sessionId = propositionToSessionMap[propId];
-
-    if (sessionId && !(sessionId in existingGranular)) {
-      existingGranular[sessionId] = opinion;
-      migrated++;
-    } else if (!sessionId) {
-      skipped++;
+  if (granularAnswers && Object.keys(granularAnswers).length > 0) {
+    if (mode === "merge") {
+      const existing = getStoredGranularAnswers();
+      saveStoredGranularAnswers({ ...existing, ...granularAnswers });
+    } else {
+      saveStoredGranularAnswers(granularAnswers);
     }
-    // Se já existe em granular, não sobrescreve (preserva opinião mais recente)
   }
 
-  if (migrated > 0) {
-    saveStoredGranularAnswers(existingGranular);
+  if (answers && Object.keys(answers).length > 0) {
+    if (mode === "merge") {
+      const existing = getStoredAnswers();
+      saveStoredAnswers({ ...existing, ...answers });
+    } else {
+      saveStoredAnswers(answers);
+    }
   }
-
-  // Marca migração como concluída mesmo se houve skipped
-  // (proposições sem sessão mapeada não devem bloquear a migração)
-  localStorage.setItem(MIGRATION_V3_KEY, "true");
-
-  return { migrated, skipped };
 }
 
 // --------------------------------------------------------------------
-// Exportação para Arquivo JSON (Formato v2)
+// Exportação para Arquivo JSON (Formato v3)
 // --------------------------------------------------------------------
 
-export function exportAnswersToJson(): void {
+export function exportAnswersToJson(validSessionIds?: Set<string>): void {
   if (typeof window === "undefined") return;
   const answers = getStoredAnswers();
   const granularAnswers = getStoredGranularAnswers();
-  const generalCount = Object.keys(answers).length;
-  const granularCount = Object.keys(granularAnswers).length;
-  const total = generalCount + granularCount;
+
+  let filteredGranular = granularAnswers;
+  if (validSessionIds && validSessionIds.size > 0) {
+    filteredGranular = {};
+    for (const [key, val] of Object.entries(granularAnswers)) {
+      if (validSessionIds.has(key)) {
+        filteredGranular[key] = val;
+      }
+    }
+  }
+
+  const total = calculateUniqueOpinionsCount(answers, filteredGranular, validSessionIds);
 
   if (total === 0) {
     alert("Você ainda não registrou nenhuma opinião para exportar.");
@@ -205,11 +348,11 @@ export function exportAnswersToJson(): void {
 
   const exportData: StoredOpinionsExport = {
     app: "LegisVisão",
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     totalOpinions: total,
     answers,
-    granularAnswers,
+    granularAnswers: filteredGranular,
   };
 
   const blob = new Blob([JSON.stringify(exportData, null, 2)], {
@@ -310,9 +453,7 @@ export async function parseAndValidateAnswersFile(
   const normalizedAnswers = extractNormalizedAnswers(obj.answers);
   const normalizedGranular = extractNormalizedGranular(obj.granularAnswers);
 
-  const total =
-    Object.keys(normalizedAnswers).length +
-    Object.keys(normalizedGranular).length;
+  const total = calculateUniqueOpinionsCount(normalizedAnswers, normalizedGranular);
 
   if (total === 0) {
     throw new Error("O arquivo não contém nenhuma opinião válida para importar.");
@@ -333,20 +474,7 @@ export async function importAnswersFromJson(
   try {
     const { answers, granularAnswers, total } = await parseAndValidateAnswersFile(file);
 
-    // Salvar respostas gerais legadas (v1/v2) para migração posterior
-    if (Object.keys(answers).length > 0) {
-      saveStoredAnswers(answers);
-      // Resetar flag de migração para que as opiniões legadas importadas
-      // sejam convertidas para o formato granular na próxima carga de dados
-      resetMigrationV3Flag();
-    }
-
-    // Salvar respostas granulares diretamente (v2/v3)
-    if (Object.keys(granularAnswers).length > 0) {
-      const existingGranular = getStoredGranularAnswers();
-      const merged = { ...existingGranular, ...granularAnswers };
-      saveStoredGranularAnswers(merged);
-    }
+    applyImportedAnswers(answers, granularAnswers, "merge");
 
     if (onSuccess) onSuccess(total);
   } catch (err: unknown) {

@@ -3,7 +3,7 @@
 # 🏛️ LegisVisão
 ### Plataforma Cívica de Transparência Legislativa e Análise de Afinidade
 
-[![Next.js](https://img.shields.io/badge/Next.js-16.3.2-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-16.3.4-black?style=for-the-badge&logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
 [![TailwindCSS](https://img.shields.io/badge/Tailwind-CSS-38B2AC?style=for-the-badge&logo=tailwind-css)](https://tailwindcss.com/)
@@ -26,7 +26,7 @@
 
 O **LegisVisão** é uma plataforma cívica de código aberto desenvolvida para aproximar a sociedade civil das deliberações do Poder Legislativo Brasileiro.
 
-A aplicação permite que qualquer cidadão opine (**CONCORDO** ou **DISCORDO**) sobre propostas de lei reais (PL, PEC, PLP, MPV votadas no Plenário da Câmara dos Deputados) e compare seus posicionamentos de forma determinística com os votos nominais registrados pelos 513 Deputados Federais e as bancadas partidárias da 57ª Legislatura (2023–2027).
+A aplicação permite que qualquer cidadão opine (**CONCORDO** ou **DISCORDO**) sobre propostas de lei reais e deliberações nominais específicas (mérito, destaques e emendas votadas no Plenário da Câmara dos Deputados) e compare seus posicionamentos de forma determinística com os votos nominais registrados pelos 513 Deputados Federais e as bancadas partidárias da 57ª Legislatura (2023–2027).
 
 A ferramenta opera sob o modelo **Local-First (Privacidade Absoluta)**: nenhuma escolha, voto ou preferência do visitante é enviada para servidores ou gravada em bancos de dados remotos.
 
@@ -43,7 +43,7 @@ A ferramenta opera sob o modelo **Local-First (Privacidade Absoluta)**: nenhuma 
 ## 🎯 Princípios Fundamentais
 
 1. **Fonte de Verdade Pública Oficial**: Os dados legislativos provêm diretamente da API de Dados Abertos da **Câmara dos Deputados** (`https://dadosabertos.camara.leg.br/api/v2`). O banco de dados PostgreSQL atua estritamente como um cache persistente e camada de indexação de alta velocidade.
-2. **Cálculo Determinístico e Aberto**: O índice de afinidade é uma divisão aritmética transparente (`Concordâncias / Comparações Válidas × 100`). Não há pesos ocultos, algoritmos opacos ou inteligência artificial intermediando o resultado.
+2. **Cálculo Determinístico e Aberto**: O índice de afinidade é uma divisão aritmética transparente (`Concordâncias / Comparações Válidas × 100`). Para a ordenação do ranking de parlamentares, o sistema aplica suavização bayesiana para evitar distorções amostrais, garantindo que parlamentares com alta consistência ao longo de dezenas de votações prevaleçam sobre casos isolados de suplentes com apenas 1 voto. Não há pesos ideológicos ocultos ou algoritmos opacos intermediando o resultado.
 3. **Privacidade Local-First**: O armazenamento de respostas ocorre 100% no `localStorage` do dispositivo do visitante, com funcionalidade nativa de backup e restauração em arquivo `.json`.
 4. **Neutralidade Cívica**: A plataforma não emite juízo de valor, não ranqueia representantes por mérito e não faz recomendação eleitoral. Ela apenas confronta posições expressas com votos nominais públicos.
 
@@ -131,9 +131,9 @@ sequenceDiagram
     API-->>UI: Responde catálogo filtrado
     UI-->>Usuario: Exibe proposições com ementas e links oficiais
 
-    loop Para cada proposição avaliada
-        Usuario->>UI: Clica em "CONCORDO" ou "DISCORDO"
-        UI->>LocalStorage: Salva resposta em legisvisao_user_opinions
+    loop Para cada proposição ou seção avaliada
+        Usuario->>UI: Clica em "CONCORDO" ou "DISCORDO" (Mérito ou Destaque)
+        UI->>LocalStorage: Salva resposta em legisvisao_user_granular_opinions
     end
 
     Note over Usuario,DB: 2. Consulta de Resultados e Afinidade
@@ -363,21 +363,32 @@ erDiagram
 ### 1. Cálculo Aritmético de Afinidade
 O motor de cálculo (`lib/match/`) cruza determinística e pontualmente cada resposta do usuário com os votos nominais dos deputados:
 
-$$\text{Índice de Afinidade (\\%)} = \left( \frac{\text{Concordâncias}}{\text{Votações Comparáveis}} \right) \times 100$$
+$$\text{Índice de Afinidade} = \left( \frac{\text{Concordâncias}}{\text{Votações Comparáveis}} \right) \times 100$$
 
 - **Concordância**: Usuário **CONCORDO** $\leftrightarrow$ Deputado **SIM** / Usuário **DISCORDO** $\leftrightarrow$ Deputado **NÃO**.
 - **Divergência**: Usuário **CONCORDO** $\leftrightarrow$ Deputado **NÃO** / Usuário **DISCORDO** $\leftrightarrow$ Deputado **SIM**.
 - **Não comparável** (ignorado do denominador): *Abstenção*, *Obstrução*, *Artigo 17* ou *Ausente*.
 - **Afinidade Partidária**: Média aritmética dos índices de convergência de todos os deputados filiados à legenda nas matérias avaliadas.
 
-### 2. Hierarquia Determinística de Eleição da Votação Principal (`classifyVoteSession`)
+### 2. Critério de Ordenação do Ranking (Suavização Bayesiana)
+Enquanto a porcentagem nominal (%) exibida em cada cartão reflete estritamente a **taxa empírica real** de concordância (ex: 100% em 1 voto ou 95% em 20 votos; ou 72% no PV com 204 votos vs 72% no PDT com 668 votos), a ordenação da lista de parlamentares e partidos aplica uma **média bayesiana** para posicionar no topo quem sustentou alinhamento em amostras sólidas:
+
+$$\text{Score de Ordenação} = \frac{\text{Concordâncias} + (P \times W)}{\text{Comparações Válidas} + W} = \frac{\text{Concordâncias} + 1}{\text{Comparações Válidas} + 2}$$
+
+- **Presunção Neutra a Priori ($P = 0.5$ / 50%)**: Assume neutralidade perfeita antes da primeira observação de voto, sem viés ideológico ou partidário.
+- **Peso de Amortização ($W = 2$ / Regra de Laplace)**:
+  - **Em poucas votações (1 a 5 votos)**: Tem impacto proporcionalmente alto, evitando que um único voto isolado de um suplente ou micropartido alcance artificialmente o topo do ranking com 100%.
+  - **Em muitas votações (dezenas ou centenas de votos)**: O peso da dúvida inicial se dissipa para menos de 1%, permitindo que a taxa real de adesão do partido ou parlamentar prevaleça naturalmente, sem favorecer artificialmente legendas gigantes apenas pelo tamanho de suas bancadas.
+- **Critérios de Desempate Subsequentes**: Taxa percentual bruta real, total absoluto de concordâncias e ordem alfabética da legenda ou nome parlamentar.
+
+### 3. Hierarquia Determinística de Eleição da Votação Principal (`classifyVoteSession`)
 Para proposições com múltiplas deliberações (Texto-Base, Destaques, Emendas e Requerimentos), o sistema elege a sessão principal com base em 4 níveis de desempate estrito:
 1. **Nível 1 (Mérito Substantivo):** Prioridade 1 (Texto-Base, Substitutivos, 1º e 2º Turnos de PEC, Projetos de Lei de Conversão) $>$ Prioridade 2 (Emendas) $>$ Prioridade 3 (Destaques / DTQ / DVS) $>$ Prioridade 4 (Requerimentos de Pauta). Expressões de praxe regimental como *"ressalvado o destaque"* são tratadas com precisão sintática para não rebaixar textos de mérito legítimo.
 2. **Nível 2 (Presença Obrigatória de Votos Nominais):** Exige quórum nominal registrado no painel eletrônico (Sim/Não). Matérias com texto-base aprovado simbolicamente (0 votos nominais) não são computadas no cálculo de afinidade e são disponibilizadas apenas em modo consulta.
 3. **Nível 3 (Atualidade Temporal):** `data_hora DESC` (deliberação mais recente que consolidou a decisão final da Câmara, como o 2º turno sobre o 1º turno).
 4. **Nível 4 (Desempate Alfanumérico):** `ID da Sessão` (`localeCompare` determinístico).
 
-### 3. Heurística de Relevância Cívica das Proposições (`sortPropositionsByRelevance`)
+### 4. Heurística de Relevância Cívica das Proposições (`sortPropositionsByRelevance`)
 No Simulador de Votação (`/opiniao`), as matérias são apresentadas por padrão ordenadas por impacto e representatividade no Plenário:
 1. **Maior Quórum Total (`total_sim + total_nao + total_outros` decrescente):** Prioriza grandes deliberações de plenário (480 a 505 deputados presentes).
 2. **Menor Abstenção e Outros Votos (`total_outros` crescente):** Prioriza votações com posicionamento categórico dos parlamentares em Sim ou Não.

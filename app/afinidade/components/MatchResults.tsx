@@ -4,17 +4,16 @@ import { useMemo } from "react";
 import Link from "next/link";
 import {
   FaChevronRight,
-  FaVoteYea,
   FaLandmark,
   FaUserTie,
-  FaMapMarkerAlt,
-  FaInfoCircle,
   FaGlobeAmericas,
   FaBalanceScale,
   FaFilter,
 } from "react-icons/fa";
 import type { Party } from "@/types/db";
 import type { DeputyMatch, PartyMatchResult } from "@/lib/match/types";
+import { calculateBayesianScore } from "@/lib/match";
+import { MatchResultsSkeleton } from "./MatchResultsSkeleton";
 
 export type ResultsShape = {
   deputies: DeputyMatch[];
@@ -60,30 +59,29 @@ function sortRankingEntities<T extends {
   comparable_count?: number;
   match?: PartyMatchResult;
 }>(a: T, b: T): number {
+  const matchesA = a.matches_count ?? a.match?.matches_count ?? 0;
+  const compA = a.comparable_count ?? a.match?.comparable_count ?? 0;
+  const matchesB = b.matches_count ?? b.match?.matches_count ?? 0;
+  const compB = b.comparable_count ?? b.match?.comparable_count ?? 0;
+
+  const scoreA = calculateBayesianScore(matchesA, compA);
+  const scoreB = calculateBayesianScore(matchesB, compB);
+  if (Math.abs(scoreB - scoreA) > 0.0001) return scoreB - scoreA;
+
   const adhA = a.adherence ?? a.match?.adherence ?? -1;
   const adhB = b.adherence ?? b.match?.adherence ?? -1;
   if (adhB !== adhA) return adhB - adhA;
 
-  const compA = a.comparable_count ?? a.match?.comparable_count ?? 0;
-  const compB = b.comparable_count ?? b.match?.comparable_count ?? 0;
-  if (compB !== compA) return compB - compA;
-
-  const matchesA = a.matches_count ?? a.match?.matches_count ?? 0;
-  const matchesB = b.matches_count ?? b.match?.matches_count ?? 0;
   if (matchesB !== matchesA) return matchesB - matchesA;
+  if (compB !== compA) return compB - compA;
 
   const labelA = (a.sigla || a.nome_eleitoral || a.nome || "").toString();
   const labelB = (b.sigla || b.nome_eleitoral || b.nome || "").toString();
-  return labelA.localeCompare(labelB);
+  return labelA.localeCompare(labelB, "pt-BR");
 }
 
 function LoadingState() {
-  return (
-    <div className="py-16 text-center text-muted-foreground flex flex-col items-center gap-3">
-      <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
-      <span>Calculando sua afinidade com os Deputados Federais...</span>
-    </div>
-  );
+  return <MatchResultsSkeleton />;
 }
 
 function EmptyState() {
@@ -106,12 +104,10 @@ function EmptyState() {
 
 interface PartyCardProps {
   party: NormalizedParty;
-  rank: number;
 }
 
-function PartyCard({ party, rank }: PartyCardProps) {
+function PartyCard({ party }: Readonly<PartyCardProps>) {
   const pct = party.adherence === null ? null : Math.round(party.adherence * 100);
-  const isTop3 = rank <= 3 && pct !== null && pct > 0;
   const totalComp = party.match?.comparable_count ?? 0;
   const totalMatches = party.match?.matches_count ?? 0;
 
@@ -133,16 +129,6 @@ function PartyCard({ party, rank }: PartyCardProps) {
     >
       <div className="flex items-center justify-between gap-4 mb-2.5">
         <div className="flex items-center gap-3">
-          <span
-            className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-              isTop3
-                ? "bg-primary text-white shadow-soft"
-                : "bg-muted text-muted-foreground"
-            }`}
-          >
-            #{rank}
-          </span>
-
           {/* Logo do Partido */}
           <div className="w-10 h-10 rounded-xl bg-white/90 dark:bg-muted border border-border shrink-0 flex items-center justify-center p-1 overflow-hidden shadow-soft">
             {partyLogoUrl ? (
@@ -175,7 +161,8 @@ function PartyCard({ party, rank }: PartyCardProps) {
             <span className="text-xs text-muted-foreground block mt-0.5">
               {totalComp > 0 ? (
                 <>
-                  Baseado em <strong>{totalComp}</strong> {totalComp === 1 ? "voto de deputado filiado" : "votos de deputados filiados"}{" "}
+                  Baseado em <strong>{totalComp}</strong>{" "}
+                  {totalComp === 1 ? "voto de deputado filiado" : "votos de deputados filiados"}{" "}
                   <span className="text-primary font-semibold">({totalMatches} {totalMatches === 1 ? "concordância" : "concordâncias"})</span>
                 </>
               ) : (
@@ -187,7 +174,7 @@ function PartyCard({ party, rank }: PartyCardProps) {
 
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-lg sm:text-xl font-extrabold text-foreground">
-            {pct !== null ? `${pct}%` : "—"}
+            {pct !== null ? `${pct}%` : "-"}
           </span>
           <FaChevronRight className="w-3 h-3 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-smooth" />
         </div>
@@ -207,7 +194,7 @@ interface DeputyCardProps {
   deputy: DeputyMatch;
 }
 
-function DeputyCard({ deputy }: DeputyCardProps) {
+function DeputyCard({ deputy }: Readonly<DeputyCardProps>) {
   const pct = deputy.adherence === null ? null : Math.round(deputy.adherence * 100);
   const compCount = deputy.comparable_count ?? 0;
   const matchCount = deputy.matches_count ?? 0;
@@ -230,7 +217,9 @@ function DeputyCard({ deputy }: DeputyCardProps) {
           <span>{deputy.sigla_partido || "Dep. Federal"}</span>
           <span>•</span>
           <span className="text-[11px] text-muted-foreground">
-            <strong>{compCount}</strong> {compCount === 1 ? "voto considerado" : "votos considerados"} ({matchCount} {matchCount === 1 ? "concordância" : "concordâncias"})
+            Baseado em <strong>{compCount}</strong>{" "}
+            {compCount === 1 ? "voto considerado" : "votos considerados"}{" "}
+            <span className="text-primary font-semibold">({matchCount} {matchCount === 1 ? "concordância" : "concordâncias"})</span>
           </span>
         </div>
       </div>
@@ -243,7 +232,7 @@ function DeputyCard({ deputy }: DeputyCardProps) {
           />
         </div>
         <span className="font-bold text-sm text-foreground w-10 text-right">
-          {pct !== null ? `${pct}%` : "—"}
+          {pct !== null ? `${pct}%` : "-"}
         </span>
       </div>
     </Link>
@@ -258,7 +247,7 @@ export default function MatchResults({
   onStateChange,
   partyFilter,
   onPartyChange,
-}: MatchResultsProps) {
+}: Readonly<MatchResultsProps>) {
   if (loading) return <LoadingState />;
   if (!results) return <EmptyState />;
 
@@ -307,16 +296,25 @@ export default function MatchResults({
 
   return (
     <div className="space-y-12">
-      {/* Banner de Neutralidade */}
+      {/* Banner de Transparência e Critério de Ordenação */}
       <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 dark:bg-amber-950/20 border border-amber-500/30 text-xs sm:text-sm text-foreground flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-soft">
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           <div className="flex items-center gap-2 font-bold text-amber-900 dark:text-amber-300">
             <FaBalanceScale className="text-amber-600 dark:text-amber-400 w-4 h-4 shrink-0" />
-            <span>Aviso de Transparência Legislativa:</span>
+            <span>Como organizamos este resultado (Transparência):</span>
           </div>
           <p className="text-muted-foreground text-xs leading-relaxed">
-            <strong>Esta ferramenta não recomenda votos nem candidatos. Apenas compara dados públicos.</strong> Os índices apresentados decorrem do cruzamento determinístico das suas opiniões com as votações nominais oficiais registradas pelos Deputados Federais na Câmara dos Deputados.
+            <strong>Esta ferramenta não indica votos nem candidatos.</strong>{" "}
+            Apenas compara as suas escolhas com as votações oficiais dos deputados federais na Câmara.
           </p>
+          <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-1 leading-relaxed">
+            <li>
+              <strong>A porcentagem (%):</strong> Mostra exatamente quantas vezes você e o político (ou partido) votaram do mesmo jeito nas propostas analisadas.
+            </li>
+            <li>
+              <strong>A ordem da lista:</strong> Dá preferência a quem votou junto com você em várias propostas. Assim, quem votou igual a você em 10 leis fica na frente de quem só votou em 1 lei, garantindo uma comparação mais equilibrada e justa.
+            </li>
+          </ul>
         </div>
       </div>
 
@@ -346,8 +344,8 @@ export default function MatchResults({
           </p>
         ) : (
           <div className="space-y-3">
-            {sortedParties.map((party, index) => (
-              <PartyCard key={party.id} party={party} rank={index + 1} />
+            {sortedParties.map((party) => (
+              <PartyCard key={party.id} party={party} />
             ))}
           </div>
         )}
