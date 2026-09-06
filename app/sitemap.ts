@@ -40,6 +40,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
+  if (!process.env.DATABASE_URL) {
+    return staticRoutes;
+  }
+
   try {
     // 1. Deputados Federais
     const deputies = await db<Array<{ id: number }>>`SELECT id FROM deputies WHERE is_active = TRUE`;
