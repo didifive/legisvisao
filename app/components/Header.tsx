@@ -22,12 +22,25 @@ import { urls } from "@/lib/urls";
 import {
   exportAnswersToJson,
   parseAndValidateAnswersFile,
-  saveStoredAnswers,
+  applyImportedAnswers,
   clearStoredAnswers,
   getStoredAnswersCount,
   type StoredAnswers,
+  type StoredGranularAnswers,
 } from "@/lib/storage";
 import { ConfirmationModal } from "./ui/ConfirmationModal";
+
+export type ToastType = "success" | "error" | "info";
+
+function getToastTypeClass(type: ToastType): string {
+  if (type === "error") {
+    return "bg-card border-rose-500/30 text-rose-600 dark:text-rose-400";
+  }
+  if (type === "info") {
+    return "bg-card border-primary/30 text-primary";
+  }
+  return "bg-card border-emerald-500/30 text-emerald-600 dark:text-emerald-400";
+}
 
 export const Header = () => {
   const { isReady } = useSystemStatus();
@@ -40,6 +53,7 @@ export const Header = () => {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [pendingImport, setPendingImport] = useState<{
     answers: StoredAnswers;
+    granularAnswers: StoredGranularAnswers;
     total: number;
     fileName: string;
   } | null>(null);
@@ -47,7 +61,7 @@ export const Header = () => {
   // Toast Notification
   const [toast, setToast] = useState<{
     message: string;
-    type: "success" | "error" | "info";
+    type: ToastType;
   } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -113,15 +127,15 @@ export const Header = () => {
     if (e.target) e.target.value = "";
 
     try {
-      const { answers, total } = await parseAndValidateAnswersFile(file);
+      const { answers, granularAnswers, total } = await parseAndValidateAnswersFile(file);
       const currentCount = getStoredAnswersCount();
 
       if (currentCount === 0) {
-        saveStoredAnswers(answers);
+        applyImportedAnswers(answers, granularAnswers, "replace");
         showToast(`${total} opinião(ões) importada(s) com sucesso!`, "success");
         updateOpinionsCount();
       } else {
-        setPendingImport({ answers, total, fileName: file.name });
+        setPendingImport({ answers, granularAnswers, total, fileName: file.name });
         setIsImportModalOpen(true);
       }
     } catch (err: unknown) {
@@ -133,7 +147,7 @@ export const Header = () => {
 
   const handleConfirmImport = () => {
     if (!pendingImport) return;
-    saveStoredAnswers(pendingImport.answers);
+    applyImportedAnswers(pendingImport.answers, pendingImport.granularAnswers, "replace");
     showToast(`${pendingImport.total} opinião(ões) importada(s) com sucesso!`, "success");
     updateOpinionsCount();
     setIsImportModalOpen(false);
@@ -402,12 +416,9 @@ export const Header = () => {
       {/* Toast Notification */}
       {toast && (
         <output
-          className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl shadow-large border flex items-center gap-2.5 animate-bounce transition-smooth text-sm font-medium ${toast.type === "error"
-              ? "bg-card border-rose-500/30 text-rose-600 dark:text-rose-400"
-              : toast.type === "info"
-                ? "bg-card border-primary/30 text-primary"
-                : "bg-card border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
-            }`}
+          className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl shadow-large border flex items-center gap-2.5 animate-bounce transition-smooth text-sm font-medium ${getToastTypeClass(
+            toast.type
+          )}`}
         >
           {toast.type === "error" && <FaExclamationTriangle className="w-4 h-4 shrink-0" />}
           {toast.type === "info" && <FaInfoCircle className="w-4 h-4 shrink-0" />}

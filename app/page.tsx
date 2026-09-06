@@ -24,7 +24,7 @@ import {
 import { Button } from "./components/ui/Button";
 import { useSystemStatus } from "./components/SystemStatusProvider";
 import {
-  getStoredAnswers,
+  getStoredAnswersCount,
   exportAnswersToJson,
   clearStoredAnswers,
 } from "@/lib/storage";
@@ -36,12 +36,10 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true);
-    const answers = getStoredAnswers();
-    setOpinionsCount(Object.keys(answers).length);
+    setOpinionsCount(getStoredAnswersCount());
 
     const handleUpdate = () => {
-      const updated = getStoredAnswers();
-      setOpinionsCount(Object.keys(updated).length);
+      setOpinionsCount(getStoredAnswersCount());
     };
 
     window.addEventListener("storage-answers-updated", handleUpdate);
@@ -355,7 +353,7 @@ export default function Home() {
               <div className="flex flex-col sm:flex-row lg:flex-col gap-3 w-full lg:w-auto shrink-0">
                 <button
                   type="button"
-                  onClick={exportAnswersToJson}
+                  onClick={() => exportAnswersToJson()}
                   className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-border bg-card text-foreground font-semibold text-xs sm:text-sm hover:bg-muted transition-smooth shadow-soft"
                 >
                   <FaDownload className="text-primary w-4 h-4" />

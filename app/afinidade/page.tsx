@@ -8,20 +8,182 @@ import { useSystemStatus } from "@/app/components/SystemStatusProvider";
 import type {
   Party,
   DeputySearchResult,
+  PropositionDetailResponse,
 } from "@/types/db";
 import type {
   DeputyMatch,
   PartyMatchResult,
-  UserVotes,
+  GranularUserVotes,
   VoteDetailWithProposition,
 } from "@/lib/match/types";
 import {
   attachPropositionIdToVotes,
   calculatePoliticianMatch,
   calculatePartyMatch,
-  sortVoteSessionsDeterministic,
+  normalizeAdherence,
+  calculateBayesianScore,
 } from "@/lib/match";
-import { getStoredAnswers } from "@/lib/storage";
+import {
+  getStoredGranularAnswers,
+  sanitizeStoredAnswers,
+} from "@/lib/storage";
+import { buildPropositionSessionMapping } from "@/lib/propositionSessionMap";
+
+function extractPropIdsToFetch(
+  votes: GranularUserVotes,
+  sessionToPropMap?: Map<string, number>
+): number[] {
+  const propIdsSet = new Set<number>();
+
+  for (const key of Object.keys(votes)) {
+    if (sessionToPropMap?.has(key)) {
+      propIdsSet.add(sessionToPropMap.get(key)!);
+      continue;
+    }
+    const prefix = Number(key.split("-")[0]);
+    if (!Number.isNaN(prefix)) {
+      propIdsSet.add(prefix);
+    }
+  }
+
+  return Array.from(propIdsSet);
+}
+
+function aggregatePropositionVotes(propsData: PropositionDetailResponse[]) {
+  const rawVotes: Array<{
+    deputado_id: number;
+    votacao_id: string;
+    voto_original: string;
+    sigla_partido?: string | null;
+  }> = [];
+  const voteSessionToProposition: Record<string, number> = {};
+
+  for (const pd of propsData) {
+    if (!pd) continue;
+    const pId = pd.proposition?.id || pd.project?.id;
+    if (typeof pId !== "number") continue;
+
+    if (Array.isArray(pd.sessions)) {
+      for (const s of pd.sessions) {
+        voteSessionToProposition[String(s.id)] = pId;
+      }
+    }
+
+    if (pd.votes && Array.isArray(pd.votes)) {
+      for (const v of pd.votes) {
+        const vSessionId = String(v.votacao_id || v.vote_session_id || "");
+        rawVotes.push({
+          deputado_id: Number(v.deputado_id || v.politician_id),
+          votacao_id: vSessionId,
+          voto_original: v.voto_original,
+          sigla_partido: v.sigla_partido || v.party_sigla,
+        });
+      }
+    }
+  }
+
+  return { rawVotes, voteSessionToProposition };
+}
+
+function sortDeputyMatches(deputyMatches: DeputyMatch[]): DeputyMatch[] {
+  return deputyMatches.slice().sort((a, b) => {
+    const scoreA = calculateBayesianScore(a.matches_count ?? 0, a.comparable_count ?? 0);
+    const scoreB = calculateBayesianScore(b.matches_count ?? 0, b.comparable_count ?? 0);
+    if (Math.abs(scoreB - scoreA) > 0.0001) return scoreB - scoreA;
+
+    const adhA = a.adherence ?? -1;
+    const adhB = b.adherence ?? -1;
+    if (adhB !== adhA) return adhB - adhA;
+
+    const matchesA = a.matches_count ?? 0;
+    const matchesB = b.matches_count ?? 0;
+    if (matchesB !== matchesA) return matchesB - matchesA;
+
+    const compA = a.comparable_count ?? 0;
+    const compB = b.comparable_count ?? 0;
+    if (compB !== compA) return compB - compA;
+
+    return a.nome_eleitoral.localeCompare(b.nome_eleitoral, "pt-BR");
+  });
+}
+
+function sortPartyMatches(
+  partyMatches: Array<Party & { match: PartyMatchResult }>
+): Array<Party & { match: PartyMatchResult }> {
+  return partyMatches.slice().sort((a, b) => {
+    const matchesA = a.match?.matches_count ?? 0;
+    const compA = a.match?.comparable_count ?? 0;
+    const matchesB = b.match?.matches_count ?? 0;
+    const compB = b.match?.comparable_count ?? 0;
+
+    const scoreA = calculateBayesianScore(matchesA, compA);
+    const scoreB = calculateBayesianScore(matchesB, compB);
+    if (Math.abs(scoreB - scoreA) > 0.0001) return scoreB - scoreA;
+
+    const adhA = a.match?.adherence ?? -1;
+    const adhB = b.match?.adherence ?? -1;
+    if (adhB !== adhA) return adhB - adhA;
+
+    if (matchesB !== matchesA) return matchesB - matchesA;
+    if (compB !== compA) return compB - compA;
+
+    return a.sigla.localeCompare(b.sigla, "pt-BR");
+  });
+}
+
+async function fetchInitialAppData() {
+  const [deputiesRes, partiesRes, statesRes, propsRes] = await Promise.all([
+    fetch("/api/deputies"),
+    fetch("/api/parties"),
+    fetch("/api/states").catch(() => null),
+    fetch("/api/propositions?include_all=true").catch(() => null),
+  ]);
+
+  const deputiesJson = await deputiesRes.json();
+  const fetchedDeputies: DeputySearchResult[] = Array.isArray(deputiesJson)
+    ? deputiesJson
+    : deputiesJson?.results ?? [];
+
+  const partiesJson = await partiesRes.json();
+  const fetchedParties: Party[] = Array.isArray(partiesJson)
+    ? partiesJson
+    : partiesJson?.results ?? [];
+
+  let states: string[] = [];
+  if (statesRes?.ok) {
+    const statesData = await statesRes.json();
+    if (Array.isArray(statesData)) {
+      states = statesData;
+    }
+  }
+
+  if (states.length === 0) {
+    states = [
+      "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA",
+      "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN",
+      "RO", "RR", "RS", "SC", "SE", "SP", "TO"
+    ];
+  }
+
+  let sessionToPropMap = new Map<string, number>();
+
+  if (propsRes?.ok) {
+    const propsData = await propsRes.json();
+    const rawList = propsData?.propositions || propsData?.projects || [];
+    const { validSessionIds, propositionToSessionMap, sessionToPropMap: propMap } =
+      buildPropositionSessionMapping(rawList);
+    sessionToPropMap = propMap;
+
+    sanitizeStoredAnswers(validSessionIds, propositionToSessionMap);
+  }
+
+  return {
+    fetchedDeputies,
+    fetchedParties,
+    states,
+    sessionToPropMap,
+  };
+}
 
 export default function AfinidadePage() {
   const { isReady } = useSystemStatus();
@@ -37,44 +199,16 @@ export default function AfinidadePage() {
   async function loadInitialData() {
     setLoading(true);
     try {
-      const [deputiesRes, partiesRes, statesRes] = await Promise.all([
-        fetch("/api/deputies"),
-        fetch("/api/parties"),
-        fetch("/api/states").catch(() => null),
-      ]);
+      const { fetchedDeputies, fetchedParties, states, sessionToPropMap } =
+        await fetchInitialAppData();
+      setAvailableStates(states);
 
-      const deputiesJson = await deputiesRes.json();
-      const fetchedDeputies: DeputySearchResult[] = Array.isArray(deputiesJson)
-        ? deputiesJson
-        : deputiesJson?.results ?? [];
-
-      const partiesJson = await partiesRes.json();
-      const fetchedParties: Party[] = Array.isArray(partiesJson)
-        ? partiesJson
-        : partiesJson?.results ?? [];
-
-      if (statesRes && statesRes.ok) {
-        const statesData = await statesRes.json();
-        if (Array.isArray(statesData)) {
-          setAvailableStates(statesData);
-        }
-      }
-
-      if (availableStates.length === 0) {
-        const fallbackStates = [
-          "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA",
-          "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN",
-          "RO", "RR", "RS", "SC", "SE", "SP", "TO"
-        ];
-        setAvailableStates(fallbackStates);
-      }
-
-      const stored: UserVotes = getStoredAnswers();
-      const votesCount = Object.keys(stored).length;
+      const activeVotes: GranularUserVotes = getStoredGranularAnswers();
+      const votesCount = Object.keys(activeVotes).length;
       setHasVotes(votesCount > 0);
 
       if (votesCount > 0) {
-        await calculateAllMatches(stored, fetchedDeputies, fetchedParties);
+        await calculateAllMatches(activeVotes, fetchedDeputies, fetchedParties, sessionToPropMap);
       }
     } catch (err) {
       console.error("Erro ao carregar dados iniciais:", err);
@@ -85,27 +219,14 @@ export default function AfinidadePage() {
 
   // Calcula os índices de afinidade
   async function calculateAllMatches(
-    votes: UserVotes,
+    votes: GranularUserVotes,
     currentDeputies: DeputySearchResult[],
-    currentParties: Party[]
+    currentParties: Party[],
+    sessionToPropMap?: Map<string, number>
   ) {
     try {
-      function normalizeAdherence(raw?: number | null): number | null {
-        if (raw === null || raw === undefined) return null;
-        const v = Number(raw);
-        if (Number.isNaN(v)) return null;
-        if (v >= 0 && v <= 1) return v;
-        if (v > 1 && v <= 100) return Math.min(1, v / 100);
-        if (v > 100) return Math.min(1, v / 10000);
-        return Math.max(0, Math.min(1, v));
-      }
-
-      const propIds = Object.keys(votes).map((k) => Number(k)).filter((n) => !Number.isNaN(n));
-      if (propIds.length === 0) {
-        setCalculatedParties([]);
-        setAllCalculatedDeputies([]);
-        return;
-      }
+      const propIds = extractPropIdsToFetch(votes, sessionToPropMap);
+      if (propIds.length === 0) return;
 
       const propPromises = propIds.map((id) =>
         fetch(`/api/propositions/${id}`).then((r) => r.json()).catch((e) => {
@@ -113,80 +234,9 @@ export default function AfinidadePage() {
           return null;
         })
       );
-      const propsData = await Promise.all(propPromises);
+      const propsData: PropositionDetailResponse[] = (await Promise.all(propPromises)).filter(Boolean);
 
-      const rawVotes: Array<{
-        deputado_id: number;
-        votacao_id: string;
-        voto_original: string;
-        sigla_partido?: string | null;
-      }> = [];
-      const voteSessionToProposition: Record<string, number> = {};
-
-      for (const pd of propsData) {
-        if (!pd) continue;
-        const pId = pd.proposition?.id || pd.project?.id;
-        if (typeof pId !== "number") continue;
-
-        // Contabiliza votos nominais por sessão para permitir desempate correto na classificação
-        const votesBySessionId = new Map<string, number>();
-        if (Array.isArray(pd.votes)) {
-          for (const v of pd.votes) {
-            const sId = String(v.votacao_id || v.vote_session_id || "");
-            if (sId) {
-              votesBySessionId.set(sId, (votesBySessionId.get(sId) || 0) + 1);
-            }
-          }
-        }
-
-        // Identifica a sessão principal de deliberação (mérito / texto-base com votos nominais)
-        let primarySessionId: string | null = null;
-        if (Array.isArray(pd.sessions) && pd.sessions.length > 0) {
-          const sessionsWithVotes = pd.sessions
-            .map((s: { id: string | number; data_hora?: string; descricao?: string; tipo_deliberacao?: string }) => ({
-              ...s,
-              total_votos: votesBySessionId.get(String(s.id)) || 0,
-            }))
-            .filter((s: { total_votos: number }) => s.total_votos > 0);
-
-          const sortedSessions = sortVoteSessionsDeterministic(
-            sessionsWithVotes.length > 0 ? sessionsWithVotes : pd.sessions
-          );
-
-          // CRÍTICO: Só usa para o cálculo de afinidade se a sessão eleita for genuinamente de MÉRITO (Prioridade 1)
-          const elected = sortedSessions[0];
-          if (
-            elected &&
-            elected.classification.type === "MERITO" &&
-            elected.classification.priority === 1 &&
-            (votesBySessionId.get(String(elected.id)) || 0) > 0
-          ) {
-            primarySessionId = String(elected.id);
-          }
-        }
-
-        // Se uma sessão de mérito nominal foi identificada, vincula para comparação
-        if (primarySessionId) {
-          voteSessionToProposition[primarySessionId] = pId;
-        }
-
-        if (pd.votes && Array.isArray(pd.votes)) {
-          for (const v of pd.votes) {
-            const vSessionId = String(v.votacao_id || v.vote_session_id || "");
-            // Filtra exclusivamente os votos da sessão de mérito principal para não inflar múltiplos turnos/emendas
-            if (primarySessionId && vSessionId !== primarySessionId) {
-              continue;
-            }
-
-            rawVotes.push({
-              deputado_id: v.deputado_id || v.politician_id,
-              votacao_id: vSessionId,
-              voto_original: v.voto_original,
-              sigla_partido: v.sigla_partido || v.party_sigla,
-            });
-          }
-        }
-      }
+      const { rawVotes, voteSessionToProposition } = aggregatePropositionVotes(propsData);
 
       const allVotesWithProp: VoteDetailWithProposition[] = attachPropositionIdToVotes(rawVotes, voteSessionToProposition);
 
@@ -198,7 +248,7 @@ export default function AfinidadePage() {
         const rawMatch = calculatePartyMatch(votes, votesForParty);
         const normalizedMatch = rawMatch
           ? { ...rawMatch, adherence: normalizeAdherence(rawMatch.adherence) }
-          : { adherence: null, matches_count: 0, comparable_count: 0 };
+          : { adherence: null, matches_count: 0, disposable_count: 0, comparable_count: 0 };
         return { ...party, match: normalizedMatch };
       });
 
@@ -210,23 +260,10 @@ export default function AfinidadePage() {
         return normalized;
       });
 
-      const sortedDeputies = deputyMatches.slice().sort((a, b) => {
-        const adhA = a.adherence ?? -1;
-        const adhB = b.adherence ?? -1;
-        if (adhB !== adhA) return adhB - adhA;
+      const sortedParties = sortPartyMatches(partyMatches);
+      const sortedDeputies = sortDeputyMatches(deputyMatches);
 
-        const matchesA = a.matches_count ?? 0;
-        const matchesB = b.matches_count ?? 0;
-        if (matchesB !== matchesA) return matchesB - matchesA;
-
-        const compA = a.comparable_count ?? 0;
-        const compB = b.comparable_count ?? 0;
-        if (compB !== compA) return compB - compA;
-
-        return a.nome_eleitoral.localeCompare(b.nome_eleitoral);
-      });
-
-      setCalculatedParties(partyMatches);
+      setCalculatedParties(sortedParties);
       setAllCalculatedDeputies(sortedDeputies);
     } catch (err) {
       console.error("Erro ao calcular afinidade:", err);
@@ -236,38 +273,41 @@ export default function AfinidadePage() {
   useEffect(() => {
     loadInitialData();
 
-    const handleStorageUpdate = () => {
-      const stored: UserVotes = getStoredAnswers();
-      const votesCount = Object.keys(stored).length;
-      setHasVotes(votesCount > 0);
-      loadInitialData();
+    const handleStorage = () => {
+      const currentVotes = getStoredGranularAnswers();
+      const currentCount = Object.keys(currentVotes).length;
+      setHasVotes(currentCount > 0);
+      if (currentCount > 0) {
+        loadInitialData();
+      } else {
+        setCalculatedParties([]);
+        setAllCalculatedDeputies([]);
+      }
     };
 
-    window.addEventListener("storage-answers-updated", handleStorageUpdate);
-    window.addEventListener("storage", handleStorageUpdate);
+    window.addEventListener("storage-answers-updated", handleStorage);
+    window.addEventListener("storage", handleStorage);
 
     return () => {
-      window.removeEventListener("storage-answers-updated", handleStorageUpdate);
-      window.removeEventListener("storage", handleStorageUpdate);
+      window.removeEventListener("storage-answers-updated", handleStorage);
+      window.removeEventListener("storage", handleStorage);
     };
   }, []);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12 space-y-8 animate-fade-in">
-      {/* Alerta de sincronização */}
-      {!isReady && (
-        <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 dark:bg-amber-950/30 border border-amber-500/30 text-amber-900 dark:text-amber-300 text-xs sm:text-sm flex flex-col sm:flex-row items-center justify-between gap-4 text-left shadow-soft animate-fade-in">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
+      {/* Banner de Sincronização / Base em Atualização */}
+      {!isReady && !loading && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs sm:text-sm text-amber-900 dark:text-amber-300 shadow-soft">
           <div className="flex items-start gap-3">
-            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
-              <FaExclamationTriangle className="w-4 h-4" />
-            </div>
+            <FaExclamationTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div className="space-y-0.5">
-              <span className="font-bold text-sm block text-amber-950 dark:text-amber-200">
-                Base de dados da Câmara dos Deputados em atualização
-              </span>
-              <span className="text-muted-foreground text-xs leading-relaxed block">
-                Os dados oficiais de votações e parlamentares estão sendo sincronizados.
-              </span>
+              <strong className="text-foreground block">
+                Base Legislativa em Sincronização
+              </strong>
+              <p className="text-muted-foreground leading-relaxed">
+                Os dados das votações nominais da Câmara dos Deputados estão sendo processados em segundo plano. Os índices de afinidade serão atualizados automaticamente.
+              </p>
             </div>
           </div>
           <Button
@@ -288,8 +328,8 @@ export default function AfinidadePage() {
           Afinidade com <span className="text-gradient">Deputados Federais e Partidos</span>
         </h1>
         <p className="text-sm sm:text-base text-muted-foreground max-w-3xl leading-relaxed">
-          Índice de convergência calculado comparando suas opiniões com os votos nominais registrados pelos 
-          <strong> Deputados Federais</strong> no Plenário da Câmara dos Deputados.
+          Índice de convergência calculado comparando suas opiniões com os votos nominais registrados pelos{" "}
+          <strong>Deputados Federais</strong> no Plenário da Câmara dos Deputados.
         </p>
       </div>
 
