@@ -10,6 +10,7 @@ import { CivicGuideSection } from "./components/CivicGuideSection";
 import { MethodologySection } from "./components/MethodologySection";
 import { AiTransparencySection } from "./components/AiTransparencySection";
 import { SecurityPrivacySection } from "./components/SecurityPrivacySection";
+import { TutorialSection } from "./components/TutorialSection";
 
 export default function FAQPage() {
   const { isReady, isLoading: isStatusLoading } = useSystemStatus();
@@ -59,7 +60,7 @@ export default function FAQPage() {
             <span>Aviso: Dados da Câmara em Processo de Ingestão</span>
           </div>
           <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-            As proposições legislativas e votações nominais estão sendo carregadas através da API de Dados Abertos da Câmara dos Deputados. Caso o conteúdo ainda não apareça no simulador, execute a sincronização ou consulte o status no painel abaixo:
+            As proposições legislativas e votações nominais estão sendo carregadas através da API de Dados Abertos da Câmara dos Deputados. Caso o conteúdo ainda não apareça no simulador, execute a sincronização ou consulte o status no painel de fontes oficiais:
           </p>
           <div className="pt-1 flex flex-wrap items-center gap-3">
             <a
@@ -81,20 +82,23 @@ export default function FAQPage() {
         </div>
       )}
 
-      {/* 2. PAINEL DE FONTES OFICIAIS */}
-      <SyncSourcesPanel sources={sources} loading={loading} isClient={isClient} />
+      {/* TUTORIAL RÁPIDO: COMO USAR */}
+      <TutorialSection />
 
-      {/* 3 & 4. FONTE DE VERDADE E GUIA CÍVICO */}
+      {/* 2 & 3. FONTE DE VERDADE E GUIA CÍVICO */}
       <CivicGuideSection />
 
-      {/* 5 & 6. METODOLOGIA E MÚLTIPLAS VOTAÇÕES */}
+      {/* 4 & 5. METODOLOGIA E MÚLTIPLAS VOTAÇÕES */}
       <MethodologySection />
 
-      {/* 7 & 8. INTELIGÊNCIA ARTIFICIAL E NEUTRALIDADE */}
+      {/* 6 & 7. INTELIGÊNCIA ARTIFICIAL E NEUTRALIDADE */}
       <AiTransparencySection />
 
-      {/* 9 & 10. PRIVACIDADE LOCAL-FIRST E INSPIRAÇÕES */}
+      {/* 8 & 9. PRIVACIDADE LOCAL-FIRST E INSPIRAÇÕES */}
       <SecurityPrivacySection />
+
+      {/* 10. PAINEL DE STATUS DAS FONTES DE DADOS OFICIAIS */}
+      <SyncSourcesPanel sources={sources} loading={loading} isClient={isClient} />
     </main>
   );
 }

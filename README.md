@@ -389,7 +389,7 @@ Para proposições com múltiplas deliberações (Texto-Base, Destaques, Emendas
 4. **Nível 4 (Desempate Alfanumérico):** `ID da Sessão` (`localeCompare` determinístico).
 
 ### 4. Heurística de Relevância Cívica das Proposições (`sortPropositionsByRelevance`)
-No Simulador de Votação (`/opiniao`), as matérias são apresentadas por padrão ordenadas por impacto e representatividade no Plenário:
+Em Analisar Propostas (`/opiniao`), as matérias são apresentadas por padrão ordenadas por impacto e representatividade no Plenário:
 1. **Maior Quórum Total (`total_sim + total_nao + total_outros` decrescente):** Prioriza grandes deliberações de plenário (480 a 505 deputados presentes).
 2. **Menor Abstenção e Outros Votos (`total_outros` crescente):** Prioriza votações com posicionamento categórico dos parlamentares em Sim ou Não.
 3. **Menor Margem de Votos (`|total_sim - total_nao|` crescente):** Destaca matérias mais disputadas voto a voto e politicamente acirradas.
@@ -562,7 +562,7 @@ npm run build
 │   │   └── ThemeToggle.tsx          # Alternador de tema acessível
 │   ├── faq/                 # Metodologia, FAQ e Monitor de Fontes da Câmara
 │   ├── og-image/            # Gerador dinâmico de imagem Open Graph (@vercel/og)
-│   ├── opiniao/             # Simulador de Votação e Minhas Opiniões (com loading.tsx e revisao/)
+│   ├── opiniao/             # Analise de Propostas e Minhas Opiniões (com loading.tsx e revisao/)
 │   │   └── revisao/__tests__/ # Testes da página de revisão de opiniões
 │   ├── partidos/            # Páginas de Detalhes dos Partidos e Bancadas (com loading.tsx)
 │   │   └── __tests__/       # Testes da página de detalhes do partido (filtros e bancada)

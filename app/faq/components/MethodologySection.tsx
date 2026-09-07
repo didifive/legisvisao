@@ -126,7 +126,7 @@ export function MethodologySection() {
           <div className="p-4 sm:p-5 rounded-xl bg-muted/60 border border-border text-xs text-foreground space-y-3">
             <span className="font-bold text-primary block text-sm">🎯 Como funciona a Opinião Granular por Destaques e Mérito?</span>
             <p className="text-muted-foreground text-xs leading-relaxed">
-              <strong>Você tem controle total sobre o nível de detalhamento do seu posicionamento.</strong> É possível opinar apenas sobre o mérito principal da lei ou abrir o expansor de deliberações para registrar seu voto em destaques e emendas nominais específicas. Todas as seções em que você registrar uma opinião são comparadas com o voto correspondente dos parlamentares no Plenário, com peso equivalente no cálculo de afinidade.
+              <strong>Você tem controle total sobre o nível de detalhamento do seu posicionamento.</strong> É possível opinar apenas sobre o mérito principal da lei ou abrir o expansor de deliberações para registrar sua opinião em destaques e emendas nominais específicas. Todas as seções em que você registrar uma opinião são comparadas com o voto correspondente dos parlamentares no Plenário, com peso equivalente no cálculo de afinidade.
             </p>
             <div className="pt-1 p-3.5 rounded-lg bg-background/80 border border-border/70 space-y-1.5">
               <span className="font-semibold text-foreground text-xs block">💡 E as proposições deliberadas por votação simbólica?</span>

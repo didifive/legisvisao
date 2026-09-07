@@ -44,3 +44,6 @@ Para mais detalhes e diretrizes estruturais completas, consulte [.agents/rules/g
 
 9. **Convenções de Texto e Estilo**:
    - Não utilizar travessão em textos de cópia e documentação.
+
+10. **Aprovação Explícita para Commits**:
+    - Nunca commitar alterações sem antes solicitar e obter autorização e aprovação explícita do usuário.
