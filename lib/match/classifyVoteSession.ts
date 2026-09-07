@@ -263,7 +263,7 @@ export function sortVoteSessionsDeterministic<T extends {
 }
 
 /**
- * Ordenador Determinístico de Relevância de Proposições Legislativas para o Simulador de Votação.
+ * Ordenador Determinístico de Relevância de Proposições Legislativas para Análise de Propostas.
  * 
  * Heurística Oficial de Relevância Cívica:
  * 1. Maior Quórum Total (votos Sim + Não + Outros decrescente) - Prioriza grandes matérias de plenário.

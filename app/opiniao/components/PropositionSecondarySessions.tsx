@@ -253,8 +253,8 @@ export function PropositionSecondarySessions({
                     {currentVote && (
                       <span
                         className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold border ${isConcordo
-                            ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
-                            : "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30"
+                          ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30"
+                          : "bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/30"
                           }`}
                       >
                         {isConcordo ? (
@@ -291,7 +291,7 @@ export function PropositionSecondarySessions({
 
                   <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border/40">
                     <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                      Seu voto nesta deliberação:
+                      Sua opinião nesta deliberação:
                     </span>
 
                     <div className="flex items-center gap-2">
@@ -299,8 +299,8 @@ export function PropositionSecondarySessions({
                         type="button"
                         onClick={() => onVote(sId, "CONCORDO")}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-smooth cursor-pointer ${isConcordo
-                            ? "bg-emerald-600 text-white shadow-soft"
-                            : "bg-background border border-border text-foreground hover:bg-emerald-600 hover:text-white"
+                          ? "bg-emerald-600 text-white shadow-soft"
+                          : "bg-background border border-border text-foreground hover:bg-emerald-600 hover:text-white"
                           }`}
                       >
                         <FaCheck className="w-3 h-3" />
@@ -311,8 +311,8 @@ export function PropositionSecondarySessions({
                         type="button"
                         onClick={() => onVote(sId, "DISCORDO")}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-smooth cursor-pointer ${isDiscordo
-                            ? "bg-rose-600 text-white shadow-soft"
-                            : "bg-background border border-border text-foreground hover:bg-rose-600 hover:text-white"
+                          ? "bg-rose-600 text-white shadow-soft"
+                          : "bg-background border border-border text-foreground hover:bg-rose-600 hover:text-white"
                           }`}
                       >
                         <FaTimes className="w-3 h-3" />

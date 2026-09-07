@@ -160,6 +160,18 @@ export default function Home() {
             )}
           </div>
 
+          {/* Link para o Tutorial no FAQ */}
+          <div className="mt-4 flex items-center justify-center">
+            <Link
+              href="/faq#como-usar"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-card/90 hover:bg-card border border-border/80 hover:border-primary/40 text-xs sm:text-sm font-medium text-foreground transition-all duration-200 shadow-sm hover:shadow-soft group cursor-pointer"
+            >
+              <FaLightbulb className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 group-hover:scale-110 transition-transform" />
+              <span>Novo por aqui? <strong>Veja o tutorial rápido de como usar</strong></span>
+              <FaArrowRight className="w-3 h-3 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+            </Link>
+          </div>
+
           {/* Status rápido */}
           {mounted && isReady && opinionsCount > 0 && (
             <div className="mt-8 p-3 rounded-lg bg-card/80 border border-border inline-flex items-center gap-3 text-xs sm:text-sm text-foreground shadow-soft">

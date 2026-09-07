@@ -35,8 +35,11 @@ Este documento estabelece as regras obrigatórias e princípios arquiteturais qu
 
 ---
 
-## 🌿 3. Política de Branches e Pull Requests (Main Protegida)
+## 🌿 3. Política de Branches, Commits e Pull Requests (Main Protegida)
 
+- **Proibição de Commits Sem Aprovação Explícita**:
+  - **NUNCA execute `git commit` de forma autônoma sem antes solicitar e obter aprovação explícita do usuário**.
+  - O agente deve sempre finalizar as alterações, executar a validação de testes e tipos, apresentar o resumo do que foi feito e perguntar explicitamente se o usuário autoriza a criação do commit.
 - **Push Direto Bloqueado na Main**:
   - A branch `main` é estritamente protegida contra pushes e commits diretos.
 - **Fluxo de Trabalho Obrigatório**:
