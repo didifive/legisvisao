@@ -45,18 +45,26 @@ export const DEFAULT_HEADERS = {
   "User-Agent": `LegisVisao/${APP_VERSION} (https://legisvisao.com.br; contato@legisvisao.com.br)`,
 };
 
-export async function fetchWithRetry(url: string, maxRetries = 3, delayMs = 1000): Promise<Response> {
+export async function fetchWithRetry(
+  url: string,
+  maxRetries = 5,
+  baseDelayMs = 2000,
+  timeoutMs = 30_000
+): Promise<Response> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const signal = AbortSignal.timeout(timeoutMs);
     try {
-      const res = await fetch(url, { headers: DEFAULT_HEADERS, keepalive: true });
+      const res = await fetch(url, { headers: DEFAULT_HEADERS, keepalive: true, signal });
       if (res.ok) return res;
       if (attempt === maxRetries) return res;
     } catch (err) {
       if (attempt === maxRetries) throw err;
     }
-    await new Promise((r) => setTimeout(r, delayMs * attempt));
+    // Backoff exponencial com jitter: evita thundering herd em reconexões
+    const jitter = Math.random() * baseDelayMs;
+    await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** (attempt - 1) + jitter));
   }
-  throw new Error(`Falha de conexão com a API externa: ${url}`);
+  throw new Error(`Falha de conexão com a API externa após ${maxRetries} tentativas: ${url}`);
 }
 
 /**
