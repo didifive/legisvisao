@@ -14,13 +14,13 @@ let cachedDatasetVersion: string | null = null;
 
 const isDev = process.env.NODE_ENV === "development";
 
-// Checa o banco com intervalo ágil: 10s em dev ou 30s em produção (<1ms de query)
-const VERSION_CHECK_INTERVAL_MS = isDev ? 10 * 1000 : 30 * 1000;
-// TTL máximo para expiração em memória
-const CACHE_TTL_MS = isDev ? 60 * 1000 : 5 * 60 * 1000;
+// Checa o banco com intervalo de 10 minutos em produção (ou 10s em desenvolvimento)
+const VERSION_CHECK_INTERVAL_MS = isDev ? 10 * 1000 : 10 * 60 * 1000;
+// Em memória os dados persistem enquanto a versão for válida (sem expiração por tempo forçada em produção)
+const CACHE_TTL_MS = isDev ? 60 * 1000 : Number.POSITIVE_INFINITY;
 
 /**
- * Obtém a versão ativa do dataset na tabela sync_control com intervalo de 15 minutos
+ * Obtém a versão ativa do dataset na tabela sync_control com intervalo de 10 minutos
  */
 export async function getActiveDatasetVersion(): Promise<string | null> {
   const now = Date.now();
@@ -30,18 +30,16 @@ export async function getActiveDatasetVersion(): Promise<string | null> {
 
   try {
     const result = await db`
-      SELECT dataset_version, MAX(last_sync) as latest
+      SELECT dataset_version
       FROM sync_control
       WHERE dataset_version IS NOT NULL
-      GROUP BY dataset_version
-      ORDER BY MAX(last_sync) DESC
+      ORDER BY last_sync DESC
       LIMIT 1;
     `;
     if (result && result.length > 0 && result[0].dataset_version) {
       cachedDatasetVersion = result[0].dataset_version;
     } else {
-      const fallbackRes = await db`SELECT MAX(last_sync) as latest FROM sync_control;`;
-      cachedDatasetVersion = fallbackRes[0]?.latest ? new Date(fallbackRes[0].latest).toISOString() : "v1";
+      cachedDatasetVersion = "v1";
     }
     lastVersionCheck = now;
     return cachedDatasetVersion;
@@ -80,14 +78,23 @@ export async function withServerCache<T>(
     return entry.data;
   }
 
-  // Se expirou ou não existe no cache, executa fetcher
-  const freshData = await fetcher();
+  // Se expirou ou não existe no cache, tenta buscar dados atualizados
+  try {
+    const freshData = await fetcher();
 
-  memoryCache.set(cacheKey, {
-    data: freshData,
-    cachedAt: now,
-    datasetVersion: currentVersion,
-  });
+    memoryCache.set(cacheKey, {
+      data: freshData,
+      cachedAt: now,
+      datasetVersion: currentVersion,
+    });
 
-  return freshData;
+    return freshData;
+  } catch (fetchError) {
+    // Se o banco estiver fora do ar ou a consulta falhar, usa o cache existente (stale-if-error)
+    if (entry) {
+      console.warn(`[ServerCache] Banco indisponível ao atualizar "${cacheKey}". Servindo dados em cache.`);
+      return entry.data;
+    }
+    throw fetchError;
+  }
 }
