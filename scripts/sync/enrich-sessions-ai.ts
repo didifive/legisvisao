@@ -85,9 +85,12 @@ function parseCliOption(arg: string, config: CliConfig): void {
 
 function parseArgs(): CliConfig {
   const args = process.argv.slice(2);
+  const isFreeTier = (process.env.GEMINI_TIER || "free").toLowerCase().trim() !== "paid";
+  const defaultConcurrency = isFreeTier ? 1 : 2;
+
   const config: CliConfig = {
     limit: 500,
-    concurrency: 3,
+    concurrency: defaultConcurrency,
     dryRun: false,
     propositionId: null,
     sessionId: null,
@@ -331,8 +334,9 @@ async function main() {
     return;
   }
 
+  const isFreeTier = (process.env.GEMINI_TIER || "free").toLowerCase().trim() !== "paid";
   console.log("--------------------------------------------------------------------");
-  console.log(`⚙️ Execução: Limite = ${limit} projetos | Concorrência = ${concurrency} workers | Dry Run = ${dryRun ? "SIM" : "NÃO"} | Forçar = ${force ? "SIM" : "NÃO"}`);
+  console.log(`⚙️ Execução: Limite = ${limit} | Concorrência = ${concurrency} | Tier = ${isFreeTier ? "Free (Custo Zero)" : "Paid"} | Dry Run = ${dryRun ? "SIM" : "NÃO"}`);
 
   const targetPropId = await resolveTargetPropositionId(sessionId, propositionId);
   if (targetPropId) console.log(`🎯 Filtro: Proposição ID = ${targetPropId}`);
@@ -371,6 +375,10 @@ async function main() {
       totalSuccessSessions += outcome.sessionCount;
     } else {
       totalErrors++;
+    }
+
+    if (isFreeTier && !dryRun) {
+      await new Promise((r) => setTimeout(r, 2000));
     }
 
     return runUnifiedWorker(workerId);
