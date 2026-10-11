@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import {
   FaLightbulb,
   FaVoteYea,
@@ -68,12 +69,12 @@ const steps: TutorialStepItem[] = [
   {
     number: "3",
     title: "Consulte seu ranking de afinidade real",
-    subtitle: "Cruzamento determinístico e ordenação justa por Média Bayesiana",
+    subtitle: "Cruzamento determinístico e ordenação equilibrada",
     icon: FaChartPie,
     description: [
       "Na página de Afinidade, suas respostas são confrontadas voto a voto com os registros oficiais de cada Deputado Federal na Câmara.",
       "A porcentagem empírica (%) informa a taxa real de vezes em que você e o político (ou partido) votaram de forma idêntica.",
-      "Para a ordenação da lista, utilizamos a Média Bayesiana: parlamentares com dezenas de votos comprovados recebem destaque estatístico sobre suplentes que votaram em apenas 1 matéria isolada.",
+      "A ordenação da lista é intuitiva e equilibrada: para partidos, segue a porcentagem real com desempate por votos; para deputados, prioriza parlamentares com dezenas de votações consistentes sobre presenças isoladas de suplentes.",
     ],
     imageSrc: "/tutorial/passo-3-afinidade.png",
     imageAlt: "Ranking de afinidade partidária e parlamentar com porcentagens e barras de progresso",
@@ -123,19 +124,12 @@ export function TutorialSection({ defaultOpen = false }: Readonly<TutorialSectio
   return (
     <section id="como-usar" className="scroll-mt-24 space-y-6 pt-4">
       {/* Cabeçalho Expansível */}
-      <div
+      <button
+        type="button"
         onClick={toggleOpen}
-        className="p-6 sm:p-8 rounded-3xl bg-gradient-subtle border border-border space-y-3 relative overflow-hidden shadow-soft cursor-pointer transition-smooth hover:border-primary/50 group select-none"
-        role="button"
-        tabIndex={0}
+        className="w-full text-left p-6 sm:p-8 rounded-3xl bg-gradient-subtle border border-border space-y-3 relative overflow-hidden shadow-soft cursor-pointer transition-smooth hover:border-primary/50 group select-none block"
         aria-expanded={isOpen}
         aria-controls="tutorial-steps-content"
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            toggleOpen();
-          }
-        }}
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-bold border border-primary/20">
@@ -164,7 +158,7 @@ export function TutorialSection({ defaultOpen = false }: Readonly<TutorialSectio
           <span className="inline-block w-2 h-2 rounded-full bg-primary animate-pulse" />
           <span>{hintText}</span>
         </div>
-      </div>
+      </button>
 
       {/* Conteúdo Expansível (Passos + CTA + Botão de Recolher) */}
       {isOpen && (
@@ -196,8 +190,8 @@ export function TutorialSection({ defaultOpen = false }: Readonly<TutorialSectio
 
                   {/* Texto explicativo */}
                   <div className="space-y-2.5 text-sm text-muted-foreground leading-relaxed pl-0 sm:pl-14">
-                    {step.description.map((paragrafo, idx) => (
-                      <p key={idx} className="flex items-start gap-2">
+                    {step.description.map((paragrafo) => (
+                      <p key={`${step.number}-${paragrafo.slice(0, 30)}`} className="flex items-start gap-2">
                         <FaCheckCircle className="w-3.5 h-3.5 text-primary shrink-0 mt-1" />
                         <span>{paragrafo}</span>
                       </p>
@@ -207,11 +201,13 @@ export function TutorialSection({ defaultOpen = false }: Readonly<TutorialSectio
                   {/* Print ilustrativo */}
                   <div className="pl-0 sm:pl-14 pt-2">
                     <div className="rounded-2xl border border-border/80 bg-muted/20 overflow-hidden shadow-soft max-w-2xl">
-                      <img
+                      <Image
                         src={step.imageSrc}
                         alt={step.imageAlt}
+                        width={800}
+                        height={450}
+                        unoptimized
                         className="w-full h-auto block"
-                        loading="lazy"
                       />
                     </div>
                   </div>

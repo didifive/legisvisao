@@ -111,9 +111,28 @@ export function normalizeAdherence(raw?: number | null): number | null {
 }
 
 /**
- * Calcula o score bayesiano de ordenação para classificação justa de afinidade.
- * Protege contra distorções onde parlamentares com apenas 1 voto comparável
- * superariam parlamentares com dezenas de votos consistentes.
+ * Calcula o score de ordenação pelo limite inferior do intervalo de confiança de Wilson (95%).
+ * Garante ordenação estatisticamente justa de afinidade:
+ * - Penaliza amostras reduzidas na ponta superior (ex: 1 de 1 não supera 74 de 81).
+ * - Não inflaciona amostras pequenas com zero concordâncias (0 de 1 pontua 0 e não supera taxas reais positivas).
+ */
+export function calculateWilsonScore(
+  matches: number,
+  comparable: number,
+  z = 1.96
+): number {
+  if (comparable <= 0) return -1;
+  const p = matches / comparable;
+  const z2 = z * z;
+  const denominator = 1 + z2 / comparable;
+  const center = p + z2 / (2 * comparable);
+  const margin = z * Math.sqrt((p * (1 - p) + z2 / (4 * comparable)) / comparable);
+  return Math.max(0, (center - margin) / denominator);
+}
+
+/**
+ * Calcula o score bayesiano de ordenação para classificação de afinidade.
+ * @deprecated Utilize calculateWilsonScore para ordenação balanceada sem distorção na cauda inferior.
  */
 export function calculateBayesianScore(
   matches: number,

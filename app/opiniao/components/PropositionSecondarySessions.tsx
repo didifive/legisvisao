@@ -113,7 +113,7 @@ export function PropositionSecondarySessions({
       }
     }
 
-    loadSessions();
+    void loadSessions();
 
     return () => {
       mounted = false;

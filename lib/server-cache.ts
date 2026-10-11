@@ -71,8 +71,7 @@ export async function withServerCache<T>(
 
   // Se o cache existir, pertencer à versão atual e não tiver expirado pelo TTL de 15 min
   if (
-    entry &&
-    entry.datasetVersion === currentVersion &&
+    entry?.datasetVersion === currentVersion &&
     now - entry.cachedAt < CACHE_TTL_MS
   ) {
     return entry.data;

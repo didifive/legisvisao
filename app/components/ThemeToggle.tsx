@@ -1,17 +1,13 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
 import { Button } from "./ui/Button";
 import { FaMoon, FaSun } from "react-icons/fa";
+import { useIsClient } from "@/lib/useStoredAnswers";
 
 export const ThemeToggle = () => {
   const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const mounted = useIsClient();
 
   if (!mounted) {
     return <div className="w-9 h-9" />;

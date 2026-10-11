@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   FaChevronRight,
   FaUsers,
@@ -12,7 +13,6 @@ import {
   FaMapMarkerAlt,
   FaSearch,
   FaTimes,
-  FaFilter,
 } from "react-icons/fa";
 import { Button } from "@/app/components/ui/Button";
 import type { Party, Deputy } from "@/types/db";
@@ -63,7 +63,7 @@ export default function PartyDetailsClient({
     for (const d of deputies) {
       if (d.sigla_uf) ufSet.add(d.sigla_uf);
     }
-    return Array.from(ufSet).sort();
+    return Array.from(ufSet).sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [deputies]);
 
   // Filtragem da bancada de deputados
@@ -90,7 +90,7 @@ export default function PartyDetailsClient({
       proposicao_ementa: string;
       url_camara: string | null;
       latest_session_date: string | null;
-      votes: Array<{ deputado_nome: string; voto_original: string }>;
+      votes: Array<{ deputado_id: number; deputado_nome: string; voto_original: string }>;
     }>();
 
     for (const pv of deputyVotes) {
@@ -111,6 +111,7 @@ export default function PartyDetailsClient({
         }
       }
       item.votes.push({
+        deputado_id: pv.deputado_id,
         deputado_nome: pv.deputado_nome,
         voto_original: pv.voto_original,
       });
@@ -178,9 +179,12 @@ export default function PartyDetailsClient({
           {/* Logo Oficial do Partido */}
           <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden bg-white/90 dark:bg-muted border border-border shrink-0 flex items-center justify-center p-2 shadow-soft">
             {partyLogoUrl ? (
-              <img
+              <Image
                 src={partyLogoUrl}
                 alt={`Logotipo oficial do partido ${party.sigla}`}
+                width={80}
+                height={80}
+                unoptimized
                 className="max-w-full max-h-full object-contain"
                 onError={(e) => {
                   (e.target as HTMLElement).style.display = "none";
@@ -412,9 +416,9 @@ export default function PartyDetailsClient({
 
                       {/* Votos dos deputados nesta proposta */}
                       <div className="pt-2 border-t border-border/50 flex flex-wrap gap-2">
-                        {p.votes.map((v, idx) => (
+                        {p.votes.map((v) => (
                           <span
-                            key={idx}
+                            key={v.deputado_id}
                             className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-md bg-muted text-foreground"
                           >
                             <strong className="font-semibold">{v.deputado_nome}:</strong>

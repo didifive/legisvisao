@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import {
-  FaRobot,
   FaTimes,
   FaCheckCircle,
   FaExclamationTriangle,
@@ -57,7 +56,7 @@ export function AiFeedbackModal({
 
   if (!isOpen) return null;
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!description.trim() || description.trim().length < 5) {
       setErrorMessage("Por favor, descreva o problema com pelo menos 5 caracteres.");
@@ -119,9 +118,9 @@ export function AiFeedbackModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-      <div
-        className="relative w-full max-w-lg rounded-2xl bg-card border border-border shadow-2xl p-6 sm:p-7 space-y-5 overflow-hidden animate-scale-up"
-        role="dialog"
+      <dialog
+        open
+        className="relative w-full max-w-lg rounded-2xl bg-card border border-border shadow-2xl p-6 sm:p-7 space-y-5 overflow-hidden animate-scale-up text-foreground block m-0"
         aria-modal="true"
         aria-labelledby="feedback-modal-title"
       >
@@ -319,7 +318,7 @@ export function AiFeedbackModal({
             </div>
           </form>
         )}
-      </div>
+      </dialog>
     </div>
   );
 }

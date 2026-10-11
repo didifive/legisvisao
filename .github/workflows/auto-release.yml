@@ -31,7 +31,7 @@ jobs:
       - name: 🏷️ Calculate Next Semantic Version
         id: bump
         run: |
-          node scripts/release/bump-version.js
+          node scripts/release/bump-version.mjs
         env:
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
           PR_TITLE: ${{ github.event.pull_request.title }}

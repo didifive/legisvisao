@@ -212,16 +212,18 @@ export function classifyVoteSession(
  * 4. Total de votos nominais (maior quórum deliberativo).
  * 5. ID único da sessão na Câmara (ordem alfanumérica decrescente).
  */
+export type VoteCountValue = number | string | null;
+
 export function sortVoteSessionsDeterministic<T extends {
   id?: string | number;
   data_hora?: string | null;
   descricao?: string | null;
   vote_description?: string | null;
   tipo_deliberacao?: string | null;
-  total_votos?: number | string | null;
-  votesCount?: number | string | null;
-  total_sim?: number | string | null;
-  total_nao?: number | string | null;
+  total_votos?: VoteCountValue;
+  votesCount?: VoteCountValue;
+  total_sim?: VoteCountValue;
+  total_nao?: VoteCountValue;
 }>(sessions: T[]): Array<T & { classification: SessionClassification }> {
   const withClass = sessions.map((s) => ({
     ...s,

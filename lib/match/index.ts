@@ -7,4 +7,5 @@ export * from "./calculatePartyMatch";
 export * from "./evaluateVotes";
 export * from "./normalizeVotes";
 export * from "./classifyVoteSession";
+export * from "./rankingSort";
 export * from "./types";

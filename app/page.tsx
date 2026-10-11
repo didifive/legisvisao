@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   FaVoteYea,
@@ -10,11 +9,7 @@ import {
   FaChartPie,
   FaCheckCircle,
   FaDownload,
-  FaUpload,
   FaTrashAlt,
-  FaHistory,
-  FaLandmark,
-  FaExternalLinkAlt,
   FaExclamationTriangle,
   FaSyncAlt,
   FaLightbulb,
@@ -24,32 +19,15 @@ import {
 import { Button } from "./components/ui/Button";
 import { useSystemStatus } from "./components/SystemStatusProvider";
 import {
-  getStoredAnswersCount,
   exportAnswersToJson,
   clearStoredAnswers,
 } from "@/lib/storage";
+import { useIsClient, useStoredAnswersCount } from "@/lib/useStoredAnswers";
 
 export default function Home() {
   const { isReady, isLoading } = useSystemStatus();
-  const [opinionsCount, setOpinionsCount] = useState<number>(0);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    setOpinionsCount(getStoredAnswersCount());
-
-    const handleUpdate = () => {
-      setOpinionsCount(getStoredAnswersCount());
-    };
-
-    window.addEventListener("storage-answers-updated", handleUpdate);
-    window.addEventListener("storage", handleUpdate);
-
-    return () => {
-      window.removeEventListener("storage-answers-updated", handleUpdate);
-      window.removeEventListener("storage", handleUpdate);
-    };
-  }, []);
+  const opinionsCount = useStoredAnswersCount();
+  const mounted = useIsClient();
 
   return (
     <div className="flex flex-col flex-1">

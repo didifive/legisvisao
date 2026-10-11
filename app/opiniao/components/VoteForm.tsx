@@ -13,8 +13,8 @@ import {
   removeStoredGranularAnswer,
   StoredGranularAnswers,
   sanitizeStoredAnswers,
-  getStoredAnswersCount,
 } from "@/lib/storage";
+import { useStoredAnswersCount } from "@/lib/useStoredAnswers";
 import { buildPropositionSessionMapping } from "@/lib/propositionSessionMap";
 
 import type { SortOption } from "../types";
@@ -74,7 +74,7 @@ export default function VoteForm() {
       }
     }
 
-    loadData();
+    void loadData();
 
     const handleStorageUpdate = () => {
       setGranularAnswers(getStoredGranularAnswers());
@@ -121,9 +121,7 @@ export default function VoteForm() {
   }, [propositions]);
 
   // Contagem de respostas armazenadas
-  const opinionsCount = useMemo(() => {
-    return getStoredAnswersCount();
-  }, [granularAnswers]);
+  const opinionsCount = useStoredAnswersCount();
 
   // Filtra as matérias que ainda precisam de opinião do cidadão
   const unvotedPropositions = useMemo(() => {

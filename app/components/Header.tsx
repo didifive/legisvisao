@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -29,6 +29,7 @@ import {
   type StoredGranularAnswers,
 } from "@/lib/storage";
 import { ConfirmationModal } from "./ui/ConfirmationModal";
+import { useStoredAnswersCount } from "@/lib/useStoredAnswers";
 
 export type ToastType = "success" | "error" | "info";
 
@@ -46,7 +47,7 @@ export const Header = () => {
   const { isReady } = useSystemStatus();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [opinionsCount, setOpinionsCount] = useState(0);
+  const opinionsCount = useStoredAnswersCount();
 
   // Estados dos Modais de Confirmação
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
@@ -67,26 +68,30 @@ export const Header = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pathname = usePathname();
 
-  const updateOpinionsCount = () => {
-    setOpinionsCount(getStoredAnswersCount());
-  };
-
-  const showToast = (message: string, type: "success" | "error" | "info" = "success") => {
+  const showToast = useCallback((message: string, type: ToastType = "success") => {
     setToast({ message, type });
     setTimeout(() => {
       setToast(null);
     }, 4000);
-  };
+  }, []);
+
+  /**
+   * Limpeza de dados:
+   * Se NÃO houver registros salvos -> não precisa de modal.
+   * Se HOUVER registros salvos -> abre modal de confirmação.
+   */
+  const handleClear = useCallback(() => {
+    const currentCount = getStoredAnswersCount();
+    if (currentCount === 0) {
+      showToast("Nenhuma opinião salva para apagar.", "info");
+      return;
+    }
+    setIsClearModalOpen(true);
+  }, [showToast]);
 
   useEffect(() => {
-    updateOpinionsCount();
-
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
-    };
-
-    const handleStorageUpdate = () => {
-      updateOpinionsCount();
     };
 
     const handleRequestClear = () => {
@@ -94,17 +99,13 @@ export const Header = () => {
     };
 
     window.addEventListener("scroll", handleScroll);
-    window.addEventListener("storage-answers-updated", handleStorageUpdate);
-    window.addEventListener("storage", handleStorageUpdate);
     window.addEventListener("request-clear-opinions", handleRequestClear);
 
     return () => {
       window.removeEventListener("scroll", handleScroll);
-      window.removeEventListener("storage-answers-updated", handleStorageUpdate);
-      window.removeEventListener("storage", handleStorageUpdate);
       window.removeEventListener("request-clear-opinions", handleRequestClear);
     };
-  }, []);
+  }, [handleClear]);
 
   const handleExport = () => {
     exportAnswersToJson();
@@ -133,7 +134,6 @@ export const Header = () => {
       if (currentCount === 0) {
         applyImportedAnswers(answers, granularAnswers, "replace");
         showToast(`${total} opinião(ões) importada(s) com sucesso!`, "success");
-        updateOpinionsCount();
       } else {
         setPendingImport({ answers, granularAnswers, total, fileName: file.name });
         setIsImportModalOpen(true);
@@ -149,30 +149,14 @@ export const Header = () => {
     if (!pendingImport) return;
     applyImportedAnswers(pendingImport.answers, pendingImport.granularAnswers, "replace");
     showToast(`${pendingImport.total} opinião(ões) importada(s) com sucesso!`, "success");
-    updateOpinionsCount();
     setIsImportModalOpen(false);
     setPendingImport(null);
-  };
-
-  /**
-   * Limpeza de dados:
-   * Se NÃO houver registros salvos -> não precisa de modal.
-   * Se HOUVER registros salvos -> abre modal de confirmação.
-   */
-  const handleClear = () => {
-    const currentCount = getStoredAnswersCount();
-    if (currentCount === 0) {
-      showToast("Nenhuma opinião salva para apagar.", "info");
-      return;
-    }
-    setIsClearModalOpen(true);
   };
 
   const handleConfirmClear = () => {
     clearStoredAnswers();
     setIsClearModalOpen(false);
     showToast("Todas as opiniões foram apagadas do dispositivo.", "success");
-    updateOpinionsCount();
   };
 
   const allNavItems = [

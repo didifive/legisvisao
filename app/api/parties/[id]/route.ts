@@ -12,7 +12,7 @@ export async function GET(
     const { id } = await context.params;
     const partyId = Number(id);
 
-    if (isNaN(partyId)) {
+    if (Number.isNaN(partyId)) {
       return NextResponse.json(
         { error: "ID do partido inválido." },
         { status: 400 }
