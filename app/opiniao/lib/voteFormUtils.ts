@@ -60,7 +60,7 @@ export function getSituacaoBadgeClass(isAprovado: boolean, isEncerrado: boolean)
   return "bg-secondary/10 text-secondary border-secondary/20";
 }
 
-export function getUnvotedCardStatus(status: string | null | undefined) {
+export function getUnvotedCardStatus(status: string | null = "Em Tramitação") {
   const situacaoAtual = status || "Em Tramitação";
   const lower = situacaoAtual.toLowerCase();
   const isAprovado =

@@ -32,61 +32,82 @@ interface RawSessionRow {
   data_hora: string | null;
 }
 
-function parseArgs() {
+interface CliConfig {
+  limit: number;
+  concurrency: number;
+  dryRun: boolean;
+  propositionId: number | null;
+  sessionId: string | null;
+  force: boolean;
+  showModels: boolean;
+}
+
+function parseNumericOption(valueStr: string): number | null {
+  const val = Number.parseInt(valueStr, 10);
+  if (!Number.isNaN(val) && val > 0) return val;
+  return null;
+}
+
+function parseCliOption(arg: string, config: CliConfig): void {
+  if (arg === "--models" || arg === "--list-models") {
+    config.showModels = true;
+    return;
+  }
+  if (arg === "--dry-run") {
+    config.dryRun = true;
+    return;
+  }
+  if (arg === "--force") {
+    config.force = true;
+    return;
+  }
+
+  const [key, ...rest] = arg.split("=");
+  const value = rest.join("=");
+  if (!value) return;
+
+  if (key === "--limit") {
+    config.limit = parseNumericOption(value) ?? config.limit;
+    return;
+  }
+  if (key === "--concurrency") {
+    config.concurrency = parseNumericOption(value) ?? config.concurrency;
+    return;
+  }
+  if (key === "--proposicao" || key === "--proposition" || key === "--id") {
+    config.propositionId = parseNumericOption(value) ?? config.propositionId;
+    return;
+  }
+  if (key === "--session") {
+    config.sessionId = value.trim();
+  }
+}
+
+function parseArgs(): CliConfig {
   const args = process.argv.slice(2);
-  let limit = 500;
-  let concurrency = 3;
-  let dryRun = false;
-  let propositionId: number | null = null;
-  let sessionId: string | null = null;
-  let force = false;
-  let showModels = false;
+  const config: CliConfig = {
+    limit: 500,
+    concurrency: 3,
+    dryRun: false,
+    propositionId: null,
+    sessionId: null,
+    force: false,
+    showModels: false,
+  };
 
   for (const arg of args) {
-    if (arg.startsWith("--limit=")) {
-      const val = Number.parseInt(arg.replace("--limit=", ""), 10);
-      if (!Number.isNaN(val) && val > 0) limit = val;
-    } else if (arg.startsWith("--concurrency=")) {
-      const val = Number.parseInt(arg.replace("--concurrency=", ""), 10);
-      if (!Number.isNaN(val) && val > 0) concurrency = val;
-    } else if (arg.startsWith("--proposicao=") || arg.startsWith("--proposition=") || arg.startsWith("--id=")) {
-      const val = Number.parseInt(arg.split("=")[1], 10);
-      if (!Number.isNaN(val) && val > 0) propositionId = val;
-    } else if (arg.startsWith("--session=")) {
-      sessionId = arg.replace("--session=", "").trim();
-    } else if (arg === "--models" || arg === "--list-models") {
-      showModels = true;
-    } else if (arg === "--dry-run") {
-      dryRun = true;
-    } else if (arg === "--force") {
-      force = true;
-    }
+    parseCliOption(arg, config);
   }
 
   if (process.env.AI_LIMIT) {
     const envLimit = Number.parseInt(process.env.AI_LIMIT, 10);
-    if (!Number.isNaN(envLimit) && envLimit > 0) limit = envLimit;
+    if (!Number.isNaN(envLimit) && envLimit > 0) config.limit = envLimit;
   }
 
-  return { limit, concurrency, dryRun, propositionId, sessionId, force, showModels };
+  return config;
 }
 
-async function main() {
-  const { limit, concurrency, dryRun, propositionId, sessionId, force, showModels } = parseArgs();
-
-  console.log("====================================================================");
-  console.log("🤖 LegisVisão: Pipeline Unificado de Enriquecimento por IA (Google AI Studio)");
-  console.log("   (1 Projeto de Lei + Todas as suas Sessões por Requisição Multimodal)");
-  console.log("====================================================================");
-
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey && !dryRun) {
-    console.error("❌ ERRO: GEMINI_API_KEY não configurada no arquivo .env.local.");
-    console.error("👉 Crie sua chave no Google AI Studio (https://aistudio.google.com) e adicione no .env.local.");
-    process.exit(1);
-  }
-
-  // 1. Listagem de Modelos Disponíveis e Quotas
+async function displayAvailableModels(apiKey: string): Promise<boolean> {
   console.log("🔍 Verificando modelos ativos no Google AI Studio...");
   const models = await listAvailableGeminiModels(apiKey);
 
@@ -102,6 +123,208 @@ async function main() {
     console.log("ℹ️ Nenhum modelo retornado ou chave ausente.");
   }
 
+  return models.length > 0;
+}
+
+async function resolveTargetPropositionId(
+  sessionId: string | null,
+  propositionId: number | null
+): Promise<number | null> {
+  if (propositionId) return propositionId;
+  if (!sessionId) return null;
+
+  const sessionOwner = await sql<Array<{ proposicao_id: number }>>`
+    SELECT proposicao_id FROM vote_sessions WHERE id = ${sessionId} LIMIT 1;
+  `;
+  if (sessionOwner.length > 0) {
+    const foundId = sessionOwner[0].proposicao_id;
+    console.log(`🎯 Sessão ${sessionId} pertence à Proposição ID = ${foundId}`);
+    return foundId;
+  }
+
+  console.warn(`⚠️ Sessão ${sessionId} não encontrada na base de dados.`);
+  return null;
+}
+
+async function fetchEligiblePropositions(
+  targetPropId: number | null,
+  limit: number,
+  force: boolean
+): Promise<PropositionHeader[]> {
+  if (targetPropId) {
+    return sql<PropositionHeader[]>`
+      SELECT id, titulo, ementa, ementa_detalhada, tema, url_inteiro_teor
+      FROM propositions
+      WHERE id = ${targetPropId}
+      LIMIT ${limit};
+    `;
+  }
+
+  return sql<PropositionHeader[]>`
+    SELECT 
+      p.id, 
+      p.titulo, 
+      p.ementa, 
+      p.ementa_detalhada, 
+      p.tema, 
+      p.url_inteiro_teor
+    FROM propositions p
+    LEFT JOIN (
+      SELECT 
+        vs.proposicao_id,
+        COUNT(vs.id) as total_sessions,
+        COUNT(dv.id) as total_nominal_votes,
+        MAX(CASE 
+          WHEN (
+            vs.tipo_deliberacao = 'MERITO' 
+            OR vs.descricao ILIKE '%substitutivo%' 
+            OR vs.descricao ILIKE '%texto-base%' 
+            OR vs.descricao ILIKE '%redação final%'
+            OR vs.descricao ILIKE '%projeto de lei%'
+            OR vs.descricao ILIKE '%proposta de emenda%'
+          ) THEN 1 ELSE 0 
+        END) as has_merit
+      FROM vote_sessions vs
+      LEFT JOIN deputy_votes dv ON dv.votacao_id = vs.id
+      GROUP BY vs.proposicao_id
+    ) stats ON stats.proposicao_id = p.id
+    WHERE 
+      (${force} = TRUE OR p.ai_processed = FALSE OR p.ai_processed IS NULL)
+      AND COALESCE(stats.total_sessions, 0) > 0
+    ORDER BY 
+      COALESCE(stats.has_merit, 0) DESC,
+      COALESCE(stats.total_nominal_votes, 0) DESC,
+      COALESCE(stats.total_sessions, 0) DESC,
+      p.ano DESC, 
+      p.id DESC
+    LIMIT ${limit};
+  `;
+}
+
+async function updateSessionResults(
+  sessoes: Array<{
+    id: string;
+    tipo_deliberacao: string;
+    titulo_amigavel: string;
+    resumo_simplificado: string;
+    pergunta_cidadao: string;
+  }>
+): Promise<void> {
+  await Promise.all(
+    sessoes.map((s) =>
+      sql`
+        UPDATE vote_sessions
+        SET 
+          tipo_deliberacao = ${s.tipo_deliberacao},
+          titulo_amigavel = ${s.titulo_amigavel},
+          resumo_simplificado = ${s.resumo_simplificado},
+          pergunta_cidadao = ${s.pergunta_cidadao},
+          ai_processed = TRUE,
+          ai_processed_at = NOW(),
+          ai_error = NULL
+        WHERE id = ${s.id};
+      `
+    )
+  );
+}
+
+async function markPropositionError(propId: number, errorMsg: string): Promise<void> {
+  try {
+    await sql`
+      UPDATE propositions
+      SET 
+        ai_processed = FALSE,
+        ai_processed_at = NOW(),
+        ai_error = ${errorMsg.slice(0, 500)}
+      WHERE id = ${propId};
+    `;
+  } catch {
+    // Silencia
+  }
+}
+
+async function processSingleProposition(
+  prop: PropositionHeader,
+  workerId: number,
+  apiKey: string,
+  dryRun: boolean
+): Promise<{ success: boolean; sessionCount: number; isQuotaError?: boolean }> {
+  const sessions = await sql<RawSessionRow[]>`
+    SELECT id, proposicao_id, descricao, resultado, data_hora
+    FROM vote_sessions
+    WHERE proposicao_id = ${prop.id}
+    ORDER BY data_hora DESC NULLS LAST;
+  `;
+
+  if (dryRun) {
+    console.log(`[Worker ${workerId}] [DRY-RUN] Enriqueceria ${prop.titulo} (ID ${prop.id}) com ${sessions.length} sessões.`);
+    await new Promise((r) => setTimeout(r, 100));
+    return { success: true, sessionCount: sessions.length };
+  }
+
+  const context: PropositionWithSessionsContext = {
+    proposicaoId: prop.id,
+    titulo: prop.titulo,
+    ementa: prop.ementa,
+    ementaDetalhada: prop.ementa_detalhada,
+    tema: prop.tema,
+    urlInteiroTeor: prop.url_inteiro_teor,
+    sessoes: sessions.map((s) => ({
+      id: s.id,
+      descricao: s.descricao,
+      resultado: s.resultado,
+      data_hora: s.data_hora,
+    })),
+  };
+
+  try {
+    const result = await enrichPropositionAndSessionsWithGemini(context, apiKey);
+
+    await sql`
+      UPDATE propositions
+      SET 
+        resumo_geral = ${result.resumo_geral},
+        ai_processed = TRUE,
+        ai_processed_at = NOW(),
+        ai_error = NULL
+      WHERE id = ${prop.id};
+    `;
+
+    await updateSessionResults(result.sessoes);
+
+    console.log(`✅ [Worker ${workerId}] ${prop.titulo} + ${result.sessoes.length} sessões enriquecidas com sucesso (Modelo: ${result.model_used}).`);
+    await new Promise((r) => setTimeout(r, 250));
+    return { success: true, sessionCount: result.sessoes.length };
+  } catch (err) {
+    const errorMsg = (err as Error).message;
+    if (errorMsg.includes("429") || errorMsg.includes("ResourceExhausted") || errorMsg.includes("Quota")) {
+      console.warn(`⚠️ [Worker ${workerId}] Limite de cota/rate-limit atingido no Google AI Studio.`);
+      return { success: false, sessionCount: 0, isQuotaError: true };
+    }
+
+    console.error(`⚠️ [Worker ${workerId}] Erro no projeto ${prop.titulo} (ID ${prop.id}):`, errorMsg.slice(0, 140));
+    await markPropositionError(prop.id, errorMsg);
+    return { success: false, sessionCount: 0 };
+  }
+}
+
+async function main() {
+  const { limit, concurrency, dryRun, propositionId, sessionId, force, showModels } = parseArgs();
+
+  console.log("====================================================================");
+  console.log("🤖 LegisVisão: Pipeline Unificado de Enriquecimento por IA (Google AI Studio)");
+  console.log("   (1 Projeto de Lei + Todas as suas Sessões por Requisição Multimodal)");
+  console.log("====================================================================");
+
+  const apiKey = process.env.GEMINI_API_KEY || "";
+  if (!apiKey && !dryRun) {
+    console.error("❌ ERRO: GEMINI_API_KEY não configurada no arquivo .env.local.");
+    console.error("👉 Crie sua chave no Google AI Studio (https://aistudio.google.com) e adicione no .env.local.");
+    process.exit(1);
+  }
+
+  await displayAvailableModels(apiKey);
+
   if (showModels) {
     console.log("====================================================================");
     console.log("🏁 Listagem de modelos concluída.");
@@ -111,97 +334,10 @@ async function main() {
   console.log("--------------------------------------------------------------------");
   console.log(`⚙️ Execução: Limite = ${limit} projetos | Concorrência = ${concurrency} workers | Dry Run = ${dryRun ? "SIM" : "NÃO"} | Forçar = ${force ? "SIM" : "NÃO"}`);
 
-  // Se o usuário passou um sessionId específico, resolve o proposicao_id associado
-  let targetPropId = propositionId;
-  if (sessionId && !targetPropId) {
-    const sessionOwner = await sql<Array<{ proposicao_id: number }>>`
-      SELECT proposicao_id FROM vote_sessions WHERE id = ${sessionId} LIMIT 1;
-    `;
-    if (sessionOwner.length > 0) {
-      targetPropId = sessionOwner[0].proposicao_id;
-      console.log(`🎯 Sessão ${sessionId} pertence à Proposição ID = ${targetPropId}`);
-    } else {
-      console.warn(`⚠️ Sessão ${sessionId} não encontrada na base de dados.`);
-    }
-  }
-
+  const targetPropId = await resolveTargetPropositionId(sessionId, propositionId);
   if (targetPropId) console.log(`🎯 Filtro: Proposição ID = ${targetPropId}`);
 
-  // 2. Consulta de Proposições Elegíveis
-  let propositionsToProcess: PropositionHeader[] = [];
-
-  if (targetPropId) {
-    propositionsToProcess = await sql<PropositionHeader[]>`
-      SELECT id, titulo, ementa, ementa_detalhada, tema, url_inteiro_teor
-      FROM propositions
-      WHERE id = ${targetPropId}
-      LIMIT ${limit};
-    `;
-  } else {
-    // Busca proposições pendentes priorizando matérias com deliberação de mérito/texto-base e votos nominais
-    propositionsToProcess = await sql<PropositionHeader[]>`
-      SELECT 
-        p.id, 
-        p.titulo, 
-        p.ementa, 
-        p.ementa_detalhada, 
-        p.tema, 
-        p.url_inteiro_teor
-      FROM propositions p
-      LEFT JOIN (
-        SELECT 
-          vs.proposicao_id,
-          COUNT(vs.id) as total_sessions,
-          COUNT(dv.id) as total_nominal_votes,
-          MAX(CASE 
-            WHEN (
-              vs.tipo_deliberacao = 'MERITO' 
-              OR vs.descricao ILIKE '%substitutivo%' 
-              OR vs.descricao ILIKE '%texto-base%' 
-              OR vs.descricao ILIKE '%texto base%' 
-              OR vs.descricao ILIKE '%turno%' 
-              OR vs.descricao ILIKE '%projeto de lei%' 
-              OR vs.descricao ILIKE '%proposta de emenda%' 
-              OR vs.descricao ILIKE '%medida provis%' 
-              OR vs.descricao ILIKE '%redação final%' 
-              OR vs.descricao ILIKE '%redacao final%'
-            )
-            AND NOT (
-              (vs.descricao ILIKE '%emenda%' OR vs.descricao ILIKE '%subemenda%') 
-              AND NOT (vs.descricao ILIKE '%subemenda substitutiva global%' OR vs.descricao ILIKE '%substitutiva global%')
-            )
-            AND NOT (
-              vs.descricao ILIKE 'destaque%' OR vs.descricao ILIKE '%votação do destaque%' OR vs.descricao ILIKE '%votação dos destaques%' OR vs.descricao ILIKE '%votação de destaque%' OR vs.descricao ILIKE '%dtq%' OR vs.descricao ILIKE '%dvs%' OR vs.descricao ILIKE '%votação em separado%' OR vs.descricao ILIKE '%votacao em separado%' OR vs.descricao ILIKE 'mantido o texto%' OR vs.descricao ILIKE 'suprimido o texto%'
-            )
-            AND NOT (
-              vs.descricao ILIKE '%requerimento%' OR vs.descricao ILIKE '%retirada de pauta%' OR vs.descricao ILIKE '%adiamento%' OR vs.descricao ILIKE '%urgência%' OR vs.descricao ILIKE '%urgencia%' OR vs.descricao ILIKE '%preferência%' OR vs.descricao ILIKE '%preferencia%'
-            )
-            AND dv.id IS NOT NULL THEN 1 ELSE 0 
-          END) as has_merit_nominal
-        FROM vote_sessions vs
-        LEFT JOIN deputy_votes dv ON dv.votacao_id = vs.id
-        GROUP BY vs.proposicao_id
-      ) stats ON stats.proposicao_id = p.id
-      WHERE ${
-        force
-          ? sql`TRUE`
-          : sql`
-            (p.ai_processed = FALSE OR p.ai_processed IS NULL)
-            OR EXISTS (
-              SELECT 1 FROM vote_sessions vs2 
-              WHERE vs2.proposicao_id = p.id AND (vs2.ai_processed = FALSE OR vs2.ai_processed IS NULL)
-            )
-          `
-      }
-      ORDER BY 
-        COALESCE(stats.has_merit_nominal, 0) DESC,
-        COALESCE(stats.total_nominal_votes, 0) DESC,
-        COALESCE(stats.total_sessions, 0) DESC,
-        p.ano DESC, 
-        p.id DESC
-      LIMIT ${limit};
-    `;
-  }
+  const propositionsToProcess = await fetchEligiblePropositions(targetPropId, limit, force);
 
   if (propositionsToProcess.length === 0) {
     console.log("✅ Nenhuma proposição pendente de enriquecimento encontrada.");
@@ -217,109 +353,32 @@ async function main() {
   let quotaReached = false;
   const startTime = Date.now();
 
-  async function unifiedWorker(workerId: number) {
-    while (propIndex < propositionsToProcess.length && !quotaReached) {
-      const idx = propIndex++;
-      if (idx >= propositionsToProcess.length) break;
-      const prop = propositionsToProcess[idx];
+  async function runUnifiedWorker(workerId: number): Promise<void> {
+    if (propIndex >= propositionsToProcess.length || quotaReached) return;
+    const idx = propIndex++;
+    if (idx >= propositionsToProcess.length) return;
 
-      // Busca todas as sessões de votação vinculadas a esta proposição
-      const sessions = await sql<RawSessionRow[]>`
-        SELECT id, proposicao_id, descricao, resultado, data_hora
-        FROM vote_sessions
-        WHERE proposicao_id = ${prop.id}
-        ORDER BY data_hora DESC NULLS LAST;
-      `;
+    const prop = propositionsToProcess[idx];
+    const outcome = await processSingleProposition(prop, workerId, apiKey, dryRun);
 
-      const context: PropositionWithSessionsContext = {
-        proposicaoId: prop.id,
-        titulo: prop.titulo,
-        ementa: prop.ementa,
-        ementaDetalhada: prop.ementa_detalhada,
-        tema: prop.tema,
-        urlInteiroTeor: prop.url_inteiro_teor,
-        sessoes: sessions.map((s) => ({
-          id: s.id,
-          descricao: s.descricao,
-          resultado: s.resultado,
-          data_hora: s.data_hora,
-        })),
-      };
-
-      try {
-        if (dryRun) {
-          console.log(`[Worker ${workerId}] [DRY-RUN] Enriqueceria ${prop.titulo} (ID ${prop.id}) com ${sessions.length} sessões.`);
-          await new Promise((r) => setTimeout(r, 100));
-          totalSuccessProps++;
-          totalSuccessSessions += sessions.length;
-        } else {
-          const result = await enrichPropositionAndSessionsWithGemini(context, apiKey);
-
-          // 1. Atualiza a Proposição
-          await sql`
-            UPDATE propositions
-            SET 
-              resumo_geral = ${result.resumo_geral},
-              ai_processed = TRUE,
-              ai_processed_at = NOW(),
-              ai_error = NULL
-            WHERE id = ${prop.id};
-          `;
-
-          // 2. Atualiza cada uma das sessões retornadas
-          for (const s of result.sessoes) {
-            await sql`
-              UPDATE vote_sessions
-              SET 
-                tipo_deliberacao = ${s.tipo_deliberacao},
-                titulo_amigavel = ${s.titulo_amigavel},
-                resumo_simplificado = ${s.resumo_simplificado},
-                pergunta_cidadao = ${s.pergunta_cidadao},
-                ai_processed = TRUE,
-                ai_processed_at = NOW(),
-                ai_error = NULL
-              WHERE id = ${s.id};
-            `;
-          }
-
-          console.log(`✅ [Worker ${workerId}] ${prop.titulo} + ${result.sessoes.length} sessões enriquecidas com sucesso (Modelo: ${result.model_used}).`);
-          totalSuccessProps++;
-          totalSuccessSessions += result.sessoes.length;
-        }
-
-        await new Promise((r) => setTimeout(r, 250));
-      } catch (err) {
-        const errorMsg = (err as Error).message;
-        if (errorMsg.includes("429") || errorMsg.includes("ResourceExhausted") || errorMsg.includes("Quota")) {
-          console.warn(`⚠️ [Worker ${workerId}] Limite de cota/rate-limit atingido no Google AI Studio.`);
-          quotaReached = true;
-          break;
-        }
-
-        console.error(`⚠️ [Worker ${workerId}] Erro no projeto ${prop.titulo} (ID ${prop.id}):`, errorMsg.slice(0, 140));
-        totalErrors++;
-
-        if (!dryRun) {
-          try {
-            await sql`
-              UPDATE propositions
-              SET 
-                ai_processed = FALSE,
-                ai_processed_at = NOW(),
-                ai_error = ${errorMsg.slice(0, 500)}
-              WHERE id = ${prop.id};
-            `;
-          } catch {
-            // Silencia
-          }
-        }
-      }
+    if (outcome.isQuotaError) {
+      quotaReached = true;
+      return;
     }
+
+    if (outcome.success) {
+      totalSuccessProps++;
+      totalSuccessSessions += outcome.sessionCount;
+    } else {
+      totalErrors++;
+    }
+
+    return runUnifiedWorker(workerId);
   }
 
   const workers = Array.from(
     { length: Math.min(concurrency, propositionsToProcess.length) },
-    (_, i) => unifiedWorker(i + 1)
+    (_, i) => runUnifiedWorker(i + 1)
   );
   await Promise.all(workers);
 

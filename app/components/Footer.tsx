@@ -30,12 +30,12 @@ export const Footer = () => {
           fetch("/api/metadata").catch(() => null),
         ]);
 
-        if (verRes && verRes.ok) {
+        if (verRes?.ok) {
           const vData = await verRes.json();
           if (vData?.version) setVersion(vData.version);
         }
 
-        if (metaRes && metaRes.ok) {
+        if (metaRes?.ok) {
           const mData = await metaRes.json();
           if (mData?.lastUpdated) {
             setLastUpdated(new Date(mData.lastUpdated).toLocaleDateString("pt-BR", {
@@ -52,7 +52,7 @@ export const Footer = () => {
       }
     }
 
-    loadMetadata();
+    void loadMetadata();
   }, []);
 
   const socialLinks = [
@@ -159,7 +159,7 @@ export const Footer = () => {
               >
                 Luis Zancanela
               </a>
-              . Conheça outros projetos e conecte-se:
+              {"."} Conheça outros projetos e conecte-se:
             </p>
             <div className="flex items-center gap-2 pt-1">
               {socialLinks.map((social) => (
@@ -212,7 +212,7 @@ export const Footer = () => {
             >
               Luis Zancanela
             </a>
-            . Todos os direitos reservados.
+            {"."} Todos os direitos reservados.
           </div>
           <div className="flex flex-wrap items-center gap-4">
             {lastUpdated && (

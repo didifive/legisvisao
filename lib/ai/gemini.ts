@@ -3,6 +3,8 @@
 // Suporte a Modelos Dinâmicos, Quotas, Envio Multimodal de PDFs e Resumos Ricos
 // ====================================================================
 
+export type DeliberationType = "MERITO" | "DESTAQUE" | "EMENDA" | "REQUERIMENTO" | "OUTRO";
+
 export interface GeminiModelInfo {
   name: string;
   displayName: string;
@@ -25,7 +27,7 @@ export interface PropositionSummaryResult {
 }
 
 export interface GeminiSessionEnrichment {
-  tipo_deliberacao: "MERITO" | "DESTAQUE" | "EMENDA" | "REQUERIMENTO" | "OUTRO";
+  tipo_deliberacao: DeliberationType;
   titulo_amigavel: string;
   resumo_simplificado: string;
   pergunta_cidadao: string;
@@ -106,7 +108,6 @@ async function resolveCandidateModels(apiKey?: string): Promise<string[]> {
 
   const activeModels = await listAvailableGeminiModels(apiKey);
   if (activeModels.length > 0) {
-    // Apenas modelos Gemini suportam envio de documentos/PDF multimodal
     const multimodalActive = activeModels.filter(
       (m) =>
         m.name.startsWith("gemini-") &&
@@ -129,7 +130,7 @@ async function resolveCandidateModels(apiKey?: string): Promise<string[]> {
 async function fetchPropositionPdfBuffer(url: string): Promise<Buffer | null> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
     const res = await fetch(url, {
       signal: controller.signal,
@@ -145,7 +146,6 @@ async function fetchPropositionPdfBuffer(url: string): Promise<Buffer | null> {
     const arrayBuffer = await res.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Limite de segurança de 20MB para inline data do Gemini
     if (buffer.length > 20 * 1024 * 1024) {
       return null;
     }
@@ -175,7 +175,7 @@ export interface UnifiedPropositionEnrichmentResult {
   resumo_geral: string;
   sessoes: Array<{
     id: string;
-    tipo_deliberacao: "MERITO" | "DESTAQUE" | "EMENDA" | "REQUERIMENTO" | "OUTRO";
+    tipo_deliberacao: DeliberationType;
     titulo_amigavel: string;
     resumo_simplificado: string;
     pergunta_cidadao: string;
@@ -183,29 +183,10 @@ export interface UnifiedPropositionEnrichmentResult {
   model_used: string;
 }
 
-/**
- * Enriquecimento Unificado com Gemini:
- * Envia o PDF/texto da proposição legislativa e todas as suas sessões de votação em uma ÚNICA chamada multimodal.
- * Retorna o resumo geral da lei e os resumos específicos de cada deliberação (mérito, destaques, emendas).
- */
-export async function enrichPropositionAndSessionsWithGemini(
+function buildEnrichmentRequestBody(
   context: PropositionWithSessionsContext,
-  apiKey?: string
-): Promise<UnifiedPropositionEnrichmentResult> {
-  const key = apiKey || process.env.GEMINI_API_KEY;
-  if (!key) {
-    throw new Error(
-      "GEMINI_API_KEY não encontrada nas variáveis de ambiente. Configure no arquivo .env.local."
-    );
-  }
-
-  const modelsToTry = await resolveCandidateModels(key);
-
-  let pdfBuffer: Buffer | null = null;
-  if (context.urlInteiroTeor) {
-    pdfBuffer = await fetchPropositionPdfBuffer(context.urlInteiroTeor);
-  }
-
+  pdfBuffer: Buffer | null
+) {
   const systemInstruction = `
 Você é um cientista político e comunicador cívico sênior especialista na Câmara dos Deputados do Brasil e nas diretrizes de neutralidade do LegisVisão.
 Sua missão é ler o documento oficial da proposição (PDF do inteiro teor ou ementa oficial) e todas as suas sessões de votação no Plenário, gerando em UMA ÚNICA resposta:
@@ -273,7 +254,7 @@ Gere o JSON completo contendo "resumo_geral" e o array "sessoes" para todas as s
     });
   }
 
-  const requestBody = {
+  return {
     contents: [
       {
         role: "user",
@@ -285,30 +266,112 @@ Gere o JSON completo contendo "resumo_geral" e o array "sessoes" para todas as s
       responseMimeType: "application/json",
     },
   };
+}
 
+interface EnrichedSessionItem {
+  id: string;
+  tipo_deliberacao: DeliberationType;
+  titulo_amigavel: string;
+  resumo_simplificado: string;
+  pergunta_cidadao: string;
+}
+
+function normalizeEnrichedSessions(
+  rawSessoes: Array<{
+    id?: string;
+    tipo_deliberacao?: string;
+    titulo_amigavel?: string;
+    resumo_simplificado?: string;
+    pergunta_cidadao?: string;
+  }> | undefined,
+  context: PropositionWithSessionsContext
+): EnrichedSessionItem[] {
+  const sessoesMap = new Map<string, EnrichedSessionItem>();
+
+  if (Array.isArray(rawSessoes)) {
+    for (const s of rawSessoes) {
+      if (!s?.id) continue;
+      sessoesMap.set(String(s.id), {
+        id: String(s.id),
+        tipo_deliberacao: (s.tipo_deliberacao as DeliberationType) || "OUTRO",
+        titulo_amigavel: s.titulo_amigavel || "Deliberação em Plenário",
+        resumo_simplificado: s.resumo_simplificado || "",
+        pergunta_cidadao: s.pergunta_cidadao || `Você concorda com esta deliberação sobre ${context.titulo}?`,
+      });
+    }
+  }
+
+  return context.sessoes.map((s) => {
+    const found = sessoesMap.get(s.id);
+    if (found) return found;
+    return {
+      id: s.id,
+      tipo_deliberacao: "OUTRO" as const,
+      titulo_amigavel: s.descricao.slice(0, 80),
+      resumo_simplificado: s.descricao,
+      pergunta_cidadao: `Você concorda com esta deliberação sobre ${context.titulo}?`,
+    };
+  });
+}
+
+async function requestModelGeneration(
+  model: string,
+  key: string,
+  requestBody: unknown
+): Promise<string | null> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    if (response.status === 503 || response.status === 404 || response.status === 429) {
+      return null;
+    }
+    throw new Error(`Falha na chamada ao Google AI Studio (${response.status}): ${errorText}`);
+  }
+
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+}
+
+/**
+ * Enriquecimento Unificado com Gemini:
+ * Envia o PDF/texto da proposição legislativa e todas as suas sessões de votação em uma ÚNICA chamada multimodal.
+ * Retorna o resumo geral da lei e os resumos específicos de cada deliberação (mérito, destaques, emendas).
+ */
+export async function enrichPropositionAndSessionsWithGemini(
+  context: PropositionWithSessionsContext,
+  apiKey?: string
+): Promise<UnifiedPropositionEnrichmentResult> {
+  const key = apiKey || process.env.GEMINI_API_KEY;
+  if (!key) {
+    throw new Error(
+      "GEMINI_API_KEY não encontrada nas variáveis de ambiente. Configure no arquivo .env.local."
+    );
+  }
+
+  const modelsToTry = await resolveCandidateModels(key);
+
+  let pdfBuffer: Buffer | null = null;
+  if (context.urlInteiroTeor) {
+    pdfBuffer = await fetchPropositionPdfBuffer(context.urlInteiroTeor);
+  }
+
+  const requestBody = buildEnrichmentRequestBody(context, pdfBuffer);
   let lastError: Error | null = null;
 
   for (const model of modelsToTry) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        if (response.status === 503 || response.status === 404 || response.status === 429) {
-          lastError = new Error(`Modelo ${model} retornou ${response.status}: ${errorText.slice(0, 120)}`);
-          continue;
-        }
-        throw new Error(`Falha na chamada ao Google AI Studio (${response.status}): ${errorText}`);
+      const rawText = await requestModelGeneration(model, key, requestBody);
+      if (rawText === null) {
+        lastError = new Error(`Modelo ${model} retornou indisponibilidade ou rate limit temporário`);
+        continue;
       }
 
-      const data = await response.json();
-      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
       const parsed = JSON.parse(rawText) as {
         resumo_geral?: string;
         sessoes?: Array<{
@@ -320,39 +383,7 @@ Gere o JSON completo contendo "resumo_geral" e o array "sessoes" para todas as s
         }>;
       };
 
-      const sessoesMap = new Map<string, {
-        id: string;
-        tipo_deliberacao: "MERITO" | "DESTAQUE" | "EMENDA" | "REQUERIMENTO" | "OUTRO";
-        titulo_amigavel: string;
-        resumo_simplificado: string;
-        pergunta_cidadao: string;
-      }>();
-
-      if (Array.isArray(parsed.sessoes)) {
-        for (const s of parsed.sessoes) {
-          if (!s || !s.id) continue;
-          sessoesMap.set(String(s.id), {
-            id: String(s.id),
-            tipo_deliberacao: (s.tipo_deliberacao as any) || "OUTRO",
-            titulo_amigavel: s.titulo_amigavel || "Deliberação em Plenário",
-            resumo_simplificado: s.resumo_simplificado || "",
-            pergunta_cidadao: s.pergunta_cidadao || `Você concorda com esta deliberação sobre ${context.titulo}?`,
-          });
-        }
-      }
-
-      // Garante que todas as sessões do contexto tenham retorno mesmo com fallback
-      const normalizedSessoes = context.sessoes.map((s) => {
-        const found = sessoesMap.get(s.id);
-        if (found) return found;
-        return {
-          id: s.id,
-          tipo_deliberacao: "OUTRO" as const,
-          titulo_amigavel: s.descricao.slice(0, 80),
-          resumo_simplificado: s.descricao,
-          pergunta_cidadao: `Você concorda com esta deliberação sobre ${context.titulo}?`,
-        };
-      });
+      const normalizedSessoes = normalizeEnrichedSessions(parsed.sessoes, context);
 
       return {
         resumo_geral: parsed.resumo_geral || context.ementaDetalhada || context.ementa,

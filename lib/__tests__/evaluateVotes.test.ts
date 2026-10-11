@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   resolveUserVoteForDetail,
   evaluateVotePair,
-  evaluateVotesList,
   calculateAdherencePercent,
   normalizeAdherence,
   calculateBayesianScore,

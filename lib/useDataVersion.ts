@@ -6,29 +6,29 @@ import { validateDatasetVersion, getLocalDatasetVersion } from "./cache";
 const REVALIDATION_INTERVAL_MS = 30 * 60 * 1000; // 30 minutos
 
 export function useDataVersion() {
-  const [datasetVersion, setDatasetVersion] = useState<string | null>(null);
+  const [datasetVersion, setDatasetVersion] = useState<string | null>(getLocalDatasetVersion);
 
   useEffect(() => {
-    // 1. Inicializa versão local
-    setDatasetVersion(getLocalDatasetVersion());
+    const checkVersion = async () => {
+      try {
+        const v = await validateDatasetVersion();
+        if (v) setDatasetVersion(v);
+      } catch {
+        // Silencia falha de conexão na verificação em segundo plano
+      }
+    };
 
     // 2. Valida contra o servidor na montagem
-    validateDatasetVersion().then((v) => {
-      if (v) setDatasetVersion(v);
-    });
+    void checkVersion();
 
     // 3. Validação periódica a cada 30 minutos
     const interval = setInterval(() => {
-      validateDatasetVersion().then((v) => {
-        if (v) setDatasetVersion(v);
-      });
+      void checkVersion();
     }, REVALIDATION_INTERVAL_MS);
 
     // 4. Revalidação quando o usuário volta à aba do navegador
     const handleFocus = () => {
-      validateDatasetVersion().then((v) => {
-        if (v) setDatasetVersion(v);
-      });
+      void checkVersion();
     };
     window.addEventListener("focus", handleFocus);
 

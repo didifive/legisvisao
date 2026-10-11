@@ -9,7 +9,7 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const { id } = await props.params;
   const propId = Number(id);
-  if (isNaN(propId)) return { title: "Proposição não encontrada" };
+  if (Number.isNaN(propId)) return { title: "Proposição não encontrada" };
 
   const propRes = await db<Proposition[]>`
     SELECT id, titulo, sigla_tipo, numero, ano, ementa
@@ -37,7 +37,7 @@ export default async function ProjectPage(
   const { id } = await props.params;
   const propId = Number(id);
 
-  if (isNaN(propId)) {
+  if (Number.isNaN(propId)) {
     notFound();
   }
 

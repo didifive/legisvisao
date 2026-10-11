@@ -3,13 +3,14 @@ import PartyDetailsClient from "./PartyDetailsClient";
 import { db } from "@/lib/db";
 import type { Metadata } from "next";
 import type { Party, Deputy } from "@/types/db";
+import type { ComponentProps } from "react";
 
 export async function generateMetadata(
   props: { params: Promise<{ id: string }> }
 ): Promise<Metadata> {
   const { id } = await props.params;
   const partyId = Number(id);
-  if (isNaN(partyId)) return { title: "Partido não encontrado" };
+  if (Number.isNaN(partyId)) return { title: "Partido não encontrado" };
 
   const partyRes = await db`SELECT sigla, nome FROM parties WHERE id = ${partyId} LIMIT 1`;
   if (!partyRes || partyRes.length === 0) return { title: "Partido não encontrado" };
@@ -27,7 +28,7 @@ export default async function PartyPage(
   const { id } = await props.params;
   const partyId = Number(id);
 
-  if (isNaN(partyId)) {
+  if (Number.isNaN(partyId)) {
     notFound();
   }
 
@@ -83,7 +84,7 @@ export default async function PartyPage(
     <PartyDetailsClient
       party={party}
       deputies={deputies}
-      deputyVotes={deputyVotes as any}
+      deputyVotes={deputyVotes as unknown as ComponentProps<typeof PartyDetailsClient>["deputyVotes"]}
     />
   );
 }

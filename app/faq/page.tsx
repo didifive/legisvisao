@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { FaExclamationTriangle, FaExternalLinkAlt } from "react-icons/fa";
 import { useSystemStatus } from "@/app/components/SystemStatusProvider";
 import { urls } from "@/lib/urls";
+import { useIsClient } from "@/lib/useStoredAnswers";
 import { SyncSource } from "./types";
 import { SyncSourcesPanel } from "./components/SyncSourcesPanel";
 import { CivicGuideSection } from "./components/CivicGuideSection";
@@ -16,11 +17,9 @@ export default function FAQPage() {
   const { isReady, isLoading: isStatusLoading } = useSystemStatus();
   const [sources, setSources] = useState<SyncSource[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isClient, setIsClient] = useState(false);
+  const isClient = useIsClient();
 
   useEffect(() => {
-    setIsClient(true);
-
     async function loadStatus() {
       try {
         const res = await fetch("/api/sync-status");
@@ -36,7 +35,7 @@ export default function FAQPage() {
       }
     }
 
-    loadStatus();
+    void loadStatus();
   }, []);
 
   return (

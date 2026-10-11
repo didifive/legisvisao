@@ -76,7 +76,7 @@ export default function RevisaoPage() {
       }
     }
 
-    load();
+    void load();
 
     const handleStorage = () => {
       setGranularAnswers(getStoredGranularAnswers());

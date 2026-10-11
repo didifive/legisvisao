@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
 
 export interface SystemStatusCounts {
   projects: number;
@@ -21,13 +21,37 @@ const defaultStatus: SystemStatusContextType = {
   isLoading: true,
   counts: { projects: 0, politicians: 0, parties: 0 },
   error: null,
-  refetch: async () => {},
+  refetch: async () => { },
 };
 
 const SystemStatusContext = createContext<SystemStatusContextType>(defaultStatus);
 
 // Intervalo de verificação no frontend: 3 minutos (180.000 ms)
 const FRONTEND_CHECK_INTERVAL_MS = 3 * 60 * 1000;
+
+interface SystemStatusResult {
+  isReady: boolean;
+  counts: SystemStatusCounts | null;
+  error: string | null;
+}
+
+async function loadSystemStatus(): Promise<SystemStatusResult> {
+  try {
+    const res = await fetch("/api/system-status");
+    if (!res.ok) {
+      return { isReady: false, counts: null, error: "Erro ao obter status das bases de dados." };
+    }
+    const data = await res.json();
+    return {
+      isReady: Boolean(data.isReady),
+      counts: data.counts ?? null,
+      error: data.error || null,
+    };
+  } catch (err) {
+    console.error("Falha ao consultar system-status:", err);
+    return { isReady: false, counts: null, error: "Não foi possível conectar ao servidor." };
+  }
+}
 
 export function SystemStatusProvider({ children }: { children: React.ReactNode }) {
   const [isReady, setIsReady] = useState<boolean>(true);
@@ -39,50 +63,43 @@ export function SystemStatusProvider({ children }: { children: React.ReactNode }
   });
   const [error, setError] = useState<string | null>(null);
 
-  const fetchStatus = useCallback(async () => {
-    try {
-      const res = await fetch("/api/system-status");
-      if (res.ok) {
-        const data = await res.json();
-        setIsReady(Boolean(data.isReady));
-        if (data.counts) {
-          setCounts(data.counts);
-        }
-        setError(data.error || null);
-      } else {
-        setIsReady(false);
-        setError("Erro ao obter status das bases de dados.");
-      }
-    } catch (err) {
-      console.error("Falha ao consultar system-status:", err);
-      setIsReady(false);
-      setError("Não foi possível conectar ao servidor.");
-    } finally {
-      setIsLoading(false);
+  const applyStatus = useCallback((result: SystemStatusResult) => {
+    setIsReady(result.isReady);
+    if (result.counts) {
+      setCounts(result.counts);
     }
+    setError(result.error);
+    setIsLoading(false);
   }, []);
 
+  const fetchStatus = useCallback(async () => {
+    applyStatus(await loadSystemStatus());
+  }, [applyStatus]);
+
   useEffect(() => {
-    fetchStatus();
+    void loadSystemStatus().then(applyStatus);
 
     // Revalidação a cada 3 minutos
     const interval = setInterval(() => {
-      fetchStatus();
+      void loadSystemStatus().then(applyStatus);
     }, FRONTEND_CHECK_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [fetchStatus]);
+  }, [applyStatus]);
+
+  const contextValue = useMemo(
+    () => ({
+      isReady,
+      isLoading,
+      counts,
+      error,
+      refetch: fetchStatus,
+    }),
+    [isReady, isLoading, counts, error, fetchStatus]
+  );
 
   return (
-    <SystemStatusContext.Provider
-      value={{
-        isReady,
-        isLoading,
-        counts,
-        error,
-        refetch: fetchStatus,
-      }}
-    >
+    <SystemStatusContext.Provider value={contextValue}>
       {children}
     </SystemStatusContext.Provider>
   );

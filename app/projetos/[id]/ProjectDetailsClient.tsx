@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
   FaArrowLeft,
@@ -10,11 +10,10 @@ import {
 import { AiFeedbackModal } from "@/app/components/AiFeedbackModal";
 import type { VoteSession } from "@/types/db";
 import {
-  getStoredGranularAnswers,
   saveStoredGranularAnswer,
   removeStoredGranularAnswer,
-  StoredGranularAnswers,
 } from "@/lib/storage";
+import { useStoredGranularAnswers } from "@/lib/useStoredAnswers";
 import { sortVoteSessionsDeterministic } from "@/lib/match/classifyVoteSession";
 
 import type { RawVote, ProjectDetailsClientProps } from "../types";
@@ -29,12 +28,16 @@ import { ProjectOverviewCard } from "../components/ProjectOverviewCard";
 import { SessionsSelectorGrid } from "../components/SessionsSelectorGrid";
 import { ActiveSessionDetailCard } from "../components/ActiveSessionDetailCard";
 
+function handleSessionVote(sessionId: string, opinion: "CONCORDO" | "DISCORDO") {
+  saveStoredGranularAnswer(sessionId, opinion);
+}
+
 export default function ProjectDetailsClient({
   proposition,
   sessions,
   votes,
 }: Readonly<ProjectDetailsClientProps>) {
-  const [granularAnswers, setGranularAnswers] = useState<StoredGranularAnswers>({});
+  const granularAnswers = useStoredGranularAnswers();
   const [voteSearch, setVoteSearch] = useState("");
   const [filterParty, setFilterParty] = useState<string>("ALL");
   const [filterState, setFilterState] = useState<string>("ALL");
@@ -44,30 +47,8 @@ export default function ProjectDetailsClient({
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [feedbackSession, setFeedbackSession] = useState<VoteSession | null>(null);
 
-  useEffect(() => {
-    setGranularAnswers(getStoredGranularAnswers());
-
-    const handleStorageUpdate = () => {
-      setGranularAnswers(getStoredGranularAnswers());
-    };
-
-    window.addEventListener("storage-answers-updated", handleStorageUpdate);
-    window.addEventListener("storage", handleStorageUpdate);
-
-    return () => {
-      window.removeEventListener("storage-answers-updated", handleStorageUpdate);
-      window.removeEventListener("storage", handleStorageUpdate);
-    };
-  }, []);
-
-  function handleSessionVote(sessionId: string, opinion: "CONCORDO" | "DISCORDO") {
-    saveStoredGranularAnswer(sessionId, opinion);
-    setGranularAnswers(getStoredGranularAnswers());
-  }
-
   function handleRemoveSessionVote(sessionId: string) {
     removeStoredGranularAnswer(sessionId, proposition.id);
-    setGranularAnswers(getStoredGranularAnswers());
   }
 
   // Agrupa votos nominais por ID de sessão de votação
@@ -109,27 +90,24 @@ export default function ProjectDetailsClient({
     return getPrimarySession(sessions, votesBySession);
   }, [sessions, votesBySession]);
 
-  // Inicializa selectedSessionId com a sessão principal (ou a primeira com votos)
-  useEffect(() => {
-    if (!selectedSessionId) {
-      if (primarySession) {
-        setSelectedSessionId(primarySession.id);
-      } else if (classifiedSessions.length > 0) {
-        const firstWithVotes = classifiedSessions.find((s) => s.votesCount > 0);
-        setSelectedSessionId((firstWithVotes ?? classifiedSessions[0]).id);
-      }
-    }
-  }, [primarySession, selectedSessionId, classifiedSessions]);
+  // Sessão padrão: a principal ou, na ausência dela, a primeira com votos
+  const defaultSessionId = useMemo(() => {
+    if (primarySession) return primarySession.id;
+    const firstWithVotes = classifiedSessions.find((s) => s.votesCount > 0);
+    return (firstWithVotes ?? classifiedSessions[0])?.id ?? "";
+  }, [primarySession, classifiedSessions]);
+
+  const currentSessionId = selectedSessionId || defaultSessionId;
 
   // Sessão atualmente ativa para inspeção
   const activeSession = useMemo(() => {
     return (
-      classifiedSessions.find((s) => s.id === selectedSessionId) ??
+      classifiedSessions.find((s) => s.id === currentSessionId) ??
       primarySession ??
       classifiedSessions[0] ??
       null
     );
-  }, [classifiedSessions, selectedSessionId, primarySession]);
+  }, [classifiedSessions, currentSessionId, primarySession]);
 
   // Votos pertencentes estritamente à sessão ativa
   const activeSessionVotes = useMemo(() => {

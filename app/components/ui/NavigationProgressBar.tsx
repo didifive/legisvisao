@@ -6,12 +6,10 @@ import { usePathname, useSearchParams } from "next/navigation";
 function NavigationProgressBarContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isNavigating, setIsNavigating] = useState(false);
-
-  useEffect(() => {
-    // Quando a rota termina de mudar, desliga a barra de progresso
-    setIsNavigating(false);
-  }, [pathname, searchParams]);
+  const routeKey = `${pathname}?${searchParams.toString()}`;
+  // Rota em que o clique de navegação ocorreu; quando a rota muda, a barra desliga sozinha
+  const [navigatingFrom, setNavigatingFrom] = useState<string | null>(null);
+  const isNavigating = navigatingFrom === routeKey;
 
   useEffect(() => {
     // Intercepta cliques em links internos para dar feedback instantâneo
@@ -41,13 +39,13 @@ function NavigationProgressBarContent() {
 
       // Se navegando para uma rota diferente da atual
       if (href !== pathname) {
-        setIsNavigating(true);
+        setNavigatingFrom(routeKey);
       }
     };
 
     document.addEventListener("click", handleClick);
     return () => document.removeEventListener("click", handleClick);
-  }, [pathname]);
+  }, [pathname, routeKey]);
 
   if (!isNavigating) return null;
 

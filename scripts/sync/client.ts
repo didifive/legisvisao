@@ -58,7 +58,7 @@ export async function fetchWithRetry(
       if (res.ok) return res;
       if (attempt === maxRetries) return res;
     } catch (err) {
-      if (attempt === maxRetries) throw err;
+      if (attempt >= maxRetries) throw err;
     }
     // Backoff exponencial com jitter: evita thundering herd em reconexões
     const jitter = Math.random() * baseDelayMs;
@@ -79,15 +79,15 @@ export async function mapConcurrent<T, R>(
   const results: R[] = new Array(items.length);
   let currentIndex = 0;
 
-  async function worker() {
-    while (currentIndex < items.length) {
-      const idx = currentIndex++;
-      results[idx] = await fn(items[idx], idx);
-    }
+  async function runWorker(): Promise<void> {
+    if (currentIndex >= items.length) return;
+    const idx = currentIndex++;
+    results[idx] = await fn(items[idx], idx);
+    return runWorker();
   }
 
   const workerCount = Math.min(concurrency, items.length);
-  const workers = Array.from({ length: workerCount }, () => worker());
+  const workers = Array.from({ length: workerCount }, () => runWorker());
   await Promise.all(workers);
   return results;
 }

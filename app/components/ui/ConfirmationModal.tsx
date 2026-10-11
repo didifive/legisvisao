@@ -17,6 +17,16 @@ export interface ConfirmationModalProps {
   isLoading?: boolean;
 }
 
+function getVariantBadgeClass(variant?: "destructive" | "primary" | "warning"): string {
+  if (variant === "destructive") {
+    return "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20";
+  }
+  if (variant === "warning") {
+    return "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20";
+  }
+  return "bg-primary/10 text-primary border border-primary/20";
+}
+
 export function ConfirmationModal({
   isOpen,
   onClose,
@@ -55,18 +65,24 @@ export function ConfirmationModal({
   if (!isOpen) return null;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm animate-fade-in"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isLoading) {
-          onClose();
-        }
-      }}
-    >
-      <div className="relative w-full max-w-md bg-card border border-border rounded-2xl shadow-large p-6 sm:p-7 space-y-5 animate-scale-in text-foreground">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm animate-fade-in">
+      {/* Backdrop transparente para capturar cliques fora do modal */}
+      <div
+        className="fixed inset-0 -z-10"
+        aria-hidden="true"
+        onClick={() => {
+          if (!isLoading) {
+            onClose();
+          }
+        }}
+      />
+
+      <dialog
+        open
+        aria-modal="true"
+        aria-labelledby="modal-title"
+        className="relative w-full max-w-md bg-card border border-border rounded-2xl shadow-large p-6 sm:p-7 space-y-5 animate-scale-in text-foreground block m-0"
+      >
         {/* Fechar no canto superior */}
         <button
           onClick={onClose}
@@ -80,13 +96,9 @@ export function ConfirmationModal({
         {/* Ícone e Título */}
         <div className="flex items-start gap-4">
           <div
-            className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
-              variant === "destructive"
-                ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
-                : variant === "warning"
-                ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
-                : "bg-primary/10 text-primary border border-primary/20"
-            }`}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${getVariantBadgeClass(
+              variant
+            )}`}
           >
             {icon === "trash" && <FaTrashAlt className="w-5 h-5" />}
             {icon === "upload" && <FaUpload className="w-5 h-5" />}
@@ -127,7 +139,7 @@ export function ConfirmationModal({
             {confirmLabel}
           </Button>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }

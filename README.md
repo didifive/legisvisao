@@ -441,7 +441,7 @@ Esta seção detalha as principais decisões de design de software e infraestrut
 
 ### 6. Pipeline de Versionamento Semântico e Release Automática (CI/CD)
 - **Implementação Técnica:**
-  - Script autônomo em Node.js (`scripts/release/bump-version.js`) e workflow do GitHub Actions (`.github/workflows/auto-release.yml`) disparados exclusivamente no fechamento e mesclagem de Pull Requests na branch `main`.
+  - Script autônomo em Node.js (`scripts/release/bump-version.mjs`) e workflow do GitHub Actions (`.github/workflows/auto-release.yml`) disparados exclusivamente no fechamento e mesclagem de Pull Requests na branch `main`.
   - Classificação inteligente baseada em metadados da PR (branch, título e corpo):
     - **MAJOR (`+1.0.0`)**: Mudanças estruturantes (`breaking change`, `mudanças que quebram`, `nova versão`, `feat!:`).
     - **PATCH (`0.0.+1`)**: Correções e manutenções (`fix:`, `hotfix:`, `docs:`, `chore:`, `[patch]`, `[docs]`, `[chore]`).

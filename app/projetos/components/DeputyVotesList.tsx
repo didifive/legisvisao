@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { FaSearch, FaUserTie } from "react-icons/fa";
 import { normalizeVote } from "@/lib/match/normalizeVotes";
 import { getVoteBadgeClass } from "../lib/projectUtils";
@@ -126,11 +127,13 @@ export function DeputyVotesList({
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   {v.deputado_foto ? (
-                    <img
+                    <Image
                       src={v.deputado_foto}
                       alt={v.deputado_nome}
+                      width={32}
+                      height={32}
+                      unoptimized
                       className="w-8 h-8 rounded-full object-cover shrink-0 border border-border/60 bg-muted"
-                      loading="lazy"
                     />
                   ) : (
                     <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0 border border-border/60 text-muted-foreground">

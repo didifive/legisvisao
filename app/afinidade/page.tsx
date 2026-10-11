@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import MatchResults from "@/app/afinidade/components/MatchResults";
 import { Button } from "@/app/components/ui/Button";
 import { FaExclamationTriangle, FaSyncAlt } from "react-icons/fa";
@@ -49,6 +49,38 @@ function extractPropIdsToFetch(
   return Array.from(propIdsSet);
 }
 
+function mapSessionsToProposition(
+  sessions: PropositionDetailResponse["sessions"],
+  pId: number,
+  mapping: Record<string, number>
+): void {
+  if (!Array.isArray(sessions)) return;
+  for (const s of sessions) {
+    mapping[String(s.id)] = pId;
+  }
+}
+
+function extractRawVotes(
+  votes: PropositionDetailResponse["votes"],
+  destination: Array<{
+    deputado_id: number;
+    votacao_id: string;
+    voto_original: string;
+    sigla_partido?: string | null;
+  }>
+): void {
+  if (!Array.isArray(votes)) return;
+  for (const v of votes) {
+    const vSessionId = String(v.votacao_id || v.vote_session_id || "");
+    destination.push({
+      deputado_id: Number(v.deputado_id || v.politician_id),
+      votacao_id: vSessionId,
+      voto_original: v.voto_original,
+      sigla_partido: v.sigla_partido || v.party_sigla,
+    });
+  }
+}
+
 function aggregatePropositionVotes(propsData: PropositionDetailResponse[]) {
   const rawVotes: Array<{
     deputado_id: number;
@@ -63,23 +95,8 @@ function aggregatePropositionVotes(propsData: PropositionDetailResponse[]) {
     const pId = pd.proposition?.id || pd.project?.id;
     if (typeof pId !== "number") continue;
 
-    if (Array.isArray(pd.sessions)) {
-      for (const s of pd.sessions) {
-        voteSessionToProposition[String(s.id)] = pId;
-      }
-    }
-
-    if (pd.votes && Array.isArray(pd.votes)) {
-      for (const v of pd.votes) {
-        const vSessionId = String(v.votacao_id || v.vote_session_id || "");
-        rawVotes.push({
-          deputado_id: Number(v.deputado_id || v.politician_id),
-          votacao_id: vSessionId,
-          voto_original: v.voto_original,
-          sigla_partido: v.sigla_partido || v.party_sigla,
-        });
-      }
-    }
+    mapSessionsToProposition(pd.sessions, pId, voteSessionToProposition);
+    extractRawVotes(pd.votes, rawVotes);
   }
 
   return { rawVotes, voteSessionToProposition };
@@ -185,9 +202,93 @@ async function fetchInitialAppData() {
   };
 }
 
+interface AffinityMatches {
+  parties: Array<Party & { match: PartyMatchResult }>;
+  deputies: DeputyMatch[];
+}
+
+interface AffinityLoadResult {
+  states: string[] | null;
+  hasVotes: boolean;
+  matches: AffinityMatches | null;
+}
+
+// Calcula os índices de afinidade
+async function calculateAllMatches(
+  votes: GranularUserVotes,
+  currentDeputies: DeputySearchResult[],
+  currentParties: Party[],
+  sessionToPropMap?: Map<string, number>
+): Promise<AffinityMatches | null> {
+  try {
+    const propIds = extractPropIdsToFetch(votes, sessionToPropMap);
+    if (propIds.length === 0) return null;
+
+    const propPromises = propIds.map((id) =>
+      fetch(`/api/propositions/${id}`).then((r) => r.json()).catch((e) => {
+        console.error("Erro no fetch da proposição", id, e);
+        return null;
+      })
+    );
+    const propsData: PropositionDetailResponse[] = (await Promise.all(propPromises)).filter(Boolean);
+
+    const { rawVotes, voteSessionToProposition } = aggregatePropositionVotes(propsData);
+
+    const allVotesWithProp: VoteDetailWithProposition[] = attachPropositionIdToVotes(rawVotes, voteSessionToProposition);
+
+    // 1. Afinidade dos Partidos (Média dos Deputados)
+    const partyMatches = currentParties.map((party) => {
+      const votesForParty = allVotesWithProp.filter(
+        (v) => (v.sigla_partido ?? "").toUpperCase() === (party.sigla ?? "").toUpperCase()
+      );
+      const rawMatch = calculatePartyMatch(votes, votesForParty);
+      const normalizedMatch = rawMatch
+        ? { ...rawMatch, adherence: normalizeAdherence(rawMatch.adherence) }
+        : { adherence: null, matches_count: 0, disposable_count: 0, comparable_count: 0 };
+      return { ...party, match: normalizedMatch };
+    });
+
+    // 2. Afinidade Individual dos Deputados
+    const deputyMatches: DeputyMatch[] = currentDeputies.map((dep) => {
+      const votesOfDep = allVotesWithProp.filter((v) => v.deputado_id === dep.id);
+      const raw = calculatePoliticianMatch(votes, votesOfDep, dep);
+      const normalized = raw ? { ...raw, adherence: normalizeAdherence(raw.adherence) } : raw;
+      return normalized;
+    });
+
+    return {
+      parties: sortPartyMatches(partyMatches),
+      deputies: sortDeputyMatches(deputyMatches),
+    };
+  } catch (err) {
+    console.error("Erro ao calcular afinidade:", err);
+    return null;
+  }
+}
+
+// Carrega a base de dados completa e calcula a afinidade
+async function loadAffinityData(): Promise<AffinityLoadResult> {
+  try {
+    const { fetchedDeputies, fetchedParties, states, sessionToPropMap } =
+      await fetchInitialAppData();
+
+    const activeVotes: GranularUserVotes = getStoredGranularAnswers();
+    const hasVotes = Object.keys(activeVotes).length > 0;
+
+    const matches = hasVotes
+      ? await calculateAllMatches(activeVotes, fetchedDeputies, fetchedParties, sessionToPropMap)
+      : null;
+
+    return { states, hasVotes, matches };
+  } catch (err) {
+    console.error("Erro ao carregar dados iniciais:", err);
+    return { states: null, hasVotes: false, matches: null };
+  }
+}
+
 export default function AfinidadePage() {
   const { isReady } = useSystemStatus();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [stateFilter, setStateFilter] = useState<string | null>(null);
   const [partyFilter, setPartyFilter] = useState<string | null>(null);
   const [calculatedParties, setCalculatedParties] = useState<Array<Party & { match: PartyMatchResult }>>([]);
@@ -195,90 +296,28 @@ export default function AfinidadePage() {
   const [availableStates, setAvailableStates] = useState<string[]>([]);
   const [hasVotes, setHasVotes] = useState(false);
 
-  // Carrega a base de dados completa uma única vez
-  async function loadInitialData() {
-    setLoading(true);
-    try {
-      const { fetchedDeputies, fetchedParties, states, sessionToPropMap } =
-        await fetchInitialAppData();
-      setAvailableStates(states);
-
-      const activeVotes: GranularUserVotes = getStoredGranularAnswers();
-      const votesCount = Object.keys(activeVotes).length;
-      setHasVotes(votesCount > 0);
-
-      if (votesCount > 0) {
-        await calculateAllMatches(activeVotes, fetchedDeputies, fetchedParties, sessionToPropMap);
-      }
-    } catch (err) {
-      console.error("Erro ao carregar dados iniciais:", err);
-    } finally {
-      setLoading(false);
+  const applyAffinityResult = useCallback((result: AffinityLoadResult) => {
+    if (result.states) {
+      setAvailableStates(result.states);
+      setHasVotes(result.hasVotes);
     }
-  }
-
-  // Calcula os índices de afinidade
-  async function calculateAllMatches(
-    votes: GranularUserVotes,
-    currentDeputies: DeputySearchResult[],
-    currentParties: Party[],
-    sessionToPropMap?: Map<string, number>
-  ) {
-    try {
-      const propIds = extractPropIdsToFetch(votes, sessionToPropMap);
-      if (propIds.length === 0) return;
-
-      const propPromises = propIds.map((id) =>
-        fetch(`/api/propositions/${id}`).then((r) => r.json()).catch((e) => {
-          console.error("Erro no fetch da proposição", id, e);
-          return null;
-        })
-      );
-      const propsData: PropositionDetailResponse[] = (await Promise.all(propPromises)).filter(Boolean);
-
-      const { rawVotes, voteSessionToProposition } = aggregatePropositionVotes(propsData);
-
-      const allVotesWithProp: VoteDetailWithProposition[] = attachPropositionIdToVotes(rawVotes, voteSessionToProposition);
-
-      // 1. Afinidade dos Partidos (Média dos Deputados)
-      const partyMatches = currentParties.map((party) => {
-        const votesForParty = allVotesWithProp.filter(
-          (v) => (v.sigla_partido ?? "").toUpperCase() === (party.sigla ?? "").toUpperCase()
-        );
-        const rawMatch = calculatePartyMatch(votes, votesForParty);
-        const normalizedMatch = rawMatch
-          ? { ...rawMatch, adherence: normalizeAdherence(rawMatch.adherence) }
-          : { adherence: null, matches_count: 0, disposable_count: 0, comparable_count: 0 };
-        return { ...party, match: normalizedMatch };
-      });
-
-      // 2. Afinidade Individual dos Deputados
-      const deputyMatches: DeputyMatch[] = currentDeputies.map((dep) => {
-        const votesOfDep = allVotesWithProp.filter((v) => v.deputado_id === dep.id);
-        const raw = calculatePoliticianMatch(votes, votesOfDep, dep);
-        const normalized = raw ? { ...raw, adherence: normalizeAdherence(raw.adherence) } : raw;
-        return normalized;
-      });
-
-      const sortedParties = sortPartyMatches(partyMatches);
-      const sortedDeputies = sortDeputyMatches(deputyMatches);
-
-      setCalculatedParties(sortedParties);
-      setAllCalculatedDeputies(sortedDeputies);
-    } catch (err) {
-      console.error("Erro ao calcular afinidade:", err);
+    if (result.matches) {
+      setCalculatedParties(result.matches.parties);
+      setAllCalculatedDeputies(result.matches.deputies);
     }
-  }
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    loadInitialData();
+    void loadAffinityData().then(applyAffinityResult);
 
     const handleStorage = () => {
       const currentVotes = getStoredGranularAnswers();
       const currentCount = Object.keys(currentVotes).length;
       setHasVotes(currentCount > 0);
       if (currentCount > 0) {
-        loadInitialData();
+        setLoading(true);
+        void loadAffinityData().then(applyAffinityResult);
       } else {
         setCalculatedParties([]);
         setAllCalculatedDeputies([]);
@@ -292,7 +331,7 @@ export default function AfinidadePage() {
       window.removeEventListener("storage-answers-updated", handleStorage);
       window.removeEventListener("storage", handleStorage);
     };
-  }, []);
+  }, [applyAffinityResult]);
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">

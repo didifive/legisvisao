@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   FaChevronRight,
   FaLandmark,
@@ -132,9 +133,12 @@ function PartyCard({ party }: Readonly<PartyCardProps>) {
           {/* Logo do Partido */}
           <div className="w-10 h-10 rounded-xl bg-white/90 dark:bg-muted border border-border shrink-0 flex items-center justify-center p-1 overflow-hidden shadow-soft">
             {partyLogoUrl ? (
-              <img
+              <Image
                 src={partyLogoUrl}
                 alt={`Logo do ${party.sigla}`}
+                width={40}
+                height={40}
+                unoptimized
                 className="max-w-full max-h-full object-contain"
                 onError={(e) => {
                   (e.target as HTMLElement).style.display = "none";
@@ -248,31 +252,28 @@ export default function MatchResults({
   partyFilter,
   onPartyChange,
 }: Readonly<MatchResultsProps>) {
-  if (loading) return <LoadingState />;
-  if (!results) return <EmptyState />;
-
   const sortedParties: NormalizedParty[] = useMemo(() => {
-    return (results.parties || [])
+    return (results?.parties || [])
       .map((party) => ({
         ...party,
         adherence: clamp01(party.match?.adherence ?? null),
       }))
       .sort(sortRankingEntities);
-  }, [results.parties]);
+  }, [results?.parties]);
 
   const availableParties = useMemo(() => {
     const partiesSet = new Set<string>();
-    for (const d of results.deputies || []) {
+    for (const d of results?.deputies || []) {
       if (d.sigla_partido) partiesSet.add(d.sigla_partido.toUpperCase().trim());
     }
-    for (const p of results.parties || []) {
+    for (const p of results?.parties || []) {
       if (p.sigla) partiesSet.add(p.sigla.toUpperCase().trim());
     }
     return Array.from(partiesSet).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [results.deputies, results.parties]);
+  }, [results?.deputies, results?.parties]);
 
   const validDeputies: DeputyMatch[] = useMemo(() => {
-    const raw: DeputyMatch[] = (results.deputies || []).map((dep) => ({
+    const raw: DeputyMatch[] = (results?.deputies || []).map((dep) => ({
       ...dep,
       adherence: clamp01(dep.adherence ?? null),
     }));
@@ -290,7 +291,10 @@ export default function MatchResults({
     return filtered
       .filter((p) => (p.comparable_count ?? 0) > 0 && p.adherence !== null)
       .sort(sortRankingEntities);
-  }, [results.deputies, stateFilter, partyFilter]);
+  }, [results?.deputies, stateFilter, partyFilter]);
+
+  if (loading) return <LoadingState />;
+  if (!results) return <EmptyState />;
 
   const hasActiveDeputyFilters = Boolean(stateFilter || partyFilter);
 

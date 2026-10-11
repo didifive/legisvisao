@@ -1,7 +1,7 @@
-const fs = require('node:fs');
-const path = require('node:path');
+import fs from 'node:fs';
+import path from 'node:path';
 
-const packageJsonPath = path.resolve(__dirname, '../../package.json');
+const packageJsonPath = path.resolve(import.meta.dirname, '../../package.json');
 const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
 
 const currentVersion = pkg.version || '0.1.0';
@@ -97,7 +97,7 @@ pkg.version = newVersion;
 fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
 
 // Atualiza o package-lock.json se existir
-const packageLockPath = path.resolve(__dirname, '../../package-lock.json');
+const packageLockPath = path.resolve(import.meta.dirname, '../../package-lock.json');
 if (fs.existsSync(packageLockPath)) {
   try {
     const lock = JSON.parse(fs.readFileSync(packageLockPath, 'utf8'));

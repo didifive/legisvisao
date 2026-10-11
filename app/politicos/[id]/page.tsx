@@ -9,7 +9,7 @@ export async function generateMetadata(
 ): Promise<Metadata> {
   const { id } = await props.params;
   const deputyId = Number(id);
-  if (isNaN(deputyId)) return { title: "Deputado não encontrado" };
+  if (Number.isNaN(deputyId)) return { title: "Deputado não encontrado" };
 
   const deputyResult = await db<Array<Deputy & { party_name: string | null }>>`
     SELECT 
@@ -45,7 +45,7 @@ export default async function PoliticianPage(
   const { id } = await props.params;
   const deputyId = Number(id);
 
-  if (isNaN(deputyId)) {
+  if (Number.isNaN(deputyId)) {
     notFound();
   }
 
