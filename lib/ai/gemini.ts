@@ -7,6 +7,7 @@ import {
   recordModelFailure,
   recordModelSuccess,
   resolveCandidateModels,
+  resolveApiKey,
 } from "./modelRegistry";
 import { fetchPropositionPdfBuffer } from "./pdfFetcher";
 import {
@@ -45,48 +46,103 @@ interface ParsedEnrichmentPayload {
   }>;
 }
 
-async function requestModelGeneration(
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function getSecureJitterMs(attempt: number): number {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.getRandomValues) {
+    const array = new Uint32Array(1);
+    globalThis.crypto.getRandomValues(array);
+    return attempt * 2000 + (array[0] % 600);
+  }
+  return attempt * 2000 + 350;
+}
+
+async function executeHttpCall(
   model: string,
   key: string,
   requestBody: unknown
-): Promise<string | null> {
+): Promise<{ status: number; text?: string; errorText?: string }> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 35_000);
 
   try {
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
-      recordModelFailure(model, response.status);
-      const errorText = await response.text();
-      if (response.status === 503 || response.status === 404 || response.status === 429) {
-        return null;
-      }
-      throw new Error(`Falha na chamada ao Google AI Studio (${response.status}): ${errorText.slice(0, 200)}`);
+      const errorText = await response.text().catch(() => "");
+      return { status: response.status, errorText };
     }
 
-    recordModelSuccess(model);
     const data = (await response.json()) as RawModelResponse;
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+    return { status: 200, text };
   } catch (err) {
-    recordModelFailure(model, 500);
-    throw err;
+    clearTimeout(timeoutId);
+    const isAbort = (err as Error)?.name === "AbortError";
+    return { status: isAbort ? 408 : 500, errorText: (err as Error).message };
   }
+}
+
+async function requestModelGeneration(
+  model: string,
+  key: string,
+  requestBody: unknown
+): Promise<string | null> {
+  const maxRetries = 3;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt += 1) {
+    const outcome = await executeHttpCall(model, key, requestBody);
+
+    if (outcome.status === 200 && outcome.text !== undefined) {
+      recordModelSuccess(model);
+      return outcome.text;
+    }
+
+    if (outcome.status === 404) {
+      recordModelFailure(model, 404);
+      return null;
+    }
+
+    if (outcome.status === 429) {
+      if (attempt < maxRetries) {
+        await sleep(getSecureJitterMs(attempt));
+        continue;
+      }
+      recordModelFailure(model, 429);
+      return null;
+    }
+
+    if (outcome.status === 503) {
+      recordModelFailure(model, 503);
+      return null;
+    }
+
+    recordModelFailure(model, outcome.status);
+    throw new Error(
+      `Falha na chamada ao Google AI Studio (${outcome.status}): ${(outcome.errorText || "").slice(0, 200)}`
+    );
+  }
+
+  return null;
 }
 
 /**
  * Enriquecimento Unificado com Gemini:
  * Envia o PDF/texto da proposição legislativa e todas as suas sessões de votação em uma ÚNICA chamada multimodal.
- * Utiliza cascata com cooldown inteligente e failover automático de modelos.
+ * Utiliza cascata com cooldown inteligente, retentativas com jitter e failover automático de modelos.
  */
 export async function enrichPropositionAndSessionsWithGemini(
   context: PropositionWithSessionsContext,
   apiKey?: string
 ): Promise<UnifiedPropositionEnrichmentResult> {
-  const key = apiKey || process.env.GEMINI_API_KEY;
+  const key = resolveApiKey(apiKey);
   if (!key) {
     throw new Error(
       "GEMINI_API_KEY não encontrada nas variáveis de ambiente. Configure no arquivo .env.local."
@@ -124,7 +180,8 @@ export async function enrichPropositionAndSessionsWithGemini(
       if (
         lastError.message.includes("503") ||
         lastError.message.includes("404") ||
-        lastError.message.includes("429")
+        lastError.message.includes("429") ||
+        lastError.message.includes("408")
       ) {
         continue;
       }

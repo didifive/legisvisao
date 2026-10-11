@@ -12,6 +12,15 @@ export interface GeminiModelInfo {
   supportedMethods: string[];
 }
 
+export interface ModelQuotaInfo {
+  nome: string;
+  rpm: number;
+  tpm: string;
+  rpd: number;
+  isFreeTier: boolean;
+  categoria: "texto" | "embedding" | "outros";
+}
+
 export interface PropositionSummaryContext {
   proposicaoId: number;
   titulo: string;

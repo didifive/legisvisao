@@ -7,6 +7,8 @@ import { sql } from "./client";
 import {
   listAvailableGeminiModels,
   enrichPropositionAndSessionsWithGemini,
+  resolveApiKey,
+  FREE_TIER_QUOTAS,
   PropositionWithSessionsContext,
 } from "../../lib/ai/gemini";
 import * as dotenv from "dotenv";
@@ -116,11 +118,15 @@ async function displayAvailableModels(apiKey: string): Promise<boolean> {
 
   if (models.length > 0) {
     console.log(`📦 Modelos disponíveis para geração de conteúdo (${models.length}):`);
-    for (const m of models.slice(0, 8)) {
-      console.log(`   • ${m.name.padEnd(26)} | In: ${String(m.inputTokenLimit).padEnd(8)} tokens | Out: ${m.outputTokenLimit} tokens`);
+    for (const m of models.slice(0, 10)) {
+      const quota = FREE_TIER_QUOTAS[m.name];
+      const quotaDesc = quota
+        ? `${String(quota.rpd).padStart(5)} RPD | ${String(quota.rpm).padStart(2)} RPM`
+        : " Cota personalizada/paga";
+      console.log(`   • ${m.name.padEnd(24)} | ${quotaDesc} | In: ${String(m.inputTokenLimit).padEnd(8)} tokens`);
     }
-    if (models.length > 8) {
-      console.log(`   • ... e mais ${models.length - 8} modelos disponíveis.`);
+    if (models.length > 10) {
+      console.log(`   • ... e mais ${models.length - 10} modelos disponíveis.`);
     }
   } else {
     console.log("ℹ️ Nenhum modelo retornado ou chave ausente.");
@@ -319,10 +325,10 @@ async function main() {
   console.log("   (1 Projeto de Lei + Todas as suas Sessões por Requisição Multimodal)");
   console.log("====================================================================");
 
-  const apiKey = process.env.GEMINI_API_KEY || "";
+  const apiKey = resolveApiKey();
   if (!apiKey && !dryRun) {
-    console.error("❌ ERRO: GEMINI_API_KEY não configurada no arquivo .env.local.");
-    console.error("👉 Crie sua chave no Google AI Studio (https://aistudio.google.com) e adicione no .env.local.");
+    console.error("❌ ERRO: Chave da API do Google AI Studio não configurada.");
+    console.error("👉 Defina GEMINI_API_KEY no arquivo .env.local (https://aistudio.google.com).");
     process.exit(1);
   }
 

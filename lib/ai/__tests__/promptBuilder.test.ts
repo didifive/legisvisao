@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { parseSafeJson, normalizeEnrichedSessions } from "../promptBuilder";
+import {
+  parseSafeJson,
+  normalizeEnrichedSessions,
+  buildEnrichmentRequestBody,
+} from "../promptBuilder";
 import type { PropositionWithSessionsContext } from "../types";
 
 describe("lib/ai/promptBuilder.ts - Sanitização de JSON e Normalização", () => {
@@ -46,5 +50,44 @@ describe("lib/ai/promptBuilder.ts - Sanitização de JSON e Normalização", () 
     // sess-2 não veio no retorno da IA, deve receber fallback seguro
     expect(normalized[1].id).toBe("sess-2");
     expect(normalized[1].tipo_deliberacao).toBe("OUTRO");
+  });
+
+  it("constrói request body com systemInstruction anti-slop e geração de JSON", () => {
+    const context: PropositionWithSessionsContext = {
+      proposicaoId: 101,
+      titulo: "PL 101/2026",
+      ementa: "Dispõe sobre regras de trânsito",
+      sessoes: [
+        { id: "s-1", descricao: "Votação do texto-base" },
+      ],
+    };
+
+    const body = buildEnrichmentRequestBody(context, null);
+
+    expect(body.generationConfig.responseMimeType).toBe("application/json");
+    expect(body.generationConfig.temperature).toBe(0.1);
+    expect(body.systemInstruction.parts[0].text).toContain("ANTI-SLOP");
+    expect(body.systemInstruction.parts[0].text).toContain("PALAVRAS E CLICHÊS BANIDOS");
+    expect(body.systemInstruction.parts[0].text).toContain("PROIBIÇÃO DE TRAVESSÕES");
+    expect(body.contents[0].parts[0].text).toContain("PL 101/2026");
+  });
+
+  it("anexa inlineData em Base64 quando pdfBuffer é fornecido", () => {
+    const context: PropositionWithSessionsContext = {
+      proposicaoId: 102,
+      titulo: "PL 102/2026",
+      ementa: "Ementa",
+      sessoes: [],
+    };
+
+    const mockBuffer = Buffer.from("%PDF-1.4 mock content");
+    const body = buildEnrichmentRequestBody(context, mockBuffer);
+
+    expect(body.contents[0].parts).toHaveLength(2);
+    expect(body.contents[0].parts[0].inlineData).toEqual({
+      mimeType: "application/pdf",
+      data: mockBuffer.toString("base64"),
+    });
+    expect(body.contents[0].parts[1].text).toContain("PL 102/2026");
   });
 });

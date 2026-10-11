@@ -3,24 +3,159 @@
 // Gestão de Cotas, Cooldown em Memória, Fallback e Descoberta Dinâmica
 // ====================================================================
 
-import type { GeminiModelInfo, ModelStatus } from "./types";
+import type { GeminiModelInfo, ModelQuotaInfo, ModelStatus } from "./types";
 
+/**
+ * Catálogo oficial com limites e cotas do Free Tier do Google AI Studio.
+ */
+export const FREE_TIER_QUOTAS: Record<string, ModelQuotaInfo> = {
+  "gemini-3.5-flash-lite": {
+    nome: "Gemini 3.5 Flash Lite",
+    rpm: 15,
+    tpm: "250K",
+    rpd: 500,
+    isFreeTier: true,
+    categoria: "texto",
+  },
+  "gemini-3.1-flash-lite": {
+    nome: "Gemini 3.1 Flash Lite",
+    rpm: 15,
+    tpm: "250K",
+    rpd: 500,
+    isFreeTier: true,
+    categoria: "texto",
+  },
+  "gemma-4-31b": {
+    nome: "Gemma 4 31B",
+    rpm: 30,
+    tpm: "16K",
+    rpd: 14400,
+    isFreeTier: true,
+    categoria: "outros",
+  },
+  "gemma-4-26b": {
+    nome: "Gemma 4 26B",
+    rpm: 30,
+    tpm: "16K",
+    rpd: 14400,
+    isFreeTier: true,
+    categoria: "outros",
+  },
+  "gemini-2.5-flash": {
+    nome: "Gemini 2.5 Flash",
+    rpm: 5,
+    tpm: "250K",
+    rpd: 20,
+    isFreeTier: true,
+    categoria: "texto",
+  },
+  "gemini-2.5-flash-lite": {
+    nome: "Gemini 2.5 Flash Lite",
+    rpm: 10,
+    tpm: "250K",
+    rpd: 20,
+    isFreeTier: true,
+    categoria: "texto",
+  },
+  "gemini-3.5-flash": {
+    nome: "Gemini 3.5 Flash",
+    rpm: 5,
+    tpm: "250K",
+    rpd: 20,
+    isFreeTier: true,
+    categoria: "texto",
+  },
+  "gemini-3-flash": {
+    nome: "Gemini 3 Flash",
+    rpm: 5,
+    tpm: "250K",
+    rpd: 20,
+    isFreeTier: true,
+    categoria: "texto",
+  },
+  "gemini-2.5-pro": {
+    nome: "Gemini 2.5 Pro",
+    rpm: 0,
+    tpm: "0",
+    rpd: 0,
+    isFreeTier: false,
+    categoria: "texto",
+  },
+  "gemini-3.1-pro": {
+    nome: "Gemini 3.1 Pro",
+    rpm: 0,
+    tpm: "0",
+    rpd: 0,
+    isFreeTier: false,
+    categoria: "texto",
+  },
+};
+
+/**
+ * Modelos curados por prioridade para tarefas analíticas e de síntese legislativa.
+ */
 export const DEFAULT_PRIORITY_MODELS = [
-  "gemini-3.1-flash-lite",
-  "gemini-3.5-flash-lite",
-  "gemini-2.5-flash",
-  "gemma-4-31b",
-  "gemma-4-26b",
-  "gemini-flash-latest",
+  "gemini-3.5-flash-lite", // 500 RPD, 15 RPM
+  "gemini-3.1-flash-lite", // 500 RPD, 15 RPM
+  "gemma-4-31b",          // 14.4K RPD, 30 RPM
+  "gemma-4-26b",          // 14.4K RPD, 30 RPM
+  "gemini-2.5-flash",      // 20 RPD, 5 RPM
+  "gemini-2.5-flash-lite", // 20 RPD, 10 RPM
+  "gemini-3.5-flash",      // 20 RPD, 5 RPM
 ];
 
-const EXCLUDED_PATTERNS = ["-tts", "embedding", "imagen", "robotics"];
+/**
+ * Padrões de nomes de modelos incompatíveis com geração de texto/análise estruturada.
+ */
+export const EXCLUDED_PATTERNS = [
+  "-tts",
+  "embedding",
+  "imagen",
+  "aqa",
+  "whisper",
+  "bison",
+  "vision",
+  "thinking",
+  "nano",
+  "preview-image",
+  "computer-use",
+];
 
 const modelStatusMap = new Map<string, ModelStatus>();
 
 let cachedDiscoveredModels: GeminiModelInfo[] | null = null;
 let lastFetchTime = 0;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hora de cache
+
+export function resolveApiKey(apiKey?: string): string {
+  if (apiKey?.trim()) return apiKey.trim();
+  return (
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    ""
+  ).trim();
+}
+
+export function isPaidTier(): boolean {
+  const tier = (process.env.GEMINI_TIER || process.env.GOOGLE_AI_TIER || "free").toLowerCase().trim();
+  return tier === "paid" || tier === "pay-as-you-go" || tier === "tier1" || tier === "tier2";
+}
+
+export function isModelAllowedForCurrentTier(modelName: string): boolean {
+  if (isPaidTier()) return true;
+
+  const clean = modelName.replace("models/", "").toLowerCase();
+  const quota = FREE_TIER_QUOTAS[clean];
+  if (quota) {
+    return quota.isFreeTier && quota.rpd > 0;
+  }
+
+  if (clean.includes("-pro") && !clean.includes("flash")) {
+    return false;
+  }
+  return true;
+}
 
 export function recordModelFailure(model: string, status: number): void {
   const now = Date.now();
@@ -64,12 +199,12 @@ export function filterActiveCandidates(models: string[]): string[] {
   });
 }
 
-function isModelPermittedForTier(modelName: string): boolean {
-  const tier = (process.env.GEMINI_TIER || "free").toLowerCase().trim();
-  if (tier !== "paid" && modelName.includes("-pro")) {
-    return false;
-  }
-  return true;
+export function isModelSuitable(name: string, supportedMethods: string[] = []): boolean {
+  const clean = name.replace("models/", "").toLowerCase();
+  if (!clean.startsWith("gemini-") && !clean.startsWith("gemma-")) return false;
+  if (supportedMethods.length > 0 && !supportedMethods.includes("generateContent")) return false;
+  if (EXCLUDED_PATTERNS.some((pat) => clean.includes(pat))) return false;
+  return isModelAllowedForCurrentTier(clean);
 }
 
 /**
@@ -81,7 +216,7 @@ export async function listAvailableGeminiModels(apiKey?: string): Promise<Gemini
     return cachedDiscoveredModels;
   }
 
-  const key = apiKey || process.env.GEMINI_API_KEY;
+  const key = resolveApiKey(apiKey);
   if (!key) {
     throw new Error(
       "GEMINI_API_KEY não encontrada nas variáveis de ambiente. Configure no arquivo .env.local."
@@ -107,11 +242,8 @@ export async function listAvailableGeminiModels(apiKey?: string): Promise<Gemini
     }> = data.models || [];
 
     const contentModels = rawModels.filter((m) => {
-      const name = (m.name || "").replace("models/", "").toLowerCase();
-      const methods = m.supportedGenerationMethods || [];
-      if (!methods.includes("generateContent")) return false;
-      if (EXCLUDED_PATTERNS.some((pat) => name.includes(pat))) return false;
-      return isModelPermittedForTier(name);
+      const name = m.name || "";
+      return isModelSuitable(name, m.supportedGenerationMethods);
     });
 
     const parsed: GeminiModelInfo[] = contentModels.map((m) => ({
@@ -135,20 +267,27 @@ export async function listAvailableGeminiModels(apiKey?: string): Promise<Gemini
  * Resolve a lista de modelos candidatos em ordem de prioridade, aplicando filtro de tier e cooldown.
  */
 export async function resolveCandidateModels(apiKey?: string): Promise<string[]> {
-  const customModel = process.env.GEMINI_MODEL;
+  const customModel = (
+    process.env.GEMINI_MODEL ||
+    process.env.GEMINI_SYNTHESIZER_MODEL ||
+    ""
+  ).trim();
+
   if (customModel) {
     const filtered = [customModel, ...DEFAULT_PRIORITY_MODELS.filter((m) => m !== customModel)]
-      .filter(isModelPermittedForTier);
+      .filter(isModelAllowedForCurrentTier);
     return filterActiveCandidates(filtered);
   }
 
   const activeModels = await listAvailableGeminiModels(apiKey);
   if (activeModels.length > 0) {
     const activeNames = new Set(activeModels.map((m) => m.name));
-    const prioritized = DEFAULT_PRIORITY_MODELS.filter((m) => activeNames.has(m) && isModelPermittedForTier(m));
+    const prioritized = DEFAULT_PRIORITY_MODELS.filter(
+      (m) => activeNames.has(m) && isModelAllowedForCurrentTier(m)
+    );
     const others = activeModels
       .map((m) => m.name)
-      .filter((m) => !DEFAULT_PRIORITY_MODELS.includes(m) && isModelPermittedForTier(m));
+      .filter((m) => !DEFAULT_PRIORITY_MODELS.includes(m) && isModelAllowedForCurrentTier(m));
 
     const combined = [...prioritized, ...others];
     const activeCandidates = filterActiveCandidates(combined);
@@ -157,7 +296,7 @@ export async function resolveCandidateModels(apiKey?: string): Promise<string[]>
     }
   }
 
-  const fallback = DEFAULT_PRIORITY_MODELS.filter(isModelPermittedForTier);
+  const fallback = DEFAULT_PRIORITY_MODELS.filter(isModelAllowedForCurrentTier);
   const activeFallback = filterActiveCandidates(fallback);
   return activeFallback.length > 0 ? activeFallback : fallback;
 }

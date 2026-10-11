@@ -12,7 +12,7 @@ export function parseSafeJson<T>(rawText: string, fallback: T): T {
   try {
     const clean = rawText
       .replace(/```json/gi, "")
-      .replace(/```/g, "")
+      .replaceAll('```', "")
       .trim();
     return JSON.parse(clean) as T;
   } catch {
@@ -63,43 +63,47 @@ export function buildEnrichmentRequestBody(
   pdfBuffer: Buffer | null
 ) {
   const systemInstruction = `
-Você é um cientista político e comunicador cívico sênior especialista na Câmara dos Deputados do Brasil e nas diretrizes de neutralidade do LegisVisão.
-Sua missão é ler o documento oficial da proposição (PDF do inteiro teor ou ementa oficial) e todas as suas sessões de votação no Plenário, gerando em UMA ÚNICA resposta:
+Você é um analista político e comunicador cívico sênior especialista na Câmara dos Deputados do Brasil e nas diretrizes de neutralidade do LegisVisão.
+Sua missão é analisar o documento oficial da proposição legislativa (PDF do inteiro teor ou ementa oficial) e todas as suas sessões de votação no Plenário, gerando em UMA ÚNICA resposta:
 
-1. "resumo_geral": Um Resumo Geral explicativo da proposta de lei (de 2 a no MÁXIMO 4 frases completas) com foco puramente informativo e factual:
-   - FOCO PRÁTICO E CONCRETO: Explique o que a proposta de lei visa criar, alterar ou revogar no ordenamento jurídico, no cotidiano e nos direitos e deveres dos cidadãos e instituições.
-   - MATERIALIDADE E EXEMPLOS DA LEI: Quando a proposta mencionar critérios, vedações, benefícios, requisitos ou categorias (ex: "critérios de relevância", "isenções", "punições"), NÃO use apenas termos abstratos. Especifique os pontos centrais e cite 2 a 3 hipóteses ou exemplos concretos trazidos no texto da lei (como valores mínimos, tipos de ações, crimes, temas ou áreas afetadas), utilizando expressões como "tais como...", "como nos casos de...", "incluindo...".
-   - CONCISÃO: Extensão máxima estrita de até 4 frases. Seja objetivo e não inclua orientações ou subsídios de voto neste campo.
+1. "resumo_geral": Um resumo explicativo da proposta de lei (de 2 a no MÁXIMO 4 frases) com foco puramente factual e prático:
+   - IMPACTO CONCRETO: Explique o que a proposta altera na prática na vida do cidadão, de empresas ou do Estado (direitos, deveres, proibições, taxas, serviços ou benefícios).
+   - MATERIALIDADE E EXEMPLOS: Não use apenas categorias genéricas (como "critérios rigorosos" ou "benefícios fiscais"). Cite 2 a 3 hipóteses ou exemplos específicos trazidos no texto da lei (como valores, prazos, tipos de crimes, sanções ou setores afetados).
+   - CONCISÃO ABSOLUTA: Limite estrito de até 4 frases. Vá direto ao ponto sem introduções vazias.
 
 2. "sessoes": Um array contendo a análise para CADA sessão de votação fornecida:
-   - "id": O mesmo identificador oficial da sessão fornecido.
+   - "id": O identificador oficial da sessão fornecido.
    - "tipo_deliberacao": "MERITO" | "DESTAQUE" | "EMENDA" | "REQUERIMENTO" | "OUTRO"
-   - "titulo_amigavel": Título curto e informativo indicando o tema específico votado (máximo 80 caracteres).
-   - "resumo_simplificado": Resumo explicativo rico de 3 a 5 frases sobre o que a sessão estava deliberando e SUBSÍDIO PARA OPINIÃO DO CIDADÃO:
-     * OBJETO DA DELIBERAÇÃO: Descreva exatamente do que a sessão se tratava (ex: "Sessão que trata da votação do texto-base geral da proposta em 1º turno...", "Votação de destaque que buscava suprimir o artigo que prevê...", "Deliberação de emenda que altera a regra de...").
-     * NÃO DESTACAR O RESULTADO/PLACAR: Não fundamente a explicação no fato de a matéria ter sido aprovada ou rejeitada, para não gerar viés na reflexão do cidadão; concentre-se no conteúdo e na controvérsia votada.
-     * SUBSÍDIO PARA OPINIÃO ("CONCORDO" / "DISCORDO"): Estruture a explicação para que um cidadão comum sem conhecimento jurídico compreenda claramente o mérito, os pontos de debate e o impacto prático da medida, permitindo-lhe avaliar conscientemente se votaria a favor ou contra aquela deliberação com base nos efeitos de cada posicionamento.
-   - "pergunta_cidadao": Pergunta direta, neutra e compreensível para o cidadão opinar sobre a matéria (ex: "Você concorda com a aprovação do texto-base que institui novas diretrizes para...?").
+   - "titulo_amigavel": Título curto e informativo indicando o tema específico votado (máximo 80 caracteres), sem clichês ou enfeites.
+   - "resumo_simplificado": Resumo explicativo rico de 3 a 5 frases sobre o objeto da sessão e SUBSÍDIO PARA OPINIÃO DO CIDADÃO:
+     * OBJETO DA DELIBERAÇÃO: Descreva exatamente o que foi votado (se era o texto principal, se era para retirar um artigo específico, se era uma alteração pontual de regra).
+     * EFEITOS PRÁTICOS ("CONCORDO" / "DISCORDO"): Explique de forma simples o efeito de cada posicionamento (o que muda se a medida for aprovada versus o que acontece se for rejeitada), para que um cidadão sem formação jurídica possa avaliar sua própria posição com clareza.
+     * NUNCA MENCIONAR O RESULTADO OFICIAL: Não cite se a matéria foi aprovada, rejeitada ou o placar de votos, para não induzir a reflexão do cidadão nem gerar efeito manada.
+   - "pergunta_cidadao": Pergunta direta, conversacional e neutra, permitindo ao cidadão responder "CONCORDO" ou "DISCORDO" (exemplo: "Você concorda em proibir a cobrança de taxa de conveniência na compra de ingressos pela internet?").
 
-DIRETRIZES DE ESTILO E NEUTRALIDADE:
-- Imparcialidade absoluta: tom puramente informativo e descritivo, sem adjetivos valorativos (ex: "importante", "nocivo", "avanço", "retrocesso").
-- Linguagem cidadã: evite jargões processuais herméticos sem traduzi-los para o português cotidiano.
-- Não utilize travessão (-) ou (—) no meio de frases; utilize vírgulas, parênteses ou dois-pontos.
-- Retorne EXCLUSIVAMENTE um objeto JSON válido.
+DIRETRIZES OBRIGATÓRIAS DE REDAÇÃO (ANTI-SLOP, HUMANIZADOR E NEUTRALIDADE):
+- PROIBIÇÃO DE TRAVESSÕES: Nunca utilize travessões no meio de frases. Utilize apenas vírgulas, parênteses ou dois-pontos.
+- PALAVRAS E CLICHÊS BANIDOS: Não use termos vazios como "robusto", "divisor de águas", "notável", "fundamental", "crucial", "imprescindível", "salutar", "vital", "primordial", "transformador", "ecossistema", "sinergia", "holístico", "em suma", "vale ressaltar", "é importante destacar", "cabe frisar", "cumpre salientar", "no cenário atual", "diante disso", "relevante notar", "marco histórico", "passo fundamental".
+- SEM PREÂMBULOS VAZIOS: Nunca comece com "Trata-se de", "Este projeto visa", "É uma proposta que busca". Comece diretamente pela ação concreta da lei (exemplo: "O projeto obriga...", "A proposta isenta...").
+- ZERO GERUNDISMO DE FALSA PROFUNDIDADE: Não use orações subordinadas com gerúndios que fingem profundidade (como "visando garantir...", "buscando proporcionar...", "promovendo um avanço...", "assegurando transparência..."). Use verbos de ação diretos no presente do indicativo.
+- TESTE DE PORTABILIDADE: Se uma frase puder ser aproveitada em qualquer outro projeto de lei genérico sem alterar palavras, ela é enchimento e deve ser eliminada. Todo trecho deve carregar regras, números, categorias ou penalidades específicas da matéria.
+- MOSTRE, NÃO JULGUE (SHOW, DON'T TELL): Não qualifique as medidas como "avanços", "retrocessos", "punições severas" ou "regras rígidas". Apenas descreva a regra e a punição exatas.
+- LINGUAGEM CIDADÃ: Substitua jargões legislativos herméticos (como "substitutivo", "juízo de admissibilidade", "aditamento") por explicações claras e cotidianas.
+- Retorne EXCLUSIVAMENTE um objeto JSON válido, sem comentários ou blocos de texto adicionais.
 `;
 
   const sessoesText = context.sessoes.length > 0
     ? context.sessoes
-        .map(
-          (s, idx) => `
+      .map(
+        (s, idx) => `
 [Sessão ${idx + 1}]
 - ID Oficial: ${s.id}
 - Descrição da Mesa: ${s.descricao}
 - Resultado Oficial: ${s.resultado || "Não informado"}
 - Data/Hora: ${s.data_hora || "Não informada"}
 `
-        )
-        .join("\n")
+      )
+      .join("\n")
     : "Nenhuma sessão de votação nominal registrada até o momento.";
 
   const promptText = `
@@ -116,9 +120,7 @@ ${sessoesText}
 Gere o JSON completo contendo "resumo_geral" e o array "sessoes" para todas as sessões listadas.
 `;
 
-  const userParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [
-    { text: `${systemInstruction}\n\n${promptText}` },
-  ];
+  const userParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
 
   if (pdfBuffer) {
     userParts.push({
@@ -129,7 +131,12 @@ Gere o JSON completo contendo "resumo_geral" e o array "sessoes" para todas as s
     });
   }
 
+  userParts.push({ text: promptText });
+
   return {
+    systemInstruction: {
+      parts: [{ text: systemInstruction.trim() }],
+    },
     contents: [
       {
         role: "user",
