@@ -69,12 +69,12 @@ const steps: TutorialStepItem[] = [
   {
     number: "3",
     title: "Consulte seu ranking de afinidade real",
-    subtitle: "Cruzamento determinístico e ordenação justa por Média Bayesiana",
+    subtitle: "Cruzamento determinístico e ordenação equilibrada",
     icon: FaChartPie,
     description: [
       "Na página de Afinidade, suas respostas são confrontadas voto a voto com os registros oficiais de cada Deputado Federal na Câmara.",
       "A porcentagem empírica (%) informa a taxa real de vezes em que você e o político (ou partido) votaram de forma idêntica.",
-      "Para a ordenação da lista, utilizamos a Média Bayesiana: parlamentares com dezenas de votos comprovados recebem destaque estatístico sobre suplentes que votaram em apenas 1 matéria isolada.",
+      "A ordenação da lista é intuitiva e equilibrada: para partidos, segue a porcentagem real com desempate por votos; para deputados, prioriza parlamentares com dezenas de votações consistentes sobre presenças isoladas de suplentes.",
     ],
     imageSrc: "/tutorial/passo-3-afinidade.png",
     imageAlt: "Ranking de afinidade partidária e parlamentar com porcentagens e barras de progresso",

@@ -4,6 +4,7 @@ import {
   evaluateVotePair,
   calculateAdherencePercent,
   normalizeAdherence,
+  calculateWilsonScore,
   calculateBayesianScore,
 } from "../match/evaluateVotes";
 
@@ -81,20 +82,62 @@ describe("evaluateVotes - Avaliação e Normalização de Votos", () => {
     });
   });
 
+  describe("calculateWilsonScore", () => {
+    it("retorna -1 quando não há votos comparáveis", () => {
+      expect(calculateWilsonScore(0, 0)).toBe(-1);
+      expect(calculateWilsonScore(0, -5)).toBe(-1);
+    });
+
+    it("retorna 0 para amostras com 0 concordâncias", () => {
+      expect(calculateWilsonScore(0, 1)).toBe(0);
+      expect(calculateWilsonScore(0, 4)).toBe(0);
+      expect(calculateWilsonScore(0, 20)).toBe(0);
+    });
+
+    it("garante que concordâncias reais superam amostras com zero concordâncias", () => {
+      const scoreRede0de1 = calculateWilsonScore(0, 1);
+      const scoreAvante0de4 = calculateWilsonScore(0, 4);
+      const scorePsdb2de9 = calculateWilsonScore(2, 9);
+      const scorePp10de48 = calculateWilsonScore(10, 48);
+
+      expect(scorePsdb2de9).toBeGreaterThan(scoreRede0de1);
+      expect(scorePsdb2de9).toBeGreaterThan(scoreAvante0de4);
+      expect(scorePp10de48).toBeGreaterThan(scorePsdb2de9);
+    });
+
+    it("regulariza amostras reduzidas na ponta superior para que alto volume com consistência supere 100% isolado", () => {
+      const scorePl74de81 = calculateWilsonScore(74, 81); // ~91.4% com 81 votos
+      const scoreNovo4de4 = calculateWilsonScore(4, 4);   // 100% com 4 votos
+      const score1de1 = calculateWilsonScore(1, 1);       // 100% com 1 voto
+
+      expect(scorePl74de81).toBeGreaterThan(scoreNovo4de4);
+      expect(scoreNovo4de4).toBeGreaterThan(score1de1);
+    });
+
+    it("assegura que 20 de 20 supera 19 de 20 e 1 de 1", () => {
+      const score20de20 = calculateWilsonScore(20, 20);
+      const score19de20 = calculateWilsonScore(19, 20);
+      const score1de1 = calculateWilsonScore(1, 1);
+
+      expect(score20de20).toBeGreaterThan(score19de20);
+      expect(score20de20).toBeGreaterThan(score1de1);
+    });
+  });
+
   describe("calculateBayesianScore", () => {
     it("retorna -1 quando não há votos comparáveis", () => {
       expect(calculateBayesianScore(0, 0)).toBe(-1);
     });
 
     it("regulariza amostras pequenas para que 19 de 20 fique acima de 1 de 1", () => {
-      const score19de20 = calculateBayesianScore(19, 20); // (19 + 1) / (20 + 2) = 20 / 22 ~= 0.909
-      const score1de1 = calculateBayesianScore(1, 1);     // (1 + 1) / (1 + 2) = 2 / 3 ~= 0.667
+      const score19de20 = calculateBayesianScore(19, 20);
+      const score1de1 = calculateBayesianScore(1, 1);
 
       expect(score19de20).toBeGreaterThan(score1de1);
     });
 
     it("garante que 20 de 20 supera 19 de 20 e 1 de 1", () => {
-      const score20de20 = calculateBayesianScore(20, 20); // (20 + 1) / (20 + 2) = 21 / 22 ~= 0.955
+      const score20de20 = calculateBayesianScore(20, 20);
       const score19de20 = calculateBayesianScore(19, 20);
       const score1de1 = calculateBayesianScore(1, 1);
 
@@ -103,8 +146,8 @@ describe("evaluateVotes - Avaliação e Normalização de Votos", () => {
     });
 
     it("penaliza amostras com 0 concordâncias de forma proporcional ao volume", () => {
-      const score0de1 = calculateBayesianScore(0, 1);   // (0 + 1) / (1 + 2) = 1 / 3 ~= 0.333
-      const score0de20 = calculateBayesianScore(0, 20); // (0 + 1) / (20 + 2) = 1 / 22 ~= 0.045
+      const score0de1 = calculateBayesianScore(0, 1);
+      const score0de20 = calculateBayesianScore(0, 20);
 
       expect(score0de1).toBeGreaterThan(score0de20);
     });

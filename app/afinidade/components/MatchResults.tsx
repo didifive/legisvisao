@@ -13,7 +13,7 @@ import {
 } from "react-icons/fa";
 import type { Party } from "@/types/db";
 import type { DeputyMatch, PartyMatchResult } from "@/lib/match/types";
-import { calculateBayesianScore } from "@/lib/match";
+import { comparePartyRanking, compareDeputyRanking } from "@/lib/match";
 import { MatchResultsSkeleton } from "./MatchResultsSkeleton";
 
 export type ResultsShape = {
@@ -51,34 +51,12 @@ function getProgressGradientClass(pct: number | null): string {
   return "bg-gradient-to-r from-slate-500 to-slate-400";
 }
 
-function sortRankingEntities<T extends {
-  nome?: string;
-  nome_eleitoral?: string;
-  sigla?: string;
-  adherence: number | null;
-  matches_count?: number;
-  comparable_count?: number;
-  match?: PartyMatchResult;
-}>(a: T, b: T): number {
-  const matchesA = a.matches_count ?? a.match?.matches_count ?? 0;
-  const compA = a.comparable_count ?? a.match?.comparable_count ?? 0;
-  const matchesB = b.matches_count ?? b.match?.matches_count ?? 0;
-  const compB = b.comparable_count ?? b.match?.comparable_count ?? 0;
+function sortPartiesRanking(a: NormalizedParty, b: NormalizedParty): number {
+  return comparePartyRanking(a, b);
+}
 
-  const scoreA = calculateBayesianScore(matchesA, compA);
-  const scoreB = calculateBayesianScore(matchesB, compB);
-  if (Math.abs(scoreB - scoreA) > 0.0001) return scoreB - scoreA;
-
-  const adhA = a.adherence ?? a.match?.adherence ?? -1;
-  const adhB = b.adherence ?? b.match?.adherence ?? -1;
-  if (adhB !== adhA) return adhB - adhA;
-
-  if (matchesB !== matchesA) return matchesB - matchesA;
-  if (compB !== compA) return compB - compA;
-
-  const labelA = (a.sigla || a.nome_eleitoral || a.nome || "").toString();
-  const labelB = (b.sigla || b.nome_eleitoral || b.nome || "").toString();
-  return labelA.localeCompare(labelB, "pt-BR");
+function sortDeputiesRanking(a: DeputyMatch, b: DeputyMatch): number {
+  return compareDeputyRanking(a, b);
 }
 
 function LoadingState() {
@@ -258,7 +236,7 @@ export default function MatchResults({
         ...party,
         adherence: clamp01(party.match?.adherence ?? null),
       }))
-      .sort(sortRankingEntities);
+      .sort(sortPartiesRanking);
   }, [results?.parties]);
 
   const availableParties = useMemo(() => {
@@ -290,7 +268,7 @@ export default function MatchResults({
 
     return filtered
       .filter((p) => (p.comparable_count ?? 0) > 0 && p.adherence !== null)
-      .sort(sortRankingEntities);
+      .sort(sortDeputiesRanking);
   }, [results?.deputies, stateFilter, partyFilter]);
 
   if (loading) return <LoadingState />;
@@ -316,7 +294,10 @@ export default function MatchResults({
               <strong>A porcentagem (%):</strong> Mostra exatamente quantas vezes você e o político (ou partido) votaram do mesmo jeito nas propostas analisadas.
             </li>
             <li>
-              <strong>A ordem da lista:</strong> Dá preferência a quem votou junto com você em várias propostas. Assim, quem votou igual a você em 10 leis fica na frente de quem só votou em 1 lei, garantindo uma comparação mais equilibrada e justa.
+              <strong>A ordem dos partidos:</strong> Organizada diretamente pela porcentagem real de concordância, com desempate pelo volume de votos da bancada.
+            </li>
+            <li>
+              <strong>A ordem dos deputados:</strong> Utiliza o Intervalo de Confiança de Wilson para equilibrar a porcentagem com o volume de votações, destacando parlamentares com alinhamento consistente ao longo de várias deliberações sobre presenças isoladas de suplentes.
             </li>
           </ul>
         </div>

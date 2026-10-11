@@ -43,7 +43,7 @@ A ferramenta opera sob o modelo **Local-First (Privacidade Absoluta)**: nenhuma 
 ## 🎯 Princípios Fundamentais
 
 1. **Fonte de Verdade Pública Oficial**: Os dados legislativos provêm diretamente da API de Dados Abertos da **Câmara dos Deputados** (`https://dadosabertos.camara.leg.br/api/v2`). O banco de dados PostgreSQL atua estritamente como um cache persistente e camada de indexação de alta velocidade.
-2. **Cálculo Determinístico e Aberto**: O índice de afinidade é uma divisão aritmética transparente (`Concordâncias / Comparações Válidas × 100`). Para a ordenação do ranking de parlamentares, o sistema aplica suavização bayesiana para evitar distorções amostrais, garantindo que parlamentares com alta consistência ao longo de dezenas de votações prevaleçam sobre casos isolados de suplentes com apenas 1 voto. Não há pesos ideológicos ocultos ou algoritmos opacos intermediando o resultado.
+2. **Cálculo Determinístico e Aberto**: O índice de afinidade é uma divisão aritmética transparente (`Concordâncias / Comparações Válidas × 100`). Para partidos, a ordenação segue a taxa percentual real com desempate por volume de votos. Para parlamentares individuais, o sistema aplica o limite inferior do intervalo de confiança de Wilson (Wilson Score a 95%) para priorizar alinhamento consistente em alto volume sobre presenças isoladas de suplentes com apenas 1 voto. Não há pesos ideológicos ocultos ou algoritmos opacos intermediando o resultado.
 3. **Privacidade Local-First**: O armazenamento de respostas ocorre 100% no `localStorage` do dispositivo do visitante, com funcionalidade nativa de backup e restauração em arquivo `.json`.
 4. **Neutralidade Cívica**: A plataforma não emite juízo de valor, não ranqueia representantes por mérito e não faz recomendação eleitoral. Ela apenas confronta posições expressas com votos nominais públicos.
 
@@ -370,16 +370,30 @@ $$\text{Índice de Afinidade} = \left( \frac{\text{Concordâncias}}{\text{Votaç
 - **Não comparável** (ignorado do denominador): *Abstenção*, *Obstrução*, *Artigo 17* ou *Ausente*.
 - **Afinidade Partidária**: Média aritmética dos índices de convergência de todos os deputados filiados à legenda nas matérias avaliadas.
 
-### 2. Critério de Ordenação do Ranking (Suavização Bayesiana)
-Enquanto a porcentagem nominal (%) exibida em cada cartão reflete estritamente a **taxa empírica real** de concordância (ex: 100% em 1 voto ou 95% em 20 votos; ou 72% no PV com 204 votos vs 72% no PDT com 668 votos), a ordenação da lista de parlamentares e partidos aplica uma **média bayesiana** para posicionar no topo quem sustentou alinhamento em amostras sólidas:
+### 2. Critério de Ordenação do Ranking
 
-$$\text{Score de Ordenação} = \frac{\text{Concordâncias} + (P \times W)}{\text{Comparações Válidas} + W} = \frac{\text{Concordâncias} + 1}{\text{Comparações Válidas} + 2}$$
+O sistema equilibra clareza visual e robustez estatística separando a lógica entre partidos e parlamentares:
 
-- **Presunção Neutra a Priori ($P = 0.5$ / 50%)**: Assume neutralidade perfeita antes da primeira observação de voto, sem viés ideológico ou partidário.
-- **Peso de Amortização ($W = 2$ / Regra de Laplace)**:
-  - **Em poucas votações (1 a 5 votos)**: Tem impacto proporcionalmente alto, evitando que um único voto isolado de um suplente ou micropartido alcance artificialmente o topo do ranking com 100%.
-  - **Em muitas votações (dezenas ou centenas de votos)**: O peso da dúvida inicial se dissipa para menos de 1%, permitindo que a taxa real de adesão do partido ou parlamentar prevaleça naturalmente, sem favorecer artificialmente legendas gigantes apenas pelo tamanho de suas bancadas.
-- **Critérios de Desempate Subsequentes**: Taxa percentual bruta real, total absoluto de concordâncias e ordem alfabética da legenda ou nome parlamentar.
+#### A. Afinidade Partidária (Taxa Real e Desempate por Volume)
+Como as bancadas partidárias somam os votos nominais de dezenas de deputados, a ordenação dos partidos segue estritamente a **taxa empírica real de concordância (`adherence` decrescente)**:
+1. **Taxa Percentual Real**: Partidos com 100% precedem 91%, que precedem 50%, 22% e 0%, garantindo ordem estritamente decrescente e intuitiva.
+2. **Desempate por Concordâncias Absolutas**: Em caso de empate na taxa (ex: dois partidos com 100% ou 0%), quem possui mais votos favoráveis coincidentes (`matches_count`) fica à frente.
+3. **Desempate por Volume Total**: Maior número de comparações válidas (`comparable_count`).
+4. **Desempate Alfanumérico**: Ordem alfabética da sigla partidária via `localeCompare`.
+
+#### B. Parlamentares Individuais (Limite Inferior do Intervalo de Confiança de Wilson a 95%)
+Para deputados individuais, cada parlamentar vota no máximo 1 vez por sessão. Para evitar que suplentes que votaram em apenas 1 matéria isolada (1 de 1 = 100%) superem parlamentares titulares com alta consistência ao longo de dezenas de matérias (ex: 28 de 30 = 93%), a ordenação dos deputados utiliza o limite inferior do Intervalo de Confiança de Wilson (95% de confiança, $z = 1{,}96$):
+
+$$\text{Wilson Score} = \frac{\hat{p} + \frac{z^2}{2n} - z \sqrt{\frac{\hat{p}(1 - \hat{p})}{n} + \frac{z^2}{4n^2}}}{1 + \frac{z^2}{n}}$$
+
+- **Parâmetros**:
+  - $\hat{p} = \text{Concordâncias} / \text{Comparações Válidas}$ (taxa observada).
+  - $n = \text{Comparações Válidas}$ (tamanho da amostra).
+  - $z = 1{,}96$ (nível de confiança estatística de 95%).
+- **Comportamento**:
+  - **Deputados com alto volume**: Mantêm score elevado (ex: 28 de 30 obtém ~77%), garantindo destaque a mandatos consistentes.
+  - **Suplentes com votações isoladas**: Uma amostragem de 1 de 1 recebe score conservador (~21%), evitando poluir o topo do ranking parlamentar.
+- **Critérios de Desempate Subsequentes**: Taxa percentual bruta real (`adherence`), total absoluto de concordâncias (`matches_count`), volume total de comparações (`comparable_count`) e ordem alfabética do nome parlamentar (`localeCompare`).
 
 ### 3. Hierarquia Determinística de Eleição da Votação Principal (`classifyVoteSession`)
 Para proposições com múltiplas deliberações (Texto-Base, Destaques, Emendas e Requerimentos), o sistema elege a sessão principal com base em 4 níveis de desempate estrito:

@@ -21,7 +21,8 @@ import {
   calculatePoliticianMatch,
   calculatePartyMatch,
   normalizeAdherence,
-  calculateBayesianScore,
+  comparePartyRanking,
+  compareDeputyRanking,
 } from "@/lib/match";
 import {
   getStoredGranularAnswers,
@@ -103,49 +104,13 @@ function aggregatePropositionVotes(propsData: PropositionDetailResponse[]) {
 }
 
 function sortDeputyMatches(deputyMatches: DeputyMatch[]): DeputyMatch[] {
-  return deputyMatches.slice().sort((a, b) => {
-    const scoreA = calculateBayesianScore(a.matches_count ?? 0, a.comparable_count ?? 0);
-    const scoreB = calculateBayesianScore(b.matches_count ?? 0, b.comparable_count ?? 0);
-    if (Math.abs(scoreB - scoreA) > 0.0001) return scoreB - scoreA;
-
-    const adhA = a.adherence ?? -1;
-    const adhB = b.adherence ?? -1;
-    if (adhB !== adhA) return adhB - adhA;
-
-    const matchesA = a.matches_count ?? 0;
-    const matchesB = b.matches_count ?? 0;
-    if (matchesB !== matchesA) return matchesB - matchesA;
-
-    const compA = a.comparable_count ?? 0;
-    const compB = b.comparable_count ?? 0;
-    if (compB !== compA) return compB - compA;
-
-    return a.nome_eleitoral.localeCompare(b.nome_eleitoral, "pt-BR");
-  });
+  return deputyMatches.slice().sort(compareDeputyRanking);
 }
 
 function sortPartyMatches(
   partyMatches: Array<Party & { match: PartyMatchResult }>
 ): Array<Party & { match: PartyMatchResult }> {
-  return partyMatches.slice().sort((a, b) => {
-    const matchesA = a.match?.matches_count ?? 0;
-    const compA = a.match?.comparable_count ?? 0;
-    const matchesB = b.match?.matches_count ?? 0;
-    const compB = b.match?.comparable_count ?? 0;
-
-    const scoreA = calculateBayesianScore(matchesA, compA);
-    const scoreB = calculateBayesianScore(matchesB, compB);
-    if (Math.abs(scoreB - scoreA) > 0.0001) return scoreB - scoreA;
-
-    const adhA = a.match?.adherence ?? -1;
-    const adhB = b.match?.adherence ?? -1;
-    if (adhB !== adhA) return adhB - adhA;
-
-    if (matchesB !== matchesA) return matchesB - matchesA;
-    if (compB !== compA) return compB - compA;
-
-    return a.sigla.localeCompare(b.sigla, "pt-BR");
-  });
+  return partyMatches.slice().sort(comparePartyRanking);
 }
 
 async function fetchInitialAppData() {

@@ -64,7 +64,7 @@ export function MethodologySection() {
               <span>Critério de Ordenação e Desempate no Ranking:</span>
             </div>
             <p className="text-muted-foreground leading-relaxed text-xs">
-              Para ordenar o ranking de deputados e partidos com justiça estatística, o sistema utiliza ordenação com suavização bayesiana. O percentual nominal exibido no cartão representa a adesão real (ex: 100% em 1 voto ou 95% em 20 votos; 72% no PV com 204 votos ou 72% no PDT com 668 votos). A ordenação prioriza quem sustentou alta concordância em um volume maior de votações, evitando que um único voto isolado de suplente ou micropartido assuma o topo do ranking. Conforme o volume de votos cresce (dezenas ou centenas de votos), a influência da suavização se dissipa e a taxa percentual real de concordância prevalece naturalmente, sem privilegiar bancadas maiores apenas pela quantidade de membros.
+              Para ordenar o ranking com justiça e clareza, o sistema utiliza critérios específicos para cada entidade. Para os partidos, a lista segue diretamente a taxa percentual real de concordância (com desempate pelo volume de votos da bancada), garantindo que partidos com 100% ou 91% sempre fiquem acima de porcentagens inferiores. Para os deputados individuais, a ordenação utiliza o limite inferior do Intervalo de Confiança de Wilson (95%), garantindo que parlamentares titulares com dezenas de votações consistentes prevaleçam sobre presenças isoladas de suplentes de voto único.
             </p>
           </div>
         </div>

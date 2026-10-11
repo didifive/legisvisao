@@ -1,6 +1,7 @@
 import postgres from "postgres";
 import * as dotenv from "dotenv";
 import * as path from "node:path";
+import { randomInt } from "node:crypto";
 import packageJson from "../../package.json";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
@@ -45,26 +46,31 @@ export const DEFAULT_HEADERS = {
   "User-Agent": `LegisVisao/${APP_VERSION} (https://legisvisao.com.br; contato@legisvisao.com.br)`,
 };
 
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 export async function fetchWithRetry(
   url: string,
   maxRetries = 5,
   baseDelayMs = 2000,
   timeoutMs = 30_000
 ): Promise<Response> {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  async function attemptRequest(attempt: number): Promise<Response> {
     const signal = AbortSignal.timeout(timeoutMs);
     try {
       const res = await fetch(url, { headers: DEFAULT_HEADERS, keepalive: true, signal });
-      if (res.ok) return res;
-      if (attempt === maxRetries) return res;
+      if (res.ok || attempt >= maxRetries) return res;
     } catch (err) {
       if (attempt >= maxRetries) throw err;
     }
-    // Backoff exponencial com jitter: evita thundering herd em reconexões
-    const jitter = Math.random() * baseDelayMs;
-    await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** (attempt - 1) + jitter));
+
+    const jitter = baseDelayMs > 0 ? randomInt(Math.max(1, Math.floor(baseDelayMs))) : 0;
+    const backoffMs = baseDelayMs * 2 ** (attempt - 1) + jitter;
+    await sleep(backoffMs);
+
+    return attemptRequest(attempt + 1);
   }
-  throw new Error(`Falha de conexão com a API externa após ${maxRetries} tentativas: ${url}`);
+
+  return attemptRequest(1);
 }
 
 /**
